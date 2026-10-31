@@ -10,7 +10,7 @@ jobs:
   test:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: python3 data/build.py
       - run: cargo test --release --manifest-path engine/Cargo.toml
 
@@ -21,7 +21,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - name: Stamp version from tag
         run: |
