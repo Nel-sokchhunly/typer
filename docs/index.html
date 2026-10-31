@@ -175,7 +175,7 @@ mv Typer.app ~/Library/Input\ Methods/</code></pre>
 <ul>
   <li><b>No suggestions appear:</b> check Typer is selected in the menu bar. You may be in English mode; tap <kbd>Shift</kbd> once.</li>
   <li><b>Typer isn't in the Add list:</b> log out and back in, then try step 3 again.</li>
-  <li><b>Old icon or old behaviour after updating:</b> remove Typer from Input Sources, add it again, or log out and back in.</li>
+  <li><b>Old icon or old behaviour after updating:</b> run <code>killall -9 TextInputSwitcher TextInputMenuAgent</code> in Terminal (macOS restarts them), or remove Typer from Input Sources and add it again, or log out and back in.</li>
   <li><b>Wrong suggestion:</b> please <a href="https://github.com/Nel-sokchhunly/typer/issues/new">report it</a> with what you typed and what you expected. These reports are how Typer gets better.</li>
 </ul>
 
