@@ -26,6 +26,7 @@ def clean_roman(r):
     if r != r.lower():  # "Costa Rica", "United States": English names, not typing
         return ""
     r = r.replace("'", "").replace("’", "")  # k'nhom == knhom; engine strips input the same way
+    r = r.replace(" ", "")  # "pirn ng" (one word typed as two tokens): engine matches joined tokens
     return r if re.fullmatch(r"[a-z0-9]+", r) else ""
 
 

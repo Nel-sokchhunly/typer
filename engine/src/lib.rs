@@ -4,6 +4,7 @@
 //! - dist: weighted edit distance with cheap vowel/h drops and similar-sound swaps, plus prefix completion.
 //! - LM: stupid backoff over 1-3 gram counts (data/out/ngrams.tsv) plus the user's own picks (user.tsv).
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -22,14 +23,18 @@ const LM_WEIGHT: f32 = 0.5; // <1 flattens the news-register LM so exact chat sp
 const EXACT_BONUS: f32 = 2.0;
 const RAW_PENALTY: f32 = -20.0; // keep the typed latin token when nothing fits
 const USER_BOOST: f32 = 100.0; // one pick counts like 100 corpus occurrences
+const MAX_JOIN: usize = 3; // one Khmer word may be typed as up to 3 latin tokens ("pirn ng" -> ប៉ុណ្ណឹង)
+const JOIN_MAX_DIST: f32 = 1.5; // joined tokens must spell the word closely
+const JOIN_PENALTY: f32 = 2.0; // offsets the LM term a one-word path saves over a two-word path
 
 fn is_vowel(c: u8) -> bool {
     matches!(c, b'a' | b'e' | b'i' | b'o' | b'u' | b'y')
 }
 
-/// Cost of the user skipping spelling char `c` (knhom vs khnhoam).
-fn del_cost(c: u8) -> f32 {
-    if is_vowel(c) || c == b'h' { 0.4 } else { 1.2 }
+/// Cost of the user skipping spelling char `c` (knhom vs khnhoam). `prev` is the spelling char before it.
+fn del_cost(c: u8, prev: u8) -> f32 {
+    // r after a vowel only marks vowel length (pirn, terng, krerng), so it's often dropped: pin ng
+    if is_vowel(c) || c == b'h' || (c == b'r' && is_vowel(prev)) { 0.4 } else { 1.2 }
 }
 
 /// Cost of the user typing extra char `c` not in the spelling.
@@ -55,8 +60,9 @@ fn sub_cost(a: u8, b: u8) -> f32 {
 pub fn dist(t: &[u8], s: &[u8]) -> f32 {
     let mut prev: Vec<f32> = Vec::with_capacity(s.len() + 1);
     prev.push(0.0);
+    let before = |j: usize| if j == 0 { 0 } else { s[j - 1] };
     for j in 0..s.len() {
-        prev.push(prev[j] + del_cost(s[j]));
+        prev.push(prev[j] + del_cost(s[j], before(j)));
     }
     let mut cur = vec![0.0; s.len() + 1];
     for i in 0..t.len() {
@@ -65,7 +71,7 @@ pub fn dist(t: &[u8], s: &[u8]) -> f32 {
         for j in 0..s.len() {
             cur[j + 1] = (prev[j] + sub_cost(t[i], s[j]))
                 .min(prev[j + 1] + ins_cost(t[i]))
-                .min(cur[j] + del_cost(s[j]));
+                .min(cur[j] + del_cost(s[j], before(j)));
             row_min = row_min.min(cur[j + 1]);
         }
         if row_min > MAX_DIST {
@@ -90,6 +96,8 @@ pub struct Engine {
     user: Counts,
     user_dir: Option<PathBuf>,
     total: f32,
+    // typed text -> candidates; while typing only the last token changes, so the rest are hits
+    cache: RefCell<HashMap<String, Vec<(String, f32)>>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -137,7 +145,15 @@ impl Engine {
             read_counts(&u.join("user.tsv"), &mut user);
         }
         let total = counts[0].values().sum::<u64>() as f32;
-        Ok(Engine { words, spellings, counts, user, user_dir: user_dir.map(Path::to_path_buf), total })
+        Ok(Engine {
+            words,
+            spellings,
+            counts,
+            user,
+            user_dir: user_dir.map(Path::to_path_buf),
+            total,
+            cache: RefCell::default(),
+        })
     }
 
     fn count(&self, key: &str) -> f32 {
@@ -159,6 +175,7 @@ impl Engine {
                 lines += &format!("{n}\t{key}\t1\n");
             }
         }
+        self.cache.borrow_mut().clear(); // pre-ranking uses counts that just changed
         let Some(dir) = &self.user_dir else { return Ok(()) };
         fs::create_dir_all(dir)?;
         let append = |name: &str, text: &str| -> std::io::Result<()> {
@@ -182,16 +199,21 @@ impl Engine {
     }
 
     /// Top Khmer words for one typed token, scored without context: (word, -SPELL_WEIGHT*dist).
-    pub fn candidates(&self, token: &str) -> Vec<(String, f32)> {
+    /// `max_dist` is MAX_DIST for one typed token, JOIN_MAX_DIST for several tokens typed as one word.
+    pub fn candidates(&self, token: &str, max_dist: f32) -> Vec<(String, f32)> {
         let t = normalize(token);
         if t.is_empty() {
             return vec![];
         }
+        let key = format!("{max_dist}\t{t}");
+        if let Some(hit) = self.cache.borrow().get(&key) {
+            return hit.clone();
+        }
         let mut best: HashMap<u32, f32> = HashMap::new();
-        // ponytail: linear scan, redone for every token on every keystroke; cache per token if typing lags of ~38k spellings per token (~ms); index by first consonant if it gets slow
+        // ponytail: linear scan of ~38k spellings (~7ms) per uncached token; index by first consonant if it lags
         for (s, id) in &self.spellings {
             let d = dist(t.as_bytes(), s);
-            if d <= MAX_DIST {
+            if d <= max_dist {
                 let e = best.entry(*id).or_insert(f32::INFINITY);
                 *e = e.min(d);
             }
@@ -207,29 +229,48 @@ impl Engine {
             sb.total_cmp(&sa)
         });
         out.truncate(CANDIDATES_PER_TOKEN);
+        let mut cache = self.cache.borrow_mut();
+        if cache.len() > 2000 {
+            cache.clear();
+        }
+        cache.insert(key, out.clone());
         out
     }
 
     /// Top `k` Khmer renderings of a space-separated romanized phrase.
     pub fn suggest(&self, input: &str, k: usize) -> Vec<Suggestion> {
-        let mut beam = vec![Path_ { words: vec!["<s>".into(), "<s>".into()], score: 0.0 }];
-        for token in input.split_whitespace() {
-            let mut cands = self.candidates(token);
-            cands.push((token.to_string(), RAW_PENALTY));
-            let mut next = Vec::with_capacity(beam.len() * cands.len());
-            for p in &beam {
-                let (u, v) = (&p.words[p.words.len() - 2], &p.words[p.words.len() - 1]);
-                for (w, spell) in &cands {
-                    let lm = if *spell == RAW_PENALTY { 0.0 } else { LM_WEIGHT * self.lm(u, v, w) };
-                    let mut words = p.words.clone();
-                    words.push(w.clone());
-                    next.push(Path_ { words, score: p.score + lm + spell });
+        let toks: Vec<&str> = input.split_whitespace().collect();
+        let n = toks.len();
+        // beams[i] = best paths that consumed the first i tokens; a word may consume 1..=MAX_JOIN tokens
+        let mut beams: Vec<Vec<Path_>> = vec![Vec::new(); n + 1];
+        beams[0].push(Path_ { words: vec!["<s>".into(), "<s>".into()], score: 0.0 });
+        for i in 0..n {
+            let mut here = std::mem::take(&mut beams[i]);
+            here.sort_by(|a, b| b.score.total_cmp(&a.score));
+            here.truncate(BEAM);
+            for len in 1..=MAX_JOIN.min(n - i) {
+                let cands = if len == 1 {
+                    let mut c = self.candidates(toks[i], MAX_DIST);
+                    c.push((toks[i].to_string(), RAW_PENALTY));
+                    c
+                } else {
+                    let mut c = self.candidates(&toks[i..i + len].concat(), JOIN_MAX_DIST);
+                    c.iter_mut().for_each(|(_, s)| *s -= JOIN_PENALTY);
+                    c
+                };
+                for p in &here {
+                    let (u, v) = (&p.words[p.words.len() - 2], &p.words[p.words.len() - 1]);
+                    for (w, spell) in &cands {
+                        let lm = if *spell == RAW_PENALTY { 0.0 } else { LM_WEIGHT * self.lm(u, v, w) };
+                        let mut words = p.words.clone();
+                        words.push(w.clone());
+                        beams[i + len].push(Path_ { words, score: p.score + lm + spell });
+                    }
                 }
             }
-            next.sort_by(|a, b| b.score.total_cmp(&a.score));
-            next.truncate(BEAM);
-            beam = next;
         }
+        let mut beam = std::mem::take(&mut beams[n]);
+        beam.sort_by(|a, b| b.score.total_cmp(&a.score));
         let mut out: Vec<Suggestion> = Vec::new();
         for p in beam {
             let text = join(&p.words[2..]);
@@ -267,6 +308,7 @@ mod tests {
         assert!(dist(b"knhom", b"khnhoam") < 1.0); // dropped h + a
         assert!(dist(b"kn", b"knhom") < 1.0); // prefix completion
         assert!(dist(b"jea", b"chea") < 1.5); // j/c swap + dropped h
+        assert!(dist(b"pinng", b"pirnng") < 0.5); // vowel-length r dropped
         assert!(dist(b"xyz", b"knhom").is_infinite());
     }
 
@@ -275,6 +317,8 @@ mod tests {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../data/out");
         let Ok(e) = Engine::load(&dir, None) else { return }; // run data/build.py first
         assert_eq!(e.suggest("knhom tov sala rean", 1)[0].text, "ខ្ញុំទៅសាលារៀន");
+        // one Khmer word typed as two tokens
+        assert!(e.suggest("pin ng ot loy tt man", 1)[0].text.starts_with("ប៉ុណ្ណឹង"));
     }
 
     #[test]
