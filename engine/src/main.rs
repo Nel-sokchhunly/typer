@@ -1,15 +1,16 @@
 //! typer "knhom tov sala rean"     one phrase
-//! typer                           REPL, one phrase per line
+//! typer                           REPL, one phrase per line; a number after it picks (learns) that suggestion
 //! typer eval eval/test.tsv        top-1 / top-3 accuracy on "typed<TAB>expected" lines
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 use std::time::Instant;
-use typer::Engine;
+use typer::{Engine, Suggestion};
 
 fn main() {
     let dir = std::env::var("TYPER_DATA").unwrap_or_else(|_| "data/out".into());
     let t0 = Instant::now();
-    let engine = Engine::load(Path::new(&dir)).unwrap_or_else(|e| {
+    let user = std::env::var("TYPER_USER").unwrap_or_else(|_| "data/user".into());
+    let mut engine = Engine::load(Path::new(&dir), Some(Path::new(&user))).unwrap_or_else(|e| {
         eprintln!("cannot load {dir}: {e} (run python3 data/build.py)");
         std::process::exit(1)
     });
@@ -23,6 +24,7 @@ fn main() {
             let Some((typed, want)) = line.split_once('\t') else { continue };
             let got = engine.suggest(typed, 3);
             n += 1;
+            let got: Vec<String> = got.into_iter().map(|s| s.text).collect();
             if got.first().map(String::as_str) == Some(want) {
                 top1 += 1;
             } else {
@@ -35,23 +37,32 @@ fn main() {
         return;
     }
 
-    let show = |input: &str| {
+    let show = |engine: &Engine, input: &str| -> Vec<Suggestion> {
         let t = Instant::now();
         let out = engine.suggest(input, 5);
         println!("{input} ({:?})", t.elapsed());
         for (i, s) in out.iter().enumerate() {
-            println!("  {}. {s}", i + 1);
+            println!("  {}. {}", i + 1, s.text);
         }
+        out
     };
     if !args.is_empty() {
-        return show(&args.join(" "));
+        show(&engine, &args.join(" "));
+        return;
     }
-    let stdin = io::stdin();
+    let (mut last_input, mut last) = (String::new(), Vec::new());
     print!("> ");
     io::stdout().flush().ok();
-    for line in stdin.lock().lines().map_while(Result::ok) {
-        if !line.trim().is_empty() {
-            show(&line);
+    for line in io::stdin().lock().lines().map_while(Result::ok) {
+        let line = line.trim();
+        if let Some(s) = line.parse::<usize>().ok().and_then(|i| last.get(i.wrapping_sub(1))) {
+            match engine.learn(&last_input, s) {
+                Ok(()) => println!("  learned {}", s.text),
+                Err(e) => println!("  learn failed: {e}"),
+            }
+        } else if !line.is_empty() {
+            last = show(&engine, line);
+            last_input = line.to_string();
         }
         print!("> ");
         io::stdout().flush().ok();
