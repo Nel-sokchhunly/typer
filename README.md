@@ -133,8 +133,10 @@ and log `typed<TAB>chosen` to `picks.tsv`. C ABI for frontends: `engine/typer.h`
 
 ```
 macos/build.sh install     # build build/Typer.app for this Mac, copy to ~/Library/Input Methods
-macos/build.sh dist        # universal build/Typer-macos.zip for sharing (attach to a GitHub release)
+macos/build.sh dist        # universal build/Typer-macos.zip (local check; CI builds releases)
 ```
+Release: `git tag v0.1.1 && git push origin v0.1.1`. CI (`.github/workflows/ci.yml`) tests, builds the universal zip and publishes the GitHub release.
+
 Then System Settings → Keyboard → Input Sources → Edit → + → Khmer → **Typer**. Switch with Ctrl-Space / Globe.
 
 Type `knhom tov sala rean`: ↓/↑ or Tab = move highlight, Enter = insert highlighted, 1-9 = pick, Esc = keep latin, Delete = edit,

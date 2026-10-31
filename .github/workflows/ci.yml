@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 data/build.py
+      - run: cargo test --release --manifest-path engine/Cargo.toml
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Stamp version from tag
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          /usr/libexec/PlistBuddy -c "Set CFBundleShortVersionString $v" macos/Info.plist
+          /usr/libexec/PlistBuddy -c "Set CFBundleVersion ${{ github.run_number }}" macos/Info.plist
+      - run: macos/build.sh dist
+      - run: gh release create "$GITHUB_REF_NAME" build/Typer-macos.zip --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
