@@ -23,25 +23,23 @@
     margin: 0; background: var(--bg); color: var(--fg);
     font: 17px/1.65 Montserrat, -apple-system, "Segoe UI", sans-serif;
   }
-  .km, .demo span { font-family: "Khmer Sangam MN", "Khmer MN", "Noto Sans Khmer", sans-serif; }
+  .km { font-family: "Khmer Sangam MN", "Khmer MN", "Noto Sans Khmer", sans-serif; }
   main { max-width: 760px; margin: 0 auto; padding: 88px 24px 96px; }
   .label { font-size: 13px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
   h1 { font-size: 56px; font-weight: 600; line-height: 1.05; margin: 0 0 14px; letter-spacing: -0.02em; }
   h2 { font-size: 28px; font-weight: 600; margin: 72px 0 10px; letter-spacing: -0.01em; padding-top: 20px; border-top: 1.5px solid var(--ink); }
   h3 { font-size: 19px; font-weight: 600; margin: 32px 0 6px; }
   .lead { font-size: 21px; color: var(--muted); margin: 0 0 32px; }
-  .demo {
-    background: var(--sage); border: 1.5px solid var(--ink); padding: 22px 26px; margin: 0 0 28px;
-    display: grid; gap: 10px;
-  }
-  .demo div { display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
-  .demo code { font-size: 17px; background: none; padding: 0; color: #2b3a36; }
-  .demo span { font-size: 24px; }
+  .hero { position: relative; margin: 8px 18px 44px 0; }
+  .hero::before { content: ""; position: absolute; inset: 0; transform: translate(18px, 18px); background: var(--sage); border-radius: 18px; }
+  .hero img { position: relative; display: block; width: 100%; border-radius: 18px; box-shadow: 0 0 0 1.5px var(--ink); }
   .btn {
     display: inline-block; background: var(--pink); color: var(--ink); text-decoration: none;
     border: 1.5px solid var(--ink); padding: 14px 24px; font-weight: 600;
+    transition: transform .15s, box-shadow .15s;
   }
-  .btn:hover { background: #dda198; }
+  .btn:hover { transform: translate(-3px, -3px); box-shadow: 4px 4px 0 var(--ink); }
+  .btn:active { transform: none; box-shadow: none; }
   .note { color: var(--muted); font-size: 15px; }
   .step { display: flex; gap: 14px; align-items: baseline; }
   .num {
@@ -79,7 +77,8 @@
     padding: 8px 14px; background: var(--bg); color: var(--ink); border: 1.5px solid var(--ink);
     font-size: 14px; font-weight: 600; text-decoration: none;
   }
-  .gh:hover { background: var(--sage); }
+  .gh { transition: transform .15s, box-shadow .15s; }
+  .gh:hover { transform: translate(-2px, -2px); box-shadow: 3px 3px 0 var(--ink); }
 </style>
 </head>
 <body>
@@ -90,11 +89,7 @@
 <h1>Typer</h1>
 <p class="lead">Type Khmer the way you already chat: in Latin letters, spelled however you like. Free for macOS.</p>
 
-<div class="demo">
-  <div><code>knhom tov sala rean</code><span>ខ្ញុំទៅសាលារៀន</span></div>
-  <div><code>anh ot jg tv teas te</code><span>អញអត់ចង់ទៅផ្ទះទេ</span></div>
-  <div><code>bong srolanh oun</code><span>បងស្រលាញ់អូន</span></div>
-</div>
+<div class="hero"><img src="img/hero.png" alt="Typing sur tha pin ng loy ot in Notes; Typer lists Khmer phrases such as សួរថាប៉ុណ្ណឹងឡូយអត់"></div>
 
 <p><a class="btn" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-macos.zip">Download for macOS</a></p>
 <p class="note">macOS 13 Ventura or newer · Apple Silicon and Intel · early preview: it will sometimes guess wrong, and it learns from what you pick.</p>
