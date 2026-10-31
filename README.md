@@ -18,8 +18,11 @@ and log `typed<TAB>chosen` to `picks.tsv`. C ABI for frontends: `engine/typer.h`
 
 ## macOS input method
 
+**Just want to use it?** See [INSTALL.md](INSTALL.md).
+
 ```
-macos/build.sh install     # builds build/Typer.app, copies to ~/Library/Input Methods
+macos/build.sh install     # build build/Typer.app for this Mac, copy to ~/Library/Input Methods
+macos/build.sh dist        # universal build/Typer-macos.zip for sharing (attach to a GitHub release)
 ```
 Then System Settings → Keyboard → Input Sources → Edit → + → Khmer → **Typer**. Switch with Ctrl-Space / Globe.
 
