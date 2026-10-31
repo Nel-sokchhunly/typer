@@ -11,79 +11,82 @@
 <meta property="og:url" content="https://nel-sokchhunly.github.io/typer/">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #fff; --fg: #1d1d1f; --muted: #6e6e73; --card: #f5f5f7; --line: #d2d2d7;
-    --accent: #0071e3; --code: #1d1d1f; --code-fg: #f5f5f7;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #000; --fg: #f5f5f7; --muted: #a1a1a6; --card: #1c1c1e; --line: #38383a; --accent: #2997ff; --code: #1c1c1e; }
+    --bg: #edeae3; --fg: #1a1a1a; --muted: #5f5b53; --card: #e4e0d6; --line: #cfc9bc; --ink: #1a1a1a;
+    --sage: #a7b8b2; --pink: #e6b2aa; --accent: #2a4a44; --code: #1a1a1a; --code-fg: #edeae3;
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; background: var(--bg); color: var(--fg); line-height: 1.6;
-    font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "Khmer Sangam MN", "Noto Sans Khmer", sans-serif;
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 17px/1.65 Montserrat, -apple-system, "Segoe UI", sans-serif;
   }
-  main { max-width: 760px; margin: 0 auto; padding: 48px 20px 80px; }
-  h1 { font-size: 44px; line-height: 1.1; margin: 0 0 12px; letter-spacing: -0.02em; }
-  h2 { font-size: 26px; margin: 56px 0 8px; letter-spacing: -0.01em; }
-  h3 { font-size: 19px; margin: 28px 0 6px; }
-  p, li { color: var(--fg); }
-  .lead { font-size: 21px; color: var(--muted); margin: 0 0 28px; }
+  .km, .demo span { font-family: "Khmer Sangam MN", "Khmer MN", "Noto Sans Khmer", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 88px 24px 96px; }
+  .label { font-size: 13px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+  h1 { font-size: 56px; font-weight: 600; line-height: 1.05; margin: 0 0 14px; letter-spacing: -0.02em; }
+  h2 { font-size: 28px; font-weight: 600; margin: 72px 0 10px; letter-spacing: -0.01em; padding-top: 20px; border-top: 1.5px solid var(--ink); }
+  h3 { font-size: 19px; font-weight: 600; margin: 32px 0 6px; }
+  .lead { font-size: 21px; color: var(--muted); margin: 0 0 32px; }
   .demo {
-    background: var(--card); border-radius: 16px; padding: 22px 24px; margin: 0 0 28px;
+    background: var(--sage); border: 1.5px solid var(--ink); padding: 22px 26px; margin: 0 0 28px;
     display: grid; gap: 10px;
   }
-  .demo div { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
-  .demo code { font-size: 18px; background: none; padding: 0; color: var(--muted); }
+  .demo div { display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
+  .demo code { font-size: 17px; background: none; padding: 0; color: #2b3a36; }
   .demo span { font-size: 24px; }
   .btn {
-    display: inline-block; background: var(--accent); color: #fff; text-decoration: none;
-    padding: 12px 22px; border-radius: 999px; font-weight: 600;
+    display: inline-block; background: var(--pink); color: var(--ink); text-decoration: none;
+    border: 1.5px solid var(--ink); padding: 14px 24px; font-weight: 600;
   }
+  .btn:hover { background: #dda198; }
   .note { color: var(--muted); font-size: 15px; }
   .step { display: flex; gap: 14px; align-items: baseline; }
   .num {
-    flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff;
-    display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px;
+    flex: none; width: 30px; height: 30px; border: 1.5px solid var(--ink); background: var(--sage);
+    display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px;
     transform: translateY(-3px);
   }
   pre {
-    position: relative; background: var(--code); color: var(--code-fg); border-radius: 12px;
-    padding: 16px 18px; overflow-x: auto; font-size: 14px; line-height: 1.55; border: 1px solid var(--line);
+    position: relative; background: var(--code); color: var(--code-fg);
+    padding: 18px 20px; overflow-x: auto; font-size: 14px; line-height: 1.6; margin: 12px 0;
   }
   pre button {
-    position: absolute; top: 8px; right: 8px; border: 0; border-radius: 6px; padding: 4px 10px;
-    background: #3a3a3c; color: #fff; font: 600 13px -apple-system, sans-serif; cursor: pointer;
+    position: absolute; top: 10px; right: 10px; border: 1px solid #5f5b53; padding: 3px 10px;
+    background: var(--code); color: var(--code-fg); font: 500 12px Montserrat, sans-serif; letter-spacing: .08em; cursor: pointer;
   }
+  pre button:hover { border-color: var(--code-fg); }
   code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  p code, li code, td code { background: var(--card); padding: 1px 6px; border-radius: 5px; font-size: 0.9em; }
-  figure { margin: 16px 0 8px; }
-  figure img { display: block; max-width: 100%; border-radius: 12px; }
+  p code, li code, td code { background: var(--card); padding: 1px 6px; font-size: 0.88em; }
+  figure { margin: 18px 0 8px; }
+  figure img { display: block; max-width: 100%; }
   figcaption { color: var(--muted); font-size: 15px; margin-top: 8px; }
-  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
-  td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; border-top: 1.5px solid var(--ink); }
+  td { padding: 10px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
   td:first-child { white-space: nowrap; font-weight: 600; width: 1%; }
   kbd {
-    font: 600 14px -apple-system, sans-serif; border: 1px solid var(--line); border-bottom-width: 2px;
-    border-radius: 6px; padding: 1px 7px; background: var(--card);
+    font: 600 13px Montserrat, sans-serif; border: 1px solid var(--ink); border-bottom-width: 2px;
+    padding: 1px 7px; background: var(--bg);
   }
-  details { background: var(--card); border-radius: 12px; padding: 12px 16px; margin: 16px 0; }
+  details { border: 1.5px solid var(--ink); padding: 14px 18px; margin: 18px 0; }
   summary { cursor: pointer; font-weight: 600; }
-  .warn { border-left: 4px solid #ff9f0a; padding: 4px 0 4px 14px; margin: 14px 0; }
+  .warn { border-left: 3px solid var(--pink); padding: 4px 0 4px 14px; margin: 14px 0; }
+  a { color: var(--fg); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
   .gh {
-    position: fixed; top: 16px; right: 16px; z-index: 10; display: inline-flex; align-items: center; gap: 8px;
-    padding: 8px 14px; border-radius: 999px; background: var(--card); color: var(--fg); border: 1px solid var(--line);
-    font-size: 15px; font-weight: 600; text-decoration: none; backdrop-filter: blur(8px);
+    position: fixed; top: 18px; right: 18px; z-index: 10; display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 14px; background: var(--bg); color: var(--ink); border: 1.5px solid var(--ink);
+    font-size: 14px; font-weight: 600; text-decoration: none;
   }
-  .gh:hover { border-color: var(--fg); }
-  a { color: var(--accent); }
+  .gh:hover { background: var(--sage); }
 </style>
 </head>
 <body>
 <a class="gh" href="https://github.com/Nel-sokchhunly/typer"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>GitHub</a>
 <main>
 
+<p class="label">Sing Khmer input · macOS</p>
 <h1>Typer</h1>
 <p class="lead">Type Khmer the way you already chat: in Latin letters, spelled however you like. Free for macOS.</p>
 
