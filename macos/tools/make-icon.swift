@@ -1,4 +1,4 @@
-// swift macos/make-icon.swift macos/icon.tiff
+// swift macos/tools/make-icon.swift macos/icon.tiff
 // Template input-source icon: rounded badge with ស knocked out (macOS tints it for light/dark).
 import Cocoa
 
