@@ -3,3 +3,4 @@ data/out/
 .DS_Store
 __pycache__/
 data/user/
+build/
