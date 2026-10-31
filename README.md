@@ -1,5 +1,7 @@
 # Typer
 
+<img src="docs/img/social.png" alt="Typing sur tha pin ng loy ot in Notes, with Khmer suggestions" width="480">
+
 **Illustrated install guide with screenshots: <https://nel-sokchhunly.github.io/typer/>**
 
 Typer lets you type Khmer the way you already chat in Latin letters (Sing Khmer):
