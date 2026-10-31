@@ -53,6 +53,15 @@ def build():
                 romans[khmer] |= rs
                 ngrams.setdefault((1, khmer), 1)  # unseen in corpus: minimal count
 
+    # ្ត and ្ដ (subscript ta/da) look alike and sources mix them: ម្តាយ (old dataset) vs ម្ដាយ (corpus).
+    # Fold each twin into whichever spelling the corpus uses more.
+    twin = lambda w: w.replace("្ត", "\0").replace("្ដ", "្ត").replace("\0", "្ដ")
+    for w in list(romans):
+        t = twin(w)
+        if t != w and t in romans and ngrams.get((1, t), 0) > ngrams.get((1, w), 0):
+            romans[t] |= romans.pop(w)
+            ngrams[(1, t)] += ngrams.pop((1, w), 0)
+
     romans = {k: v for k, v in romans.items() if v}
     OUT.mkdir(exist_ok=True)
     with open(OUT / "lexicon.tsv", "w", encoding="utf-8") as f:
@@ -73,6 +82,7 @@ if __name__ == "__main__":
     assert ngrams[(2, "សាលា រៀន")] >= 460
     assert not any(NON_KHMER.search(k) for k in romans)
     assert not any(r in ("unitedstates", "costarica") for v in romans.values() for r in v)
+    assert "ម្តាយ" not in romans and "ម្ដាយ" in romans  # twin folded into corpus spelling
     by_n = defaultdict(int)
     for n, _ in ngrams:
         by_n[n] += 1

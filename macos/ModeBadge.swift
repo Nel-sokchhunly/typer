@@ -23,8 +23,7 @@ enum ModeBadge {
     }()
 
     static func show(_ text: String, near client: IMKTextInput) {
-        var caret = NSRect.zero
-        client.attributes(forCharacterIndex: 0, lineHeightRectangle: &caret)
+        let caret = caretRect(client)
         label.stringValue = text
         panel.setFrameOrigin(NSPoint(x: caret.minX, y: caret.minY - panel.frame.height - 4))
         panel.orderFrontRegardless()

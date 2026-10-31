@@ -51,7 +51,8 @@ class TyperInputController: IMKInputController {
         case 125, 126, 48:  // down, up, tab (shift-tab goes up)
             guard composing, !suggestions.isEmpty else { return false }
             let back = event.keyCode == 126 || (event.keyCode == 48 && event.modifierFlags.contains(.shift))
-            select((selected + (back ? -1 : 1) + suggestions.count) % suggestions.count)
+            selected = (selected + (back ? -1 : 1) + suggestions.count) % suggestions.count
+            showPanel(client)
             return true
         case 53:  // escape
             guard composing else { return false }
@@ -96,17 +97,16 @@ class TyperInputController: IMKInputController {
             buffer, selectionRange: NSRange(location: buffer.utf16.count, length: 0), replacementRange: noRange)
         suggestions = buffer.trimmingCharacters(in: .whitespaces).isEmpty ? [] : Typer.suggest(buffer)
         selected = 0
-        if suggestions.isEmpty {
-            candidatesPanel.hide()
-        } else {
-            candidatesPanel.update()
-            candidatesPanel.show(kIMKLocateCandidatesBelowHint)
-        }
+        showPanel(client)
     }
 
-    private func select(_ index: Int) {
-        selected = index
-        candidatesPanel.selectCandidate(withIdentifier: candidatesPanel.candidateIdentifier(atLineNumber: index))
+    private func showPanel(_ client: IMKTextInput) {
+        guard !suggestions.isEmpty else { return CandidatePanel.shared.hide() }
+        CandidatePanel.shared.onPick = { [weak self] i in
+            guard let self, let client = self.client() else { return }
+            self.commit(i, client)
+        }
+        CandidatePanel.shared.show(suggestions, selected: selected, caret: caretRect(client))
     }
 
     private func commit(_ index: Int, _ client: IMKTextInput) {
@@ -120,16 +120,7 @@ class TyperInputController: IMKInputController {
         client.insertText(text, replacementRange: noRange)
         buffer = ""
         suggestions = []
-        candidatesPanel.hide()
-    }
-
-    override func candidates(_ sender: Any!) -> [Any]! {
-        suggestions
-    }
-
-    override func candidateSelected(_ candidateString: NSAttributedString!) {
-        guard let client = client(), let i = suggestions.firstIndex(of: candidateString.string) else { return }
-        commit(i, client)
+        CandidatePanel.shared.hide()
     }
 
     /// Focus moved away mid-phrase: keep what was typed, don't guess.
@@ -140,6 +131,6 @@ class TyperInputController: IMKInputController {
 
     override func deactivateServer(_ sender: Any!) {
         commitComposition(sender)
-        candidatesPanel.hide()
+        CandidatePanel.shared.hide()
     }
 }
