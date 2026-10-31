@@ -2,7 +2,8 @@ import Cocoa
 import InputMethodKit
 
 /// Letters and spaces build an underlined latin phrase; the panel shows Khmer suggestions.
-/// Enter / 1-9 / click: insert suggestion (and learn it). Esc: insert the latin as typed.
+/// ↓/↑ or Tab/Shift-Tab: move highlight. Enter: insert highlighted. 1-9 / click: insert that one.
+/// Inserted suggestions are learned. Esc: insert the latin as typed.
 /// Delete: edit the phrase. Punctuation or shortcuts: insert top suggestion, then pass the key on.
 /// Tap Shift alone: toggle English passthrough (keys go straight to the app).
 @objc(TyperInputController)
@@ -11,6 +12,7 @@ class TyperInputController: IMKInputController {
     private var shiftAlone = false  // Shift pressed with no other key since
     private var buffer = ""
     private var suggestions: [String] = []
+    private var selected = 0  // highlighted row; Enter inserts it
     private let noRange = NSRange(location: NSNotFound, length: NSNotFound)
 
     override func recognizedEvents(_ sender: Any!) -> Int {
@@ -44,7 +46,12 @@ class TyperInputController: IMKInputController {
         switch event.keyCode {
         case 36, 76:  // return, keypad enter
             guard composing else { return false }
-            commit(0, client)
+            commit(selected, client)
+            return true
+        case 125, 126, 48:  // down, up, tab (shift-tab goes up)
+            guard composing, !suggestions.isEmpty else { return false }
+            let back = event.keyCode == 126 || (event.keyCode == 48 && event.modifierFlags.contains(.shift))
+            select((selected + (back ? -1 : 1) + suggestions.count) % suggestions.count)
             return true
         case 53:  // escape
             guard composing else { return false }
@@ -88,12 +95,18 @@ class TyperInputController: IMKInputController {
         client.setMarkedText(
             buffer, selectionRange: NSRange(location: buffer.utf16.count, length: 0), replacementRange: noRange)
         suggestions = buffer.trimmingCharacters(in: .whitespaces).isEmpty ? [] : Typer.suggest(buffer)
+        selected = 0
         if suggestions.isEmpty {
             candidatesPanel.hide()
         } else {
             candidatesPanel.update()
             candidatesPanel.show(kIMKLocateCandidatesBelowHint)
         }
+    }
+
+    private func select(_ index: Int) {
+        selected = index
+        candidatesPanel.selectCandidate(withIdentifier: candidatesPanel.candidateIdentifier(atLineNumber: index))
     }
 
     private func commit(_ index: Int, _ client: IMKTextInput) {

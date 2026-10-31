@@ -48,7 +48,8 @@ Type Khmer in Latin letters, with spaces between words. A list of suggestions ap
 
 | Key | What it does |
 |---|---|
-| `Enter` | Insert the first suggestion |
+| `↓` / `↑` or `Tab` / `Shift Tab` | Move through the suggestions (wraps around) |
+| `Enter` | Insert the highlighted suggestion (the first one unless you moved) |
 | `1` to `9` | Insert that suggestion |
 | Click | Insert the clicked suggestion |
 | `Esc` | Insert exactly what you typed, in Latin letters |
