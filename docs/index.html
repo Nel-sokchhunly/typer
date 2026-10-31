@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Typer: type Khmer the way you chat</title>
+<meta name="description" content="Typer is a free Sing Khmer input method for macOS. Type knhom tov sala rean, get ខ្ញុំទៅសាលារៀន.">
+<style>
+  :root {
+    --bg: #fff; --fg: #1d1d1f; --muted: #6e6e73; --card: #f5f5f7; --line: #d2d2d7;
+    --accent: #0071e3; --code: #1d1d1f; --code-fg: #f5f5f7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #000; --fg: #f5f5f7; --muted: #a1a1a6; --card: #1c1c1e; --line: #38383a; --accent: #2997ff; --code: #1c1c1e; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg); line-height: 1.6;
+    font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "Khmer Sangam MN", "Noto Sans Khmer", sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 48px 20px 80px; }
+  h1 { font-size: 44px; line-height: 1.1; margin: 0 0 12px; letter-spacing: -0.02em; }
+  h2 { font-size: 26px; margin: 56px 0 8px; letter-spacing: -0.01em; }
+  h3 { font-size: 19px; margin: 28px 0 6px; }
+  p, li { color: var(--fg); }
+  .lead { font-size: 21px; color: var(--muted); margin: 0 0 28px; }
+  .demo {
+    background: var(--card); border-radius: 16px; padding: 22px 24px; margin: 0 0 28px;
+    display: grid; gap: 10px;
+  }
+  .demo div { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
+  .demo code { font-size: 18px; background: none; padding: 0; color: var(--muted); }
+  .demo span { font-size: 24px; }
+  .btn {
+    display: inline-block; background: var(--accent); color: #fff; text-decoration: none;
+    padding: 12px 22px; border-radius: 999px; font-weight: 600;
+  }
+  .note { color: var(--muted); font-size: 15px; }
+  .step { display: flex; gap: 14px; align-items: baseline; }
+  .num {
+    flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px;
+    transform: translateY(-3px);
+  }
+  pre {
+    position: relative; background: var(--code); color: var(--code-fg); border-radius: 12px;
+    padding: 16px 18px; overflow-x: auto; font-size: 14px; line-height: 1.55; border: 1px solid var(--line);
+  }
+  pre button {
+    position: absolute; top: 8px; right: 8px; border: 0; border-radius: 6px; padding: 4px 10px;
+    background: #3a3a3c; color: #fff; font: 600 13px -apple-system, sans-serif; cursor: pointer;
+  }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code, td code { background: var(--card); padding: 1px 6px; border-radius: 5px; font-size: 0.9em; }
+  figure { margin: 16px 0 8px; }
+  figure img { display: block; max-width: 100%; border-radius: 12px; }
+  figcaption { color: var(--muted); font-size: 15px; margin-top: 8px; }
+  .shot-missing {
+    border: 2px dashed var(--line); border-radius: 12px; padding: 36px 20px; text-align: center; color: var(--muted);
+  }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td:first-child { white-space: nowrap; font-weight: 600; width: 1%; }
+  kbd {
+    font: 600 14px -apple-system, sans-serif; border: 1px solid var(--line); border-bottom-width: 2px;
+    border-radius: 6px; padding: 1px 7px; background: var(--card);
+  }
+  details { background: var(--card); border-radius: 12px; padding: 12px 16px; margin: 16px 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  .warn { border-left: 4px solid #ff9f0a; padding: 4px 0 4px 14px; margin: 14px 0; }
+  footer { margin-top: 64px; color: var(--muted); font-size: 15px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Typer</h1>
+<p class="lead">Type Khmer the way you already chat: in Latin letters, spelled however you like. Free for macOS.</p>
+
+<div class="demo">
+  <div><code>knhom tov sala rean</code><span>ខ្ញុំទៅសាលារៀន</span></div>
+  <div><code>anh ot jg tv teas te</code><span>អញអត់ចង់ទៅផ្ទះទេ</span></div>
+  <div><code>bong srolanh oun</code><span>បងស្រលាញ់អូន</span></div>
+</div>
+
+<p><a class="btn" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-macos.zip">Download for macOS</a></p>
+<p class="note">macOS 13 Ventura or newer · Apple Silicon and Intel · early preview: it will sometimes guess wrong, and it learns from what you pick.</p>
+
+<h2>Install</h2>
+<p>Takes about two minutes. The easiest way is one Terminal command.</p>
+
+<h3 class="step"><span class="num">1</span> Copy Typer into place</h3>
+<p>Open <b>Terminal</b> (press <kbd>⌘</kbd> <kbd>Space</kbd>, type <i>Terminal</i>, press <kbd>Return</kbd>). Paste this and press <kbd>Return</kbd>:</p>
+<pre><code>curl -fsSL -o /tmp/Typer-macos.zip https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-macos.zip
+mkdir -p ~/Library/Input\ Methods
+rm -rf ~/Library/Input\ Methods/Typer.app
+ditto -x -k /tmp/Typer-macos.zip ~/Library/Input\ Methods/
+xattr -dr com.apple.quarantine ~/Library/Input\ Methods/Typer.app
+echo "Typer installed"</code></pre>
+<p class="note">It downloads Typer and puts it in your <code>Input Methods</code> folder. Nothing is installed anywhere else, and it doesn't need your password.</p>
+
+<details>
+  <summary>Prefer to download it yourself?</summary>
+  <p>Click <b>Download for macOS</b> above, then in Terminal run:</p>
+  <pre><code>cd ~/Downloads
+unzip -o Typer-macos.zip
+xattr -dr com.apple.quarantine Typer.app
+mkdir -p ~/Library/Input\ Methods
+rm -rf ~/Library/Input\ Methods/Typer.app
+mv Typer.app ~/Library/Input\ Methods/</code></pre>
+  <p class="warn"><b>Why the <code>xattr</code> line?</b> Typer isn't signed with a paid Apple Developer certificate yet, so macOS blocks it when it comes from a browser download. This line removes that block for Typer only. Only run it if you trust where you got the file.</p>
+</details>
+
+<h3 class="step"><span class="num">2</span> Open Keyboard settings</h3>
+<p>Open <b>System Settings → Keyboard</b>. Under <b>Text Input</b>, click <b>Edit…</b> next to <i>Input Sources</i>.</p>
+<figure>
+  <img src="img/settings-edit.png" alt="System Settings, Keyboard pane, with the Edit button next to Input Sources" loading="lazy">
+</figure>
+
+<h3 class="step"><span class="num">3</span> Add Typer</h3>
+<p>Click <b>+</b> at the bottom left. Choose <b>Khmer</b> on the left, select <b>Typer</b> on the right, and click <b>Add</b>.</p>
+<figure>
+  <img src="img/settings-add.png" alt="Add input source dialog with Khmer selected and Typer highlighted" loading="lazy">
+</figure>
+<p class="note">Typer isn't in the list? Log out and back in (Apple menu → Log Out), then try again.</p>
+
+<h3 class="step"><span class="num">4</span> Check it's on</h3>
+<p>Typer now appears in your input sources. Turn on <b>Show Input menu in menu bar</b> so you can always see which one is active, then click <b>Done</b>.</p>
+<figure>
+  <img src="img/settings-added.png" alt="Input sources list showing ABC, Khmer and Typer, with Show Input menu in menu bar turned on" loading="lazy">
+</figure>
+
+<h2>Use it</h2>
+<p>Switch to Typer with <kbd>Ctrl</kbd> <kbd>Space</kbd> or the <kbd>🌐</kbd> Globe key, or pick it from the input menu in the menu bar.</p>
+<figure>
+  <img src="img/input-menu.png" alt="Input menu in the menu bar with Typer selected" loading="lazy"
+       onerror="this.outerHTML='<div class=shot-missing>Screenshot coming soon: the input menu with Typer selected</div>'">
+</figure>
+
+<p>Type Khmer in Latin letters with spaces between words. Suggestions appear under what you type:</p>
+<figure>
+  <picture>
+    <source srcset="img/suggestions-dark.png" media="(prefers-color-scheme: dark)">
+    <img src="img/suggestions-light.png" alt="Typer suggestion list for knhom tov sala rean" style="width:320px">
+  </picture>
+  <figcaption>Suggestions for <code>knhom tov sala rean</code>.</figcaption>
+</figure>
+
+<table>
+  <tr><td><kbd>Return</kbd></td><td>Insert the highlighted suggestion (the first one unless you moved)</td></tr>
+  <tr><td><kbd>↓</kbd> <kbd>↑</kbd> or <kbd>Tab</kbd></td><td>Move through the suggestions</td></tr>
+  <tr><td><kbd>1</kbd> to <kbd>9</kbd>, or click</td><td>Insert that suggestion</td></tr>
+  <tr><td><kbd>Esc</kbd></td><td>Insert exactly what you typed, in Latin letters</td></tr>
+  <tr><td><kbd>Delete</kbd></td><td>Edit what you're typing</td></tr>
+  <tr><td><kbd>.</kbd> <kbd>,</kbd> <kbd>?</kbd></td><td>Insert the first suggestion, then the punctuation</td></tr>
+  <tr><td>Tap <kbd>Shift</kbd></td><td>Switch between Khmer and English. A small <b>ខ</b> / <b>EN</b> badge shows the mode</td></tr>
+</table>
+
+<h3>Tips</h3>
+<ul>
+  <li>Spell however you normally do. <code>knhom</code>, <code>knh</code> and <code>nh</code> all give ខ្ញុំ.</li>
+  <li>When the right word isn't first, pick it. Typer remembers and puts it first next time.</li>
+  <li>To type English, tap <kbd>Shift</kbd> once; tap it again to go back to Khmer. Holding <kbd>Shift</kbd> for a capital letter doesn't switch.</li>
+</ul>
+
+<h2>Privacy</h2>
+<p>Everything stays on your Mac. Typer has no network access and sends nothing anywhere. What you pick is saved locally in <code>~/Library/Application Support/Typer/</code> so Typer can learn. Delete that folder at any time to reset it.</p>
+
+<h2>Update</h2>
+<p>Run the step 1 command again. What Typer has learned is kept. If it still behaves like the old version, switch to another input source and back, or log out and back in.</p>
+
+<h2>Uninstall</h2>
+<p>Remove Typer in <b>System Settings → Keyboard → Input Sources → Edit…</b> (select it, click <b>−</b>), then run:</p>
+<pre><code>rm -rf ~/Library/Input\ Methods/Typer.app ~/Library/Application\ Support/Typer</code></pre>
+
+<h2>Problems?</h2>
+<ul>
+  <li><b>No suggestions appear:</b> check Typer is selected in the menu bar. You may be in English mode; tap <kbd>Shift</kbd> once.</li>
+  <li><b>Typer isn't in the Add list:</b> log out and back in, then try step 3 again.</li>
+  <li><b>Old icon or old behaviour after updating:</b> remove Typer from Input Sources, add it again, or log out and back in.</li>
+  <li><b>Wrong suggestion:</b> please <a href="https://github.com/Nel-sokchhunly/typer/issues/new">report it</a> with what you typed and what you expected. These reports are how Typer gets better.</li>
+</ul>
+
+<footer>
+  Typer is open source: <a href="https://github.com/Nel-sokchhunly/typer">github.com/Nel-sokchhunly/typer</a>.
+</footer>
+</main>
+<script>
+  document.querySelectorAll("pre").forEach(pre => {
+    const b = document.createElement("button");
+    b.textContent = "Copy";
+    b.onclick = () => navigator.clipboard.writeText(pre.querySelector("code").innerText)
+      .then(() => { b.textContent = "Copied"; setTimeout(() => b.textContent = "Copy", 1500); });
+    pre.appendChild(b);
+  });
+</script>
+</body>
+</html>

@@ -1,5 +1,7 @@
 # typer
 
+**Install on macOS: <https://nel-sokchhunly.github.io/typer/>**
+
 Sing Khmer input engine: `knhom tov sala rean` → `ខ្ញុំទៅសាលារៀន`.
 
 ```
@@ -30,3 +32,9 @@ Type `knhom tov sala rean`: ↓/↑ or Tab = move highlight, Enter = insert high
 tap Shift alone = toggle English passthrough.
 Picks are learned into `~/Library/Application Support/Typer/` (`user.tsv`, `picks.tsv`).
 After a rebuild, `install` restarts the input method; if it still looks stale, switch input source away and back.
+
+## Data credits
+
+- `data/raw/mobile-keyboard-data.json`: shared open Khmer/English keyboard n-gram data.
+- `data/raw/hand-romans.txt`: from [khmer-text-transliteration](https://github.com/Chhunneng/khmer-text-transliteration),
+  MIT License, Copyright (c) 2025 Chrea Chanchhunneng.

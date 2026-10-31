@@ -1,5 +1,7 @@
 # Install Typer on macOS
 
+**Easiest: follow the illustrated guide at <https://nel-sokchhunly.github.io/typer/>.** This file has the same steps in plain text.
+
 Typer lets you type Khmer the way you already chat in Latin letters (Sing Khmer):
 
 ```
@@ -13,13 +15,20 @@ It works in any app: Messenger, Telegram, Notes, browsers, and so on.
 
 > Typer is an early preview. Expect wrong suggestions sometimes. It learns from what you pick, so it gets better the more you use it.
 
-## 1. Download
-
-Download **`Typer-macos.zip`** from the [Releases page](https://github.com/Nel-sokchhunly/typer/releases), or get it from whoever shared it with you.
-
-## 2. Install
+## 1–2. Download and install
 
 Open **Terminal** (press `⌘ Space`, type *Terminal*, press Enter), then paste these lines and press Enter:
+
+```sh
+curl -fsSL -o /tmp/Typer-macos.zip https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-macos.zip
+mkdir -p ~/Library/Input\ Methods
+rm -rf ~/Library/Input\ Methods/Typer.app
+ditto -x -k /tmp/Typer-macos.zip ~/Library/Input\ Methods/
+xattr -dr com.apple.quarantine ~/Library/Input\ Methods/Typer.app
+echo "Typer installed"
+```
+
+Got the zip from a friend or the [Releases page](https://github.com/Nel-sokchhunly/typer/releases) instead? Put it in Downloads and run:
 
 ```sh
 cd ~/Downloads
@@ -80,7 +89,7 @@ Delete that folder at any time to reset what Typer has learned.
 
 ## Update
 
-Download the new zip and repeat **step 2**. What Typer has learned is kept. If it still behaves like the old version, switch to another input source and back, or log out and back in.
+Run the install command from **step 1–2** again. What Typer has learned is kept. If it still behaves like the old version, switch to another input source and back, or log out and back in.
 
 ## Uninstall
 
