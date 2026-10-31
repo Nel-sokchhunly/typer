@@ -26,6 +26,7 @@ macos/build.sh dist        # universal build/Typer-macos.zip for sharing (attach
 ```
 Then System Settings → Keyboard → Input Sources → Edit → + → Khmer → **Typer**. Switch with Ctrl-Space / Globe.
 
-Type `knhom tov sala rean`: Enter = top suggestion, 1-9 = pick, Esc = keep latin, Delete = edit.
+Type `knhom tov sala rean`: Enter = top suggestion, 1-9 = pick, Esc = keep latin, Delete = edit,
+tap Shift alone = toggle English passthrough.
 Picks are learned into `~/Library/Application Support/Typer/` (`user.tsv`, `picks.tsv`).
 After a rebuild, `install` restarts the input method; if it still looks stale, switch input source away and back.

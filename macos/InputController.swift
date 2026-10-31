@@ -4,18 +4,37 @@ import InputMethodKit
 /// Letters and spaces build an underlined latin phrase; the panel shows Khmer suggestions.
 /// Enter / 1-9 / click: insert suggestion (and learn it). Esc: insert the latin as typed.
 /// Delete: edit the phrase. Punctuation or shortcuts: insert top suggestion, then pass the key on.
+/// Tap Shift alone: toggle English passthrough (keys go straight to the app).
 @objc(TyperInputController)
 class TyperInputController: IMKInputController {
+    private static var english = false  // shared by all apps, like the system Caps Lock
+    private var shiftAlone = false  // Shift pressed with no other key since
     private var buffer = ""
     private var suggestions: [String] = []
     private let noRange = NSRange(location: NSNotFound, length: NSNotFound)
 
     override func recognizedEvents(_ sender: Any!) -> Int {
-        Int(NSEvent.EventTypeMask.keyDown.rawValue)
+        Int(NSEvent.EventTypeMask([.keyDown, .flagsChanged]).rawValue)
     }
 
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
-        guard let event, event.type == .keyDown, let client = sender as? IMKTextInput else { return false }
+        guard let event, let client = sender as? IMKTextInput else { return false }
+        if event.type == .flagsChanged {
+            let shiftKey = event.keyCode == 56 || event.keyCode == 60
+            let others = !event.modifierFlags.intersection([.command, .control, .option]).isEmpty
+            if !shiftKey || others {
+                shiftAlone = false
+            } else if event.modifierFlags.contains(.shift) {
+                shiftAlone = true
+            } else if shiftAlone {
+                shiftAlone = false
+                toggleEnglish(client)
+            }
+            return false
+        }
+        guard event.type == .keyDown else { return false }
+        shiftAlone = false  // Shift+letter is a capital, not a toggle
+        if Self.english { return false }
         let composing = !buffer.isEmpty
 
         if !event.modifierFlags.intersection([.command, .control, .option]).isEmpty {
@@ -57,6 +76,12 @@ class TyperInputController: IMKInputController {
         }
         if composing { commit(0, client) }
         return false
+    }
+
+    private func toggleEnglish(_ client: IMKTextInput) {
+        if !buffer.isEmpty { insert(buffer, client) }  // keep the half-typed phrase as latin
+        Self.english.toggle()
+        ModeBadge.show(Self.english ? "EN" : "ខ", near: client)
     }
 
     private func update(_ client: IMKTextInput) {
