@@ -1,0 +1,7 @@
+# Windows DLLs must not need the Visual C++ runtime (vcruntime140.dll): fresh PCs don't have it,
+# and regsvr32 then fails to load typer64.dll / typer32.dll. Builds run from the repo root (CI does).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.i686-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

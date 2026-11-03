@@ -28,6 +28,10 @@ jobs:
           for t in x86_64-pc-windows-msvc i686-pc-windows-msvc; do
             cargo build --release --manifest-path windows/Cargo.toml --target $t
           done
+      - name: Check DLL exports and runtime imports
+        run: |
+          pip install -q pefile
+          python windows/check_dlls.py windows/target/{x86_64,i686}-pc-windows-msvc/release/typer_tsf.dll
       - name: Build installer
         if: startsWith(github.ref, 'refs/tags/v')
         env:
