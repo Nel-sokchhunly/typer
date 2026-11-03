@@ -2,10 +2,10 @@ import Cocoa
 import InputMethodKit
 
 /// Letters and spaces build an underlined latin phrase; the panel shows Khmer suggestions.
-/// ↓/↑ or Tab/Shift-Tab: move highlight. Enter: insert highlighted. 1-9 / click: insert that one.
-/// Inserted suggestions are learned. Esc: insert the latin as typed.
+/// ↓/↑: move highlight. Enter: insert highlighted. 1-9 / click: insert that one.
+/// Inserted suggestions are learned. Tab or Esc: insert the latin as typed.
 /// Delete: edit the phrase. Punctuation or shortcuts: insert top suggestion, then pass the key on.
-/// Tap Shift alone: toggle English passthrough (keys go straight to the app).
+/// Tap Shift alone with nothing typed: toggle English passthrough (keys go straight to the app).
 @objc(TyperInputController)
 class TyperInputController: IMKInputController {
     private static var english = false  // shared by all apps, like the system Caps Lock
@@ -48,13 +48,12 @@ class TyperInputController: IMKInputController {
             guard composing else { return false }
             commit(selected, client)
             return true
-        case 125, 126, 48:  // down, up, tab (shift-tab goes up)
+        case 125, 126:  // down, up
             guard composing, !suggestions.isEmpty else { return false }
-            let back = event.keyCode == 126 || (event.keyCode == 48 && event.modifierFlags.contains(.shift))
-            selected = (selected + (back ? -1 : 1) + suggestions.count) % suggestions.count
+            selected = (selected + (event.keyCode == 126 ? -1 : 1) + suggestions.count) % suggestions.count
             showPanel(client)
             return true
-        case 53:  // escape
+        case 48, 53:  // tab, escape
             guard composing else { return false }
             insert(buffer, client)
             return true
@@ -87,7 +86,7 @@ class TyperInputController: IMKInputController {
     }
 
     private func toggleEnglish(_ client: IMKTextInput) {
-        if !buffer.isEmpty { insert(buffer, client) }  // keep the half-typed phrase as latin
+        guard buffer.isEmpty else { return }  // mid-phrase Shift is a stray capital, not a command
         Self.english.toggle()
         ModeBadge.show(Self.english ? "EN" : "ខ", near: client)
     }
