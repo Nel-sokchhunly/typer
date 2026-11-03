@@ -185,6 +185,14 @@ impl Engine {
         append("picks.tsv", &format!("{}\t{}\n", typed.trim(), s.text))
     }
 
+    /// Learn the `index`-th suggestion for `input` (same order `suggest` returned).
+    pub fn pick(&mut self, input: &str, index: usize) -> std::io::Result<()> {
+        match self.suggest(input, index + 1).get(index).cloned() {
+            Some(s) => self.learn(input, &s),
+            None => Ok(()),
+        }
+    }
+
     /// Stupid backoff log-score of `w` after context (u, v).
     fn lm(&self, u: &str, v: &str, w: &str) -> f32 {
         let (tri, uv) = (self.count(&format!("{u} {v} {w}")), self.count(&format!("{u} {v}")));
