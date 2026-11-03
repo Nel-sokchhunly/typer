@@ -10,7 +10,7 @@
 
 [Setup]
 AppId={{BFD22721-7C69-45BB-B43C-57DEC56E4E58}
-AppName=Typer សរសេរ
+AppName=Typer / សរសេរ
 AppVersion={#Version}
 AppPublisher=Typer
 AppPublisherURL=https://nel-sokchhunly.github.io/typer/
@@ -25,7 +25,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 CloseApplications=no
 UninstallDisplayIcon={app}\typer.ico
-UninstallDisplayName=Typer សរសេរ (Khmer keyboard)
+UninstallDisplayName=Typer / សរសេរ (Khmer keyboard)
 OutputDir=..\build
 OutputBaseFilename=Typer-windows-setup
 
@@ -38,8 +38,8 @@ Source: "target\x86_64-pc-windows-msvc\release\typer_tsf.dll"; DestDir: "{app}";
 Source: "target\i686-pc-windows-msvc\release\typer_tsf.dll"; DestDir: "{app}"; DestName: "typer32.dll"; Flags: ignoreversion regserver restartreplace uninsrestartdelete 32bit
 
 [Messages]
-FinishedLabelNoIcons=Typer សរសេរ is installed.%n%nPress Windows + Space and choose Typer សរសេរ to start typing. Type Khmer in Latin letters with spaces between words, then press Enter or a number to pick.
-FinishedLabel=Typer សរសេរ is installed.%n%nPress Windows + Space and choose Typer សរសេរ to start typing. Type Khmer in Latin letters with spaces between words, then press Enter or a number to pick.
+FinishedLabelNoIcons=Typer / សរសេរ is installed.%n%nPress Windows + Space and choose Typer / សរសេរ to start typing. Type Khmer in Latin letters with spaces between words, then press Enter or a number to pick.
+FinishedLabel=Typer / សរសេរ is installed.%n%nPress Windows + Space and choose Typer / សរសេរ to start typing. Type Khmer in Latin letters with spaces between words, then press Enter or a number to pick.
 
 [Code]
 // Adds / removes Typer in the user's keyboard list, so there is nothing to set up in Settings.
