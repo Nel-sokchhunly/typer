@@ -41,9 +41,29 @@ jobs:
           name: windows-setup
           path: build/Typer-windows-setup.exe
 
+  linux:
+    needs: test
+    runs-on: ubuntu-22.04 # oldest supported glibc, so the .deb installs on 22.04+ and Debian 12
+    steps:
+      - uses: actions/checkout@v5
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq libibus-1.0-dev ibus python3-gi gir1.2-ibus-1.0 dbus
+      - run: TYPER_VERSION="${GITHUB_REF_NAME#v}" linux/build.sh deb
+        if: startsWith(github.ref, 'refs/tags/v')
+      - run: linux/build.sh deb
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+      - name: End-to-end test through ibus-daemon
+        run: |
+          sudo apt-get install -y -qq ./build/Typer-linux-amd64.deb
+          dbus-run-session -- sh -c 'ibus-daemon --panel=disable --daemonize && sleep 2 && python3 linux/test_ibus.py'
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v5
+        with:
+          name: linux-deb
+          path: build/Typer-linux-amd64.deb
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test, windows]
+    needs: [test, windows, linux]
     runs-on: macos-latest
     permissions:
       contents: write
@@ -60,6 +80,10 @@ jobs:
         with:
           name: windows-setup
           path: build
-      - run: gh release create "$GITHUB_REF_NAME" build/Typer.pkg build/Typer-macos.zip build/Typer-windows-setup.exe --generate-notes
+      - uses: actions/download-artifact@v5
+        with:
+          name: linux-deb
+          path: build
+      - run: gh release create "$GITHUB_REF_NAME" build/Typer.pkg build/Typer-macos.zip build/Typer-windows-setup.exe build/Typer-linux-amd64.deb --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}

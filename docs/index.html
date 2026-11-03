@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Typer / សរសេរ: type Khmer the way you chat</title>
-<meta name="description" content="Typer is a free Sing Khmer input method for macOS and Windows. Type knhom tov sala rean, get ខ្ញុំទៅសាលារៀន.">
+<meta name="description" content="Typer is a free Sing Khmer input method for macOS, Windows and Linux. Type knhom tov sala rean, get ខ្ញុំទៅសាលារៀន.">
 <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
 <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <meta name="theme-color" content="#edeae3">
 <meta property="og:site_name" content="Typer / សរសេរ">
 <meta property="og:title" content="Typer / សរសេរ: type Khmer the way you chat">
-<meta property="og:description" content="Free Sing Khmer input method for macOS and Windows. Type knhom tov sala rean, get ខ្ញុំទៅសាលារៀន.">
+<meta property="og:description" content="Free Sing Khmer input method for macOS, Windows and Linux. Type knhom tov sala rean, get ខ្ញុំទៅសាលារៀន.">
 <meta property="og:image" content="https://nel-sokchhunly.github.io/typer/img/social.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="1200">
@@ -19,7 +19,7 @@
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Typer / សរសេរ: type Khmer the way you chat">
-<meta name="twitter:description" content="Free Sing Khmer input method for macOS and Windows. Type knhom tov sala rean, get ខ្ញុំទៅសាលារៀន.">
+<meta name="twitter:description" content="Free Sing Khmer input method for macOS, Windows and Linux. Type knhom tov sala rean, get ខ្ញុំទៅសាលារៀន.">
 <meta name="twitter:image" content="https://nel-sokchhunly.github.io/typer/img/social.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -34,21 +34,23 @@
 </nav>
 <main>
 
-<p class="label">Sing Khmer input · macOS · Windows</p>
+<p class="label">Sing Khmer input · macOS · Windows · Linux</p>
 <h1>Typer <span class="h1-sep">/</span> <span class="km h1-km" lang="km">សរសេរ</span></h1>
-<p class="lead">Type Khmer the way you already chat: in Latin letters, spelled however you like. Free for macOS and Windows.</p>
+<p class="lead">Type Khmer the way you already chat: in Latin letters, spelled however you like. Free for macOS, Windows and Linux.</p>
 
 <div class="hero"><img src="img/hero.png" alt="Typing nh jg tv sala rean in Notes; Typer suggests ខ្ញុំចង់ទៅសាលារៀន first"></div>
 
 <p class="btns">
   <a class="btn" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer.pkg">Download for macOS</a>
   <a class="btn" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-windows-setup.exe">Download for Windows</a>
+  <a class="btn" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-linux-amd64.deb">Download for Linux</a>
 </p>
-<p class="note">macOS 13 Ventura or newer (Apple Silicon and Intel) · Windows 10 or 11, 64-bit · early preview: it will sometimes guess wrong, and it learns from what you pick. On Windows, see <a href="#windows">Install on Windows</a>.</p>
+<p class="note">macOS 13 Ventura or newer (Apple Silicon and Intel) · Windows 10 or 11, 64-bit · Ubuntu 22.04+ / Debian 12+ · early preview: it will sometimes guess wrong, and it learns from what you pick. </p>
 <nav class="toc" aria-label="Jump to">
   <span>Jump to</span>
   <a href="#mac">Install on macOS</a>
   <a href="#windows">Install on Windows</a>
+  <a href="#linux">Install on Linux</a>
   <a href="#use">Use it</a>
   <a href="#privacy">Privacy</a>
   <a href="#update">Update</a>
@@ -106,8 +108,22 @@ echo "Typer installed"</code></pre>
 <p>Press <kbd>Windows</kbd> <kbd>Space</kbd> and choose <b>Typer / សរសេរ</b> (listed under Khmer). The installer already added it, so there is nothing to set up in Settings.</p>
 <p class="note">Everything below works the same on Windows, except picking with the mouse: use <kbd>Enter</kbd> or a number instead.</p>
 
+<h2 id="linux">Install on Linux</h2>
+<p>For Ubuntu 22.04 or newer and Debian 12 or newer (64-bit Intel/AMD), with the standard IBus input system. Linux support is new; please <a href="https://github.com/Nel-sokchhunly/typer/issues/new">report</a> anything that doesn't work.</p>
+
+<h3 class="step"><span class="num">1</span> Install the package</h3>
+<p>Click <b>Download for Linux</b> above, then open <b>Typer-linux-amd64.deb</b> from your Downloads and click <b>Install</b>. Or in a terminal:</p>
+<pre><code>sudo apt install ./Downloads/Typer-linux-amd64.deb</code></pre>
+
+<h3 class="step"><span class="num">2</span> Log out and back in</h3>
+<p>IBus only looks for new input methods when it starts.</p>
+
+<h3 class="step"><span class="num">3</span> Add Typer</h3>
+<p>Open <b>Settings → Keyboard</b>. Under <i>Input Sources</i>, click <b>+ Add Input Source</b>, choose <b>Khmer</b>, then <b>Typer / សរសេរ</b>, and click <b>Add</b>. Switch to it with <kbd>Super</kbd> <kbd>Space</kbd>.</p>
+<p class="note">Everything below works the same on Linux, including picking with the mouse. KDE users on Fcitx5 aren't supported yet.</p>
+
 <h2 id="use">Use it</h2>
-<p>Switch to Typer with <kbd>Ctrl</kbd> <kbd>Space</kbd> or the <kbd>🌐</kbd> Globe key, or pick it from the input menu in the menu bar. On Windows, press <kbd>Windows</kbd> <kbd>Space</kbd>.</p>
+<p>Switch to Typer with <kbd>Ctrl</kbd> <kbd>Space</kbd> or the <kbd>🌐</kbd> Globe key, or pick it from the input menu in the menu bar. On Windows, press <kbd>Windows</kbd> <kbd>Space</kbd>; on Linux, <kbd>Super</kbd> <kbd>Space</kbd>.</p>
 
 <p>Type Khmer in Latin letters with spaces between words. Suggestions appear under what you type:</p>
 <figure>
@@ -135,7 +151,7 @@ echo "Typer installed"</code></pre>
 </ul>
 
 <h2 id="privacy">Privacy</h2>
-<p>Everything stays on your computer. Typer has no network access and sends nothing anywhere. What you pick is saved locally so Typer can learn: in <code>~/Library/Application Support/Typer/</code> on a Mac, <code>%APPDATA%\Typer</code> on Windows. Delete that folder at any time to reset it.</p>
+<p>Everything stays on your computer. Typer has no network access and sends nothing anywhere. What you pick is saved locally so Typer can learn: in <code>~/Library/Application Support/Typer/</code> on a Mac, <code>%APPDATA%\Typer</code> on Windows, <code>~/.local/share/typer/</code> on Linux. Delete that folder at any time to reset it.</p>
 
 <h2 id="update">Update</h2>
 <p>Download and run the installer again (on a Mac you can also use the Terminal command). What Typer has learned is kept. On Windows, apps that were open during the update switch to the new version after a restart. If it still behaves like the old version, switch to another input source and back, or log out and back in.</p>
@@ -144,6 +160,7 @@ echo "Typer installed"</code></pre>
 <p>Remove Typer in <b>System Settings → Keyboard → Input Sources → Edit…</b> (select it, click <b>−</b>), then run:</p>
 <pre><code>rm -rf ~/Library/Input\ Methods/Typer.app ~/Library/Application\ Support/Typer</code></pre>
 <p>On Windows: <b>Settings → Apps → Installed apps → Typer → Uninstall</b>.</p>
+<p>On Linux: <code>sudo apt remove ibus-typer</code>, and remove Typer from <i>Input Sources</i>.</p>
 
 <h2 id="problems">Problems?</h2>
 <ul>

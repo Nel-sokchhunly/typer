@@ -1,0 +1,50 @@
+#!/bin/sh
+# linux/build.sh        build build/linux/ibus-engine-typer (needs cargo, cc, pkg-config, libibus-1.0-dev)
+# linux/build.sh deb    ...and package build/Typer-linux-<arch>.deb (TYPER_VERSION sets its version)
+set -eu
+cd "$(dirname "$0")/.."
+export PATH="$HOME/.cargo/bin:$PATH"
+
+python3 data/build.py >/dev/null
+cargo build --release --manifest-path engine/Cargo.toml
+OUT=build/linux
+mkdir -p "$OUT"
+# shellcheck disable=SC2046 # pkg-config output is meant to split
+cc -O2 -Wall -Wextra -Iengine linux/ibus-typer.c engine/target/release/libtyper.a \
+    $(pkg-config --cflags --libs ibus-1.0) -lpthread -ldl -lm -o "$OUT/ibus-engine-typer"
+echo "built: $OUT/ibus-engine-typer"
+
+[ "${1:-}" = deb ] || exit 0
+version=${TYPER_VERSION:-0.0.0}
+arch=$(dpkg --print-architecture)
+P=$OUT/pkg
+rm -rf "$P"
+install -Dm755 "$OUT/ibus-engine-typer" "$P/usr/lib/ibus-typer/ibus-engine-typer"
+install -Dm644 data/out/lexicon.tsv "$P/usr/share/typer/lexicon.tsv"
+install -Dm644 data/out/ngrams.tsv "$P/usr/share/typer/ngrams.tsv"
+install -Dm644 docs/img/apple-touch-icon.png "$P/usr/share/typer/icon.png"
+mkdir -p "$P/usr/share/ibus/component" "$P/DEBIAN"
+sed "s/@VERSION@/$version/" linux/typer.xml >"$P/usr/share/ibus/component/typer.xml"
+cat >"$P/DEBIAN/control" <<EOF
+Package: ibus-typer
+Version: $version
+Architecture: $arch
+Maintainer: Nel Sokchhunly <sokchhunlynel@gmail.com>
+Depends: ibus
+Section: utils
+Priority: optional
+Homepage: https://nel-sokchhunly.github.io/typer/
+Description: Typer / សរសេរ: type Khmer in Latin letters (Sing Khmer)
+ An IBus input method. Type knhom tov sala rean and pick ខ្ញុំទៅសាលារៀន.
+ Spell however you chat; it learns from what you pick. Works offline.
+EOF
+# ibus-daemon only rescans components when it starts; tell the user so instead of killing their session.
+cat >"$P/DEBIAN/postinst" <<'EOF'
+#!/bin/sh
+set -e
+echo "Typer installed. Log out and back in, then add Typer under Settings > Keyboard > Input Sources > Khmer."
+EOF
+chmod 755 "$P/DEBIAN/postinst"
+dpkg-deb --build --root-owner-group "$P" "build/Typer-linux-$arch.deb" >/dev/null
+rm -rf "$P"
+echo "built: build/Typer-linux-$arch.deb"

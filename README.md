@@ -13,7 +13,7 @@ anh ot jg tv teas te  →   អញអត់ចង់ទៅផ្ទះទេ
 
 It works in any app: Messenger, Telegram, Notes, browsers, and so on.
 
-**Requirements:** macOS 13 (Ventura) or newer on an Apple Silicon or Intel Mac, or Windows 10 / 11 (64-bit).
+**Requirements:** macOS 13 (Ventura) or newer on an Apple Silicon or Intel Mac, Windows 10 / 11 (64-bit), or Ubuntu 22.04+ / Debian 12+ with IBus.
 
 > Typer is an early preview. Expect wrong suggestions sometimes. It learns from what you pick, so it gets better the more you use it.
 
@@ -92,6 +92,17 @@ Type Khmer in Latin letters, with spaces between words. A list of suggestions ap
 The keys are the same as on the Mac (see the table above). Picking with the mouse isn't supported on Windows yet; use `Enter` or `1` to `9`.
 What you pick is saved in `%APPDATA%\Typer`. To uninstall, use **Settings → Apps → Installed apps → Typer**.
 
+## Install on Linux
+
+Ubuntu 22.04+ or Debian 12+ (64-bit Intel/AMD) with IBus, the default on GNOME.
+
+1. Download **[Typer-linux-amd64.deb](https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-linux-amd64.deb)** and open it to install, or run `sudo apt install ./Typer-linux-amd64.deb`.
+2. Log out and back in (IBus only finds new input methods when it starts).
+3. **Settings → Keyboard → Input Sources → + → Khmer → Typer / សរសេរ**. Switch with **`Super` + `Space`**.
+
+Same keys as on the Mac, including picking with the mouse. What you pick is saved in `~/.local/share/typer/`.
+To uninstall: `sudo apt remove ibus-typer`. Fcitx5 (common on KDE) isn't supported yet.
+
 ## Privacy
 
 Everything stays on your Mac. Typer has no network access and sends nothing anywhere.
@@ -164,6 +175,13 @@ After a rebuild, `install` restarts the input method; if it still looks stale, s
 `windows/` is a TSF text service (COM DLL, Rust + `windows` crate) over the same engine; `windows/installer.iss` is the Inno Setup wizard.
 CI builds the x64 + x86 DLLs on every push and, on tags, `Typer-windows-setup.exe` for the release.
 From a Mac you can type-check it: `rustup target add x86_64-pc-windows-msvc && cargo check --manifest-path windows/Cargo.toml --target x86_64-pc-windows-msvc`.
+
+### Linux input method
+
+`linux/ibus-typer.c` is an IBus engine over the engine's C ABI; IBus draws the candidate window. `linux/build.sh deb` builds
+`build/Typer-linux-<arch>.deb` (needs `libibus-1.0-dev`); `linux/test_ibus.py` drives the installed engine through a real
+`ibus-daemon`. CI builds and tests it on Ubuntu 22.04 on every push and attaches the .deb to releases. From a Mac, Docker works:
+an `ubuntu:22.04` container with `build-essential pkg-config libibus-1.0-dev python3 dpkg-dev` and rustup.
 
 ### Data credits
 

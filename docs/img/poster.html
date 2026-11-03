@@ -1,0 +1,33 @@
+<!doctype html>
+<!-- Source of social.png (link-preview poster). Render from the repo root:
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --hide-scrollbars \
+    --window-size=1200,1200 --virtual-time-budget=5000 --screenshot=docs/img/social.png docs/img/poster.html
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&family=Noto+Sans+Khmer:wght@400&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; width: 1200px; height: 1200px; overflow: hidden; }
+  body { background: #edeae3; color: #1a1a1a; font-family: Montserrat, sans-serif; position: relative; }
+  .title { position: absolute; left: 104px; top: 82px; font-size: 92px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; }
+  .title .sep { font-weight: 300; color: #cfc9bc; }
+  .title .km { font-family: "Noto Sans Khmer", sans-serif; font-weight: 400; color: #5f5b53; letter-spacing: 0; font-size: 80px; }
+  .sub { position: absolute; left: 108px; top: 196px; font-size: 30px; color: #5f5b53; }
+  .meta { position: absolute; right: 108px; top: 160px; text-align: right; font-size: 17px; font-weight: 500;
+          letter-spacing: .16em; line-height: 1.75; color: #5f5b53; text-transform: uppercase; }
+  .shot { position: absolute; left: 106px; top: 292px; width: 986px; }
+  .shot::before { content: ""; position: absolute; inset: 0; transform: translate(26px, 26px); background: #a7b8b2; border-radius: 22px; }
+  .shot img { position: relative; display: block; width: 100%; border-radius: 22px; box-shadow: 0 0 0 2px #1a1a1a; }
+  .foot { position: absolute; left: 108px; right: 108px; bottom: 82px; display: flex; justify-content: space-between; align-items: baseline; font-size: 23px; color: #5f5b53; }
+  .foot b { color: #1a1a1a; font-weight: 500; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 6px; }
+</style>
+</head>
+<body>
+  <div class="title">Typer <span class="sep">/</span> <span class="km" lang="km">សរសេរ</span></div>
+  <div class="sub">Type Khmer the way you chat.</div>
+  <div class="meta">Free · open source<br>macOS · Windows · Linux</div>
+  <div class="shot"><img src="hero.png" alt=""></div>
+  <div class="foot"><span>Spell it your way. It learns what you pick.</span><b>nel-sokchhunly.github.io/typer</b></div>
+</body>
+</html>
