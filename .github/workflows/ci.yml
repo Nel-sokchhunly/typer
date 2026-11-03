@@ -14,9 +14,34 @@ jobs:
       - run: python3 data/build.py
       - run: cargo test --release --manifest-path engine/Cargo.toml
 
+  windows:
+    needs: test
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - run: python data/build.py
+      - run: rustup target add x86_64-pc-windows-msvc i686-pc-windows-msvc
+      - run: |
+          for t in x86_64-pc-windows-msvc i686-pc-windows-msvc; do
+            cargo build --release --manifest-path windows/Cargo.toml --target $t
+          done
+      - name: Build installer
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          choco install innosetup --no-progress -y
+          "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "/DVersion=${GITHUB_REF_NAME#v}" windows/installer.iss
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-setup
+          path: build/Typer-windows-setup.exe
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: test
+    needs: [test, windows]
     runs-on: macos-latest
     permissions:
       contents: write
@@ -29,6 +54,10 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set CFBundleShortVersionString $v" macos/Info.plist
           /usr/libexec/PlistBuddy -c "Set CFBundleVersion ${{ github.run_number }}" macos/Info.plist
       - run: macos/build.sh dist
-      - run: gh release create "$GITHUB_REF_NAME" build/Typer-macos.zip --generate-notes
+      - uses: actions/download-artifact@v5
+        with:
+          name: windows-setup
+          path: build
+      - run: gh release create "$GITHUB_REF_NAME" build/Typer.pkg build/Typer-macos.zip build/Typer-windows-setup.exe --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
