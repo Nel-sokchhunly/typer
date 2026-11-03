@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- IBus component: installed to /usr/share/ibus/component/; ibus-daemon starts the engine from it. -->
+<component>
+  <name>org.freedesktop.IBus.Typer</name>
+  <description>Typer: type Khmer in Latin letters (Sing Khmer)</description>
+  <exec>/usr/lib/ibus-typer/ibus-engine-typer --ibus</exec>
+  <version>@VERSION@</version>
+  <author>Nel Sokchhunly</author>
+  <license>Unknown</license>
+  <homepage>https://nel-sokchhunly.github.io/typer/</homepage>
+  <textdomain>ibus-typer</textdomain>
+  <engines>
+    <engine>
+      <name>typer</name>
+      <language>km</language>
+      <license>Unknown</license>
+      <author>Nel Sokchhunly</author>
+      <icon>/usr/share/typer/icon.png</icon>
+      <layout>us</layout>
+      <longname>Typer / សរសេរ</longname>
+      <description>Type Khmer in Latin letters, spelled however you like</description>
+      <rank>0</rank>
+      <symbol>ស</symbol>
+    </engine>
+  </engines>
+</component>
