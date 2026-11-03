@@ -13,7 +13,7 @@ anh ot jg tv teas te  →   អញអត់ចង់ទៅផ្ទះទេ
 
 It works in any app: Messenger, Telegram, Notes, browsers, and so on.
 
-**Requirements:** macOS 13 (Ventura) or newer, on an Apple Silicon or Intel Mac.
+**Requirements:** macOS 13 (Ventura) or newer on an Apple Silicon or Intel Mac, or Windows 10 / 11 (64-bit).
 
 > Typer is an early preview. Expect wrong suggestions sometimes. It learns from what you pick, so it gets better the more you use it.
 
@@ -21,7 +21,11 @@ It works in any app: Messenger, Telegram, Notes, browsers, and so on.
 
 ### 1. Download and install
 
-Open **Terminal** (press `⌘ Space`, type *Terminal*, press Enter), then paste these lines and press Enter:
+Download **[Typer.pkg](https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer.pkg)**, double-click it in Downloads, and click through the installer.
+
+> **macOS says it can't verify Typer?** Typer isn't signed with a paid Apple Developer certificate yet. Open **System Settings → Privacy & Security**, scroll down, click **Open Anyway** next to Typer.pkg, then confirm. On macOS 13 or 14 you can also Control-click Typer.pkg and choose **Open**. Only do this if you got the file from this repo.
+
+**Or with Terminal:** open **Terminal** (press `⌘ Space`, type *Terminal*, press Enter), then paste these lines and press Enter:
 
 ```sh
 curl -fsSL -o /tmp/Typer-macos.zip https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-macos.zip
@@ -61,21 +65,32 @@ Type Khmer in Latin letters, with spaces between words. A list of suggestions ap
 
 | Key | What it does |
 |---|---|
-| `↓` / `↑` or `Tab` / `Shift Tab` | Move through the suggestions (wraps around) |
+| `↓` / `↑` | Move through the suggestions (wraps around) |
 | `Enter` | Insert the highlighted suggestion (the first one unless you moved) |
 | `1` to `9` | Insert that suggestion |
 | Click | Insert the clicked suggestion |
 | `Esc` | Insert exactly what you typed, in Latin letters |
 | `Delete` | Edit what you're typing |
 | `.` `,` `?` and other punctuation | Insert the first suggestion, then the punctuation |
-| Tap `Shift` on its own | Switch between Khmer and English. A small **ខ** / **EN** badge shows the mode |
+| `Tab` | Insert what you typed as English, and stay in Khmer |
+| Tap `Shift` with nothing typed | Switch between Khmer and English. A small **ខ** / **EN** badge shows the mode |
 
 **Tips**
 
 - Spell words however you normally do. `knhom`, `knh` and `nh` all work for ខ្ញុំ.
 - When the right answer isn't first, pick it with a number. Typer remembers it and ranks it higher next time.
-- To type English, tap `Shift` once. Your keys then go straight through as normal English. Tap `Shift` again to go back to Khmer. Holding `Shift` to type a capital letter does not switch modes.
-- If you tap `Shift` in the middle of a phrase, what you typed so far is kept in Latin letters.
+- For one English word in a Khmer sentence, type it and press `Tab`. It goes in exactly as typed, and you stay in Khmer.
+- To type a lot of English, tap `Shift` with nothing typed. Your keys then go straight through as normal English. Tap `Shift` again to go back to Khmer. Holding `Shift` to type a capital letter does not switch modes.
+
+## Install on Windows
+
+1. Download **[Typer-windows-setup.exe](https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-windows-setup.exe)** and double-click it.
+2. If Windows shows *"Windows protected your PC"*, click **More info → Run anyway**. Typer isn't signed with a paid certificate yet.
+3. Click **Install**, then **Finish**.
+4. Press **`Windows` + `Space`** and choose **Typer**.
+
+The keys are the same as on the Mac (see the table above). Picking with the mouse isn't supported on Windows yet; use `Enter` or `1` to `9`.
+What you pick is saved in `%APPDATA%\Typer`. To uninstall, use **Settings → Apps → Installed apps → Typer**.
 
 ## Privacy
 
@@ -135,14 +150,20 @@ and log `typed<TAB>chosen` to `picks.tsv`. C ABI for frontends: `engine/typer.h`
 macos/build.sh install     # build build/Typer.app for this Mac, copy to ~/Library/Input Methods
 macos/build.sh dist        # universal build/Typer-macos.zip (local check; CI builds releases)
 ```
-Release: `git tag v0.1.1 && git push origin v0.1.1`. CI (`.github/workflows/ci.yml`) tests, builds the universal zip and publishes the GitHub release.
+Release: `git tag v0.1.1 && git push origin v0.1.1`. CI (`.github/workflows/ci.yml`) tests, builds the macOS pkg + zip and the Windows installer, and publishes the GitHub release.
 
 Then System Settings → Keyboard → Input Sources → Edit → + → Khmer → **Typer**. Switch with Ctrl-Space / Globe.
 
-Type `knhom tov sala rean`: ↓/↑ or Tab = move highlight, Enter = insert highlighted, 1-9 = pick, Esc = keep latin, Delete = edit,
-tap Shift alone = toggle English passthrough.
+Type `knhom tov sala rean`: ↓/↑ = move highlight, Enter = insert highlighted, 1-9 = pick, Tab/Esc = keep latin, Delete = edit,
+tap Shift alone (nothing typed) = toggle English passthrough.
 Picks are learned into `~/Library/Application Support/Typer/` (`user.tsv`, `picks.tsv`).
 After a rebuild, `install` restarts the input method; if it still looks stale, switch input source away and back.
+
+### Windows input method
+
+`windows/` is a TSF text service (COM DLL, Rust + `windows` crate) over the same engine; `windows/installer.iss` is the Inno Setup wizard.
+CI builds the x64 + x86 DLLs on every push and, on tags, `Typer-windows-setup.exe` for the release.
+From a Mac you can type-check it: `rustup target add x86_64-pc-windows-msvc && cargo check --manifest-path windows/Cargo.toml --target x86_64-pc-windows-msvc`.
 
 ### Data credits
 

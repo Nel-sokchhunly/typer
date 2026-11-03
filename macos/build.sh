@@ -47,5 +47,35 @@ dist)
     rm -f build/Typer-macos.zip
     ditto -c -k --norsrc --noextattr --noqtn --keepParent "$APP" build/Typer-macos.zip
     echo "built: build/Typer-macos.zip ($(lipo -archs "$APP/Contents/MacOS/Typer"))"
+
+    # Double-click installer into ~/Library/Input Methods. Installer drops quarantine, so no xattr step.
+    P=build/pkg
+    rm -rf "$P" build/Typer.pkg
+    mkdir -p "$P/root" "$P/scripts"
+    cp -R "$APP" "$P/root/"
+    printf '#!/bin/sh\npkill -x Typer || true\n' >"$P/scripts/postinstall" # load the new version
+    chmod +x "$P/scripts/postinstall"
+    pkgbuild --analyze --root "$P/root" "$P/component.plist" >/dev/null
+    # otherwise Installer "upgrades" any Typer.app it finds elsewhere on disk instead of installing
+    plutil -replace 0.BundleIsRelocatable -bool NO "$P/component.plist"
+    version=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" macos/Info.plist)
+    pkgbuild --root "$P/root" --component-plist "$P/component.plist" --scripts "$P/scripts" \
+        --identifier com.chhunly.inputmethod.Typer.pkg --version "$version" \
+        --install-location "/Library/Input Methods" "$P/Typer-component.pkg" >/dev/null
+    cat >"$P/distribution.xml" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>Typer</title>
+    <domains enable_anywhere="false" enable_currentUserHome="true" enable_localSystem="false"/>
+    <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    <os-version min="13.0"/>
+    <choices-outline><line choice="typer"/></choices-outline>
+    <choice id="typer" title="Typer"><pkg-ref id="com.chhunly.inputmethod.Typer.pkg"/></choice>
+    <pkg-ref id="com.chhunly.inputmethod.Typer.pkg" version="$version">Typer-component.pkg</pkg-ref>
+</installer-gui-script>
+EOF
+    productbuild --distribution "$P/distribution.xml" --package-path "$P" build/Typer.pkg >/dev/null
+    rm -rf "$P"
+    echo "built: build/Typer.pkg"
     ;;
 esac

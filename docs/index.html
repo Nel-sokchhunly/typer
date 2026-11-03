@@ -91,33 +91,28 @@
 
 <div class="hero"><img src="img/hero.png" alt="Typing nh jg tv sala rean in Notes; Typer suggests ខ្ញុំចង់ទៅសាលារៀន first"></div>
 
-<p><a class="btn" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-macos.zip">Download for macOS</a></p>
+<p><a class="btn" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer.pkg">Download for macOS</a></p>
 <p class="note">macOS 13 Ventura or newer · Apple Silicon and Intel · early preview: it will sometimes guess wrong, and it learns from what you pick.</p>
 
 <h2>Install</h2>
-<p>Takes about two minutes. The easiest way is one Terminal command.</p>
+<p>Takes about two minutes.</p>
 
-<h3 class="step"><span class="num">1</span> Copy Typer into place</h3>
-<p>Open <b>Terminal</b> (press <kbd>⌘</kbd> <kbd>Space</kbd>, type <i>Terminal</i>, press <kbd>Return</kbd>). Paste this and press <kbd>Return</kbd>:</p>
-<pre><code>curl -fsSL -o /tmp/Typer-macos.zip https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-macos.zip
+<h3 class="step"><span class="num">1</span> Run the installer</h3>
+<p>Click <b>Download for macOS</b> above, then double-click <b>Typer.pkg</b> in your Downloads and click through the installer.</p>
+<p class="warn"><b>macOS says it can't verify Typer?</b> Typer isn't signed with a paid Apple Developer certificate yet. Open <b>System Settings → Privacy &amp; Security</b>, scroll down, click <b>Open Anyway</b> next to Typer.pkg, then confirm. On macOS 13 or 14 you can also Control-click Typer.pkg and choose <b>Open</b>. Only do this if you got the file from this page.</p>
+
+<details>
+  <summary>Prefer Terminal?</summary>
+  <p>Open <b>Terminal</b> (press <kbd>⌘</kbd> <kbd>Space</kbd>, type <i>Terminal</i>, press <kbd>Return</kbd>). Paste this and press <kbd>Return</kbd>:</p>
+  <pre><code>curl -fsSL -o /tmp/Typer-macos.zip https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-macos.zip
 mkdir -p ~/Library/Input\ Methods
 rm -rf ~/Library/Input\ Methods/Typer.app
 ditto -x -k /tmp/Typer-macos.zip ~/Library/Input\ Methods/
 xattr -dr com.apple.quarantine ~/Library/Input\ Methods/Typer.app
 echo "Typer installed"</code></pre>
-<p class="note">It downloads Typer and puts it in your <code>Input Methods</code> folder. Nothing is installed anywhere else, and it doesn't need your password.</p>
-
-<details>
-  <summary>Prefer to download it yourself?</summary>
-  <p>Click <b>Download for macOS</b> above, then in Terminal run:</p>
-  <pre><code>cd ~/Downloads
-unzip -o Typer-macos.zip
-xattr -dr com.apple.quarantine Typer.app
-mkdir -p ~/Library/Input\ Methods
-rm -rf ~/Library/Input\ Methods/Typer.app
-mv Typer.app ~/Library/Input\ Methods/</code></pre>
-  <p class="warn"><b>Why the <code>xattr</code> line?</b> Typer isn't signed with a paid Apple Developer certificate yet, so macOS blocks it when it comes from a browser download. This line removes that block for Typer only. Only run it if you trust where you got the file.</p>
+  <p class="note">It downloads Typer and puts it in your <code>Input Methods</code> folder. The <code>xattr</code> line removes macOS's download block for Typer only.</p>
 </details>
+<p class="note">Either way, Typer goes only in your <code>Input Methods</code> folder.</p>
 
 <h3 class="step"><span class="num">2</span> Open Keyboard settings</h3>
 <p>Open <b>System Settings → Keyboard</b>. Under <b>Text Input</b>, click <b>Edit…</b> next to <i>Input Sources</i>.</p>
@@ -149,26 +144,28 @@ mv Typer.app ~/Library/Input\ Methods/</code></pre>
 
 <table>
   <tr><td><kbd>Return</kbd></td><td>Insert the highlighted suggestion (the first one unless you moved)</td></tr>
-  <tr><td><kbd>↓</kbd> <kbd>↑</kbd> or <kbd>Tab</kbd></td><td>Move through the suggestions</td></tr>
+  <tr><td><kbd>↓</kbd> <kbd>↑</kbd></td><td>Move through the suggestions</td></tr>
   <tr><td><kbd>1</kbd> to <kbd>9</kbd>, or click</td><td>Insert that suggestion</td></tr>
   <tr><td><kbd>Esc</kbd></td><td>Insert exactly what you typed, in Latin letters</td></tr>
   <tr><td><kbd>Delete</kbd></td><td>Edit what you're typing</td></tr>
   <tr><td><kbd>.</kbd> <kbd>,</kbd> <kbd>?</kbd></td><td>Insert the first suggestion, then the punctuation</td></tr>
-  <tr><td>Tap <kbd>Shift</kbd></td><td>Switch between Khmer and English. A small <b>ខ</b> / <b>EN</b> badge shows the mode</td></tr>
+  <tr><td><kbd>Tab</kbd></td><td>Insert what you typed as English, and stay in Khmer</td></tr>
+  <tr><td>Tap <kbd>Shift</kbd> with nothing typed</td><td>Switch between Khmer and English. A small <b>ខ</b> / <b>EN</b> badge shows the mode</td></tr>
 </table>
 
 <h3>Tips</h3>
 <ul>
   <li>Spell however you normally do. <code>knhom</code>, <code>knh</code> and <code>nh</code> all give ខ្ញុំ.</li>
   <li>When the right word isn't first, pick it. Typer remembers and puts it first next time.</li>
-  <li>To type English, tap <kbd>Shift</kbd> once; tap it again to go back to Khmer. Holding <kbd>Shift</kbd> for a capital letter doesn't switch.</li>
+  <li>One English word in a Khmer sentence: type it, then press <kbd>Tab</kbd>. It goes in as typed.</li>
+  <li>To type a lot of English, tap <kbd>Shift</kbd> with nothing typed; tap it again to go back to Khmer. Holding <kbd>Shift</kbd> for a capital letter doesn't switch.</li>
 </ul>
 
 <h2>Privacy</h2>
 <p>Everything stays on your Mac. Typer has no network access and sends nothing anywhere. What you pick is saved locally in <code>~/Library/Application Support/Typer/</code> so Typer can learn. Delete that folder at any time to reset it.</p>
 
 <h2>Update</h2>
-<p>Run the step 1 command again. What Typer has learned is kept. If it still behaves like the old version, switch to another input source and back, or log out and back in.</p>
+<p>Download and run the installer again (or the step 1 Terminal command). What Typer has learned is kept. If it still behaves like the old version, switch to another input source and back, or log out and back in.</p>
 
 <h2>Uninstall</h2>
 <p>Remove Typer in <b>System Settings → Keyboard → Input Sources → Edit…</b> (select it, click <b>−</b>), then run:</p>

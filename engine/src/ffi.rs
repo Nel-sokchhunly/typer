@@ -36,9 +36,7 @@ pub unsafe extern "C" fn typer_suggest(e: *const Engine, input: *const c_char, k
 #[no_mangle]
 pub unsafe extern "C" fn typer_pick(e: *mut Engine, input: *const c_char, index: u32) {
     let (Some(e), Some(input)) = (e.as_mut(), str_arg(input)) else { return };
-    if let Some(s) = e.suggest(input, index as usize + 1).get(index as usize).cloned() {
-        let _ = e.learn(input, &s); // ponytail: learning failure is silent; surface it if users report lost picks
-    }
+    let _ = e.pick(input, index as usize); // ponytail: learning failure is silent; surface it if users report lost picks
 }
 
 #[no_mangle]

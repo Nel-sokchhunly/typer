@@ -8,17 +8,14 @@ enum ModeBadge {
         let l = NSTextField(labelWithString: "")
         l.font = .systemFont(ofSize: 15, weight: .semibold)
         l.alignment = .center
-        l.frame = NSRect(x: 0, y: 0, width: 44, height: 26)
         return l
     }()
     private static let panel: NSPanel = {
-        let p = NSPanel(
-            contentRect: label.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
-        p.level = .popUpMenu
-        p.backgroundColor = .windowBackgroundColor
-        p.hasShadow = true
+        let (p, v) = popupPanel(radius: 8)
         p.ignoresMouseEvents = true
-        p.contentView = label
+        p.setContentSize(NSSize(width: 48, height: 30))
+        label.frame = NSRect(x: 0, y: 6, width: 48, height: 18)  // labels draw top-aligned; nudge to center
+        v.addSubview(label)
         return p
     }()
 
