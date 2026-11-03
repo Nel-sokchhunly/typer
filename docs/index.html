@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Typer: type Khmer the way you chat</title>
-<meta name="description" content="Typer is a free Sing Khmer input method for macOS. Type knhom tov sala rean, get ខ្ញុំទៅសាលារៀន.">
+<meta name="description" content="Typer is a free Sing Khmer input method for macOS and Windows. Type knhom tov sala rean, get ខ្ញុំទៅសាលារៀន.">
 <meta property="og:title" content="Typer: type Khmer the way you chat">
-<meta property="og:description" content="Free Sing Khmer input method for macOS. Type knhom tov sala rean, get ខ្ញុំទៅសាលារៀន.">
+<meta property="og:description" content="Free Sing Khmer input method for macOS and Windows. Type knhom tov sala rean, get ខ្ញុំទៅសាលារៀន.">
 <meta property="og:image" content="https://nel-sokchhunly.github.io/typer/img/social.png">
 <meta property="og:url" content="https://nel-sokchhunly.github.io/typer/">
 <meta property="og:type" content="website">
@@ -40,6 +40,7 @@
   }
   .btn:hover { transform: translate(-3px, -3px); box-shadow: 4px 4px 0 var(--ink); }
   .btn:active { transform: none; box-shadow: none; }
+  .btns { display: flex; flex-wrap: wrap; gap: 14px; }
   .note { color: var(--muted); font-size: 15px; }
   .step { display: flex; gap: 14px; align-items: baseline; }
   .num {
@@ -85,16 +86,19 @@
 <a class="gh" href="https://github.com/Nel-sokchhunly/typer"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>GitHub</a>
 <main>
 
-<p class="label">Sing Khmer input · macOS</p>
+<p class="label">Sing Khmer input · macOS · Windows</p>
 <h1>Typer</h1>
-<p class="lead">Type Khmer the way you already chat: in Latin letters, spelled however you like. Free for macOS.</p>
+<p class="lead">Type Khmer the way you already chat: in Latin letters, spelled however you like. Free for macOS and Windows.</p>
 
 <div class="hero"><img src="img/hero.png" alt="Typing nh jg tv sala rean in Notes; Typer suggests ខ្ញុំចង់ទៅសាលារៀន first"></div>
 
-<p><a class="btn" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer.pkg">Download for macOS</a></p>
-<p class="note">macOS 13 Ventura or newer · Apple Silicon and Intel · early preview: it will sometimes guess wrong, and it learns from what you pick.</p>
+<p class="btns">
+  <a class="btn" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer.pkg">Download for macOS</a>
+  <a class="btn" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-windows-setup.exe">Download for Windows</a>
+</p>
+<p class="note">macOS 13 Ventura or newer (Apple Silicon and Intel) · Windows 10 or 11, 64-bit · early preview: it will sometimes guess wrong, and it learns from what you pick. On Windows, see <a href="#windows">Install on Windows</a>.</p>
 
-<h2>Install</h2>
+<h2>Install on macOS</h2>
 <p>Takes about two minutes.</p>
 
 <h3 class="step"><span class="num">1</span> Run the installer</h3>
@@ -133,8 +137,19 @@ echo "Typer installed"</code></pre>
   <img src="img/settings-added.png" alt="Input sources list showing ABC, Khmer and Typer, with Show Input menu in menu bar turned on" loading="lazy">
 </figure>
 
+<h2 id="windows">Install on Windows</h2>
+<p>Takes about a minute. Windows support is new; please <a href="https://github.com/Nel-sokchhunly/typer/issues/new">report</a> anything that doesn't work.</p>
+
+<h3 class="step"><span class="num">1</span> Run the installer</h3>
+<p>Click <b>Download for Windows</b> above, then open <b>Typer-windows-setup.exe</b> from your Downloads. Click <b>Install</b>, then <b>Finish</b>.</p>
+<p class="warn"><b>Windows says "Windows protected your PC"?</b> Typer isn't signed with a paid certificate yet. Click <b>More info</b>, then <b>Run anyway</b>. Only do this if you got the file from this page.</p>
+
+<h3 class="step"><span class="num">2</span> Switch to Typer</h3>
+<p>Press <kbd>Windows</kbd> <kbd>Space</kbd> and choose <b>Typer</b> (listed under Khmer). The installer already added it, so there is nothing to set up in Settings.</p>
+<p class="note">Everything below works the same on Windows, except picking with the mouse: use <kbd>Enter</kbd> or a number instead.</p>
+
 <h2>Use it</h2>
-<p>Switch to Typer with <kbd>Ctrl</kbd> <kbd>Space</kbd> or the <kbd>🌐</kbd> Globe key, or pick it from the input menu in the menu bar.</p>
+<p>Switch to Typer with <kbd>Ctrl</kbd> <kbd>Space</kbd> or the <kbd>🌐</kbd> Globe key, or pick it from the input menu in the menu bar. On Windows, press <kbd>Windows</kbd> <kbd>Space</kbd>.</p>
 
 <p>Type Khmer in Latin letters with spaces between words. Suggestions appear under what you type:</p>
 <figure>
@@ -162,14 +177,15 @@ echo "Typer installed"</code></pre>
 </ul>
 
 <h2>Privacy</h2>
-<p>Everything stays on your Mac. Typer has no network access and sends nothing anywhere. What you pick is saved locally in <code>~/Library/Application Support/Typer/</code> so Typer can learn. Delete that folder at any time to reset it.</p>
+<p>Everything stays on your computer. Typer has no network access and sends nothing anywhere. What you pick is saved locally so Typer can learn: in <code>~/Library/Application Support/Typer/</code> on a Mac, <code>%APPDATA%\Typer</code> on Windows. Delete that folder at any time to reset it.</p>
 
 <h2>Update</h2>
-<p>Download and run the installer again (or the step 1 Terminal command). What Typer has learned is kept. If it still behaves like the old version, switch to another input source and back, or log out and back in.</p>
+<p>Download and run the installer again (on a Mac you can also use the Terminal command). What Typer has learned is kept. On Windows, apps that were open during the update switch to the new version after a restart. If it still behaves like the old version, switch to another input source and back, or log out and back in.</p>
 
 <h2>Uninstall</h2>
 <p>Remove Typer in <b>System Settings → Keyboard → Input Sources → Edit…</b> (select it, click <b>−</b>), then run:</p>
 <pre><code>rm -rf ~/Library/Input\ Methods/Typer.app ~/Library/Application\ Support/Typer</code></pre>
+<p>On Windows: <b>Settings → Apps → Installed apps → Typer → Uninstall</b>.</p>
 
 <h2>Problems?</h2>
 <ul>
