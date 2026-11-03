@@ -1,4 +1,4 @@
-# Typer
+# Typer សរសេរ
 
 <img src="docs/img/social.png" alt="Typing nh jg tv sala rean in Notes; Typer suggests ខ្ញុំចង់ទៅសាលារៀន" width="480">
 
@@ -53,7 +53,7 @@ mv Typer.app ~/Library/Input\ Methods/
 
 1. Open **System Settings → Keyboard**.
 2. Under **Text Input**, click **Edit…** next to *Input Sources*.
-3. Click **+** at the bottom left, choose **Khmer** in the list, select **Typer**, and click **Add**.
+3. Click **+** at the bottom left, choose **Khmer** in the list, select **Typer សរសេរ**, and click **Add**.
 
 If Typer isn't in the list, **log out and log back in** (Apple menu → Log Out), then try again.
 
@@ -87,7 +87,7 @@ Type Khmer in Latin letters, with spaces between words. A list of suggestions ap
 1. Download **[Typer-windows-setup.exe](https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-windows-setup.exe)** and double-click it.
 2. If Windows shows *"Windows protected your PC"*, click **More info → Run anyway**. Typer isn't signed with a paid certificate yet.
 3. Click **Install**, then **Finish**.
-4. Press **`Windows` + `Space`** and choose **Typer**.
+4. Press **`Windows` + `Space`** and choose **Typer សរសេរ**.
 
 The keys are the same as on the Mac (see the table above). Picking with the mouse isn't supported on Windows yet; use `Enter` or `1` to `9`.
 What you pick is saved in `%APPDATA%\Typer`. To uninstall, use **Settings → Apps → Installed apps → Typer**.
@@ -152,7 +152,7 @@ macos/build.sh dist        # universal build/Typer-macos.zip (local check; CI bu
 ```
 Release: `git tag v0.1.1 && git push origin v0.1.1`. CI (`.github/workflows/ci.yml`) tests, builds the macOS pkg + zip and the Windows installer, and publishes the GitHub release.
 
-Then System Settings → Keyboard → Input Sources → Edit → + → Khmer → **Typer**. Switch with Ctrl-Space / Globe.
+Then System Settings → Keyboard → Input Sources → Edit → + → Khmer → **Typer សរសេរ**. Switch with Ctrl-Space / Globe.
 
 Type `knhom tov sala rean`: ↓/↑ = move highlight, Enter = insert highlighted, 1-9 = pick, Tab/Esc = keep latin, Delete = edit,
 tap Shift alone (nothing typed) = toggle English passthrough.

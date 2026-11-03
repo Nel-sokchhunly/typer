@@ -109,7 +109,7 @@ fn clsid_key() -> String {
 fn register() -> Result<()> {
     let dll = dll_path();
     let key = clsid_key();
-    reg_set(&key, None, "Typer")?;
+    reg_set(&key, None, "Typer សរសេរ")?;
     reg_set(&format!("{key}\\InprocServer32"), None, &dll.to_string_lossy())?;
     reg_set(&format!("{key}\\InprocServer32"), Some("ThreadingModel"), "Apartment")?;
     let icon = wide(&dll.with_file_name("typer.ico").to_string_lossy());
@@ -120,7 +120,7 @@ fn register() -> Result<()> {
             &CLSID_TYPER,
             LANG_KHMER,
             &PROFILE,
-            &wide("Typer"),
+            &wide("Typer សរសេរ"),
             &icon,
             0,
             HKL(US_LAYOUT as *mut c_void),
