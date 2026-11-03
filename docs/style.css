@@ -1,0 +1,85 @@
+:root {
+  --bg: #edeae3; --fg: #1a1a1a; --muted: #5f5b53; --card: #e4e0d6; --line: #cfc9bc; --ink: #1a1a1a;
+  --sage: #a7b8b2; --pink: #e6b2aa; --accent: #2a4a44; --code: #1a1a1a; --code-fg: #edeae3;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 17px/1.65 Montserrat, -apple-system, "Segoe UI", sans-serif;
+}
+.km { font-family: "Khmer Sangam MN", "Khmer MN", "Noto Sans Khmer", sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 88px 24px 96px; }
+.label { font-size: 13px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+h1 { font-size: 56px; font-weight: 600; line-height: 1.05; margin: 0 0 14px; letter-spacing: -0.02em; }
+.h1-km { font-weight: 400; letter-spacing: 0; color: var(--muted); }
+.h1-sep { font-weight: 300; color: var(--line); }
+h2 { font-size: 28px; font-weight: 600; margin: 72px 0 10px; letter-spacing: -0.01em; padding-top: 20px; border-top: 1.5px solid var(--ink); }
+h3 { font-size: 19px; font-weight: 600; margin: 32px 0 6px; }
+.lead { font-size: 21px; color: var(--muted); margin: 0 0 32px; }
+.hero { position: relative; margin: 8px 18px 44px 0; }
+.hero::before { content: ""; position: absolute; inset: 0; transform: translate(18px, 18px); background: var(--sage); border-radius: 18px; }
+.hero img { position: relative; display: block; width: 100%; border-radius: 18px; box-shadow: 0 0 0 1.5px var(--ink); }
+.btn {
+  display: inline-block; background: var(--pink); color: var(--ink); text-decoration: none;
+  border: 1.5px solid var(--ink); padding: 14px 24px; font-weight: 600;
+  transition: transform .15s, box-shadow .15s;
+}
+.btn:hover { transform: translate(-3px, -3px); box-shadow: 4px 4px 0 var(--ink); }
+.btn:active { transform: none; box-shadow: none; }
+.btns { display: flex; flex-wrap: wrap; gap: 14px; }
+.note { color: var(--muted); font-size: 15px; }
+.step { display: flex; gap: 14px; align-items: baseline; }
+.num {
+  flex: none; width: 30px; height: 30px; border: 1.5px solid var(--ink); background: var(--sage);
+  display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px;
+  transform: translateY(-3px);
+}
+pre {
+  position: relative; background: var(--code); color: var(--code-fg);
+  padding: 18px 20px; overflow-x: auto; font-size: 14px; line-height: 1.6; margin: 12px 0;
+}
+pre button {
+  position: absolute; top: 10px; right: 10px; border: 1px solid #5f5b53; padding: 3px 10px;
+  background: var(--code); color: var(--code-fg); font: 500 12px Montserrat, sans-serif; letter-spacing: .08em; cursor: pointer;
+}
+pre button:hover { border-color: var(--code-fg); }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+p code, li code, td code { background: var(--card); padding: 1px 6px; font-size: 0.88em; }
+figure { margin: 18px 0 8px; }
+figure img { display: block; max-width: 100%; }
+figcaption { color: var(--muted); font-size: 15px; margin-top: 8px; }
+table { border-collapse: collapse; width: 100%; margin: 14px 0; border-top: 1.5px solid var(--ink); }
+td { padding: 10px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td:first-child { white-space: nowrap; font-weight: 600; width: 1%; }
+kbd {
+  font: 600 13px Montserrat, sans-serif; border: 1px solid var(--ink); border-bottom-width: 2px;
+  padding: 1px 7px; background: var(--bg);
+}
+details { border: 1.5px solid var(--ink); padding: 14px 18px; margin: 18px 0; }
+summary { cursor: pointer; font-weight: 600; }
+.warn { border-left: 3px solid var(--pink); padding: 4px 0 4px 14px; margin: 14px 0; }
+a { color: var(--fg); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+html { scroll-behavior: smooth; }
+h2 { scroll-margin-top: 72px; } /* clear the fixed top bar */
+.toc { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 22px 0 0; font-size: 14px; }
+.toc span { color: var(--muted); margin-right: 4px; }
+.toc a {
+  padding: 4px 12px; border: 1.5px solid var(--ink); text-decoration: none; font-weight: 500;
+  transition: background .15s;
+}
+.toc a:hover { background: var(--sage); }
+.top { position: fixed; top: 18px; right: 18px; z-index: 10; display: flex; gap: 10px; }
+.pill {
+  display: inline-flex; align-items: center; gap: 8px; height: 38px; line-height: 1;
+  padding: 0 14px; background: var(--bg); color: var(--ink); border: 1.5px solid var(--ink);
+  font-size: 14px; font-weight: 600; text-decoration: none;
+  transition: transform .15s, box-shadow .15s;
+}
+.pill:hover { transform: translate(-2px, -2px); box-shadow: 3px 3px 0 var(--ink); }
+
+/* Khmer page: Khmer glyphs fall back to Noto Sans Khmer; stacks need taller lines; no caps/tracking */
+html[lang="km"] body { font-family: Montserrat, "Noto Sans Khmer", "Khmer Sangam MN", "Khmer UI", sans-serif; line-height: 1.9; }
+html[lang="km"] .label, html[lang="km"] h1, html[lang="km"] h2 { letter-spacing: 0; text-transform: none; }
+html[lang="km"] h1 { line-height: 1.35; }
+html[lang="km"] h2 { line-height: 1.6; }
+html[lang="km"] .lead { line-height: 1.8; }
