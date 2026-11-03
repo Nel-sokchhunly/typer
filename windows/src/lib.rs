@@ -116,18 +116,12 @@ fn register() -> Result<()> {
     unsafe {
         let profiles: ITfInputProcessorProfileMgr =
             CoCreateInstance(&CLSID_TF_InputProcessorProfiles, None, CLSCTX_INPROC_SERVER)?;
-        profiles.RegisterProfile(
-            &CLSID_TYPER,
-            LANG_KHMER,
-            &PROFILE,
-            &wide("Typer / សរសេរ"),
-            &icon,
-            0,
-            HKL(US_LAYOUT as *mut c_void),
-            0,
-            TRUE,
-            0,
-        )?;
+        let name = wide("Typer / សរសេរ");
+        let reg = |hkl: usize| {
+            profiles.RegisterProfile(&CLSID_TYPER, LANG_KHMER, &PROFILE, &name, &icon, 0, HKL(hkl as *mut c_void), 0, TRUE, 0)
+        };
+        // Some PCs reject the US substitute (layout not installed); registering without it beats failing setup.
+        reg(US_LAYOUT).or_else(|_| reg(0))?;
         let cats: ITfCategoryMgr = CoCreateInstance(&CLSID_TF_CategoryMgr, None, CLSCTX_INPROC_SERVER)?;
         for c in &CATEGORIES {
             cats.RegisterCategory(&CLSID_TYPER, c, &CLSID_TYPER)?;
