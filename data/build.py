@@ -2,6 +2,7 @@
 
 out/lexicon.tsv  khmer_word<TAB>roman1,roman2,...   (spelling data)
 out/ngrams.tsv   n<TAB>w1 w2 w3<TAB>count            (Khmer language model, n=1..3)
+out/english.tsv  w1 [w2]<TAB>count                    (English 1-2 grams, for English words typed in Khmer mode)
 
 Run: python3 data/build.py
 """
@@ -33,9 +34,13 @@ def clean_roman(r):
 def build():
     romans = defaultdict(set)
     ngrams = defaultdict(int)
+    english = defaultdict(int)
 
     for x in json.load(open(RAW / "mobile-keyboard-data.json", encoding="utf-8")):
-        if x["lang"] != 0:  # ponytail: Khmer only, English passthrough until bilingual matters
+        if x["lang"] != 0:
+            w = x["word"].lower().replace("'", "").replace("’", "")  # don't == dont, as the engine normalizes
+            if x["lang"] == 1 and x["gram"] <= 2 and re.fullmatch(r"[a-z]+( [a-z]+)?", w):
+                english[w] += x["count"]
             continue
         words = [clean_word(w) for w in x["word"].split(" ")]
         if not all(words):
@@ -71,11 +76,14 @@ def build():
     with open(OUT / "ngrams.tsv", "w", encoding="utf-8") as f:
         for (n, ws), c in sorted(ngrams.items(), key=lambda t: (t[0][0], -t[1])):
             f.write(f"{n}\t{ws}\t{c}\n")
-    return romans, ngrams
+    with open(OUT / "english.tsv", "w", encoding="utf-8") as f:
+        for w, c in sorted(english.items(), key=lambda t: -t[1]):
+            f.write(f"{w}\t{c}\n")
+    return romans, ngrams, english
 
 
 if __name__ == "__main__":
-    romans, ngrams = build()
+    romans, ngrams, english = build()
     # self-check: known words survive with chat spellings, junk is gone
     assert {"knhom", "knh", "nh"} <= romans["ខ្ញុំ"], romans["ខ្ញុំ"]
     assert {"sala", "sla"} <= romans["សាលា"]
@@ -84,8 +92,10 @@ if __name__ == "__main__":
     assert not any(NON_KHMER.search(k) for k in romans)
     assert not any(r in ("unitedstates", "costarica") for v in romans.values() for r in v)
     assert "ម្តាយ" not in romans and "ម្ដាយ" in romans  # twin folded into corpus spelling
+    assert english["hello"] > 10000 and english["dont"] > 0 and english["thank you"] > 0 and "<s>" not in english
     by_n = defaultdict(int)
     for n, _ in ngrams:
         by_n[n] += 1
     print(f"lexicon: {len(romans)} words, {sum(map(len, romans.values()))} spellings")
     print(f"ngrams: {dict(by_n)}")
+    print(f"english: {sum(' ' not in w for w in english)} words, {sum(' ' in w for w in english)} bigrams")

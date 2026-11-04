@@ -79,6 +79,7 @@ Type Khmer in Latin letters, with spaces between words. A list of suggestions ap
 
 - Spell words however you normally do. `knhom`, `knh` and `nh` all work for ខ្ញុំ.
 - When the right answer isn't first, pick it with a number. Typer remembers it and ranks it higher next time.
+- English words mix in: `thank you bong` suggests **thank you បង**. Words that are also common Khmer spellings (`mean` = មាន) stay Khmer first, with the English further down the list.
 - For one English word in a Khmer sentence, type it and press `Tab`. It goes in exactly as typed, and you stay in Khmer.
 - To type a lot of English, tap `Ctrl` on its own with nothing typed. Your keys then go straight through as normal English. Tap `Ctrl` again to go back to Khmer. Shortcuts like `Ctrl C` do not switch modes.
 

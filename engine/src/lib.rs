@@ -3,6 +3,9 @@
 //! score(phrase) = sum over tokens of [ LM(word | prev two words) - SPELL_WEIGHT * dist(typed, spelling) ]
 //! - dist: weighted edit distance with cheap vowel/h drops and similar-sound swaps, plus prefix completion.
 //! - LM: stupid backoff over 1-3 gram counts (data/out/ngrams.tsv) plus the user's own picks (user.tsv).
+//! - English: a token that is an English word (data/out/english.tsv) may stay English, scored as
+//!   P(<oth> | prev words) * P(word in English), so common chat spellings (mean = មាន) keep their Khmer;
+//!   right after another English word, by English bigrams instead ("thank you").
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -26,6 +29,7 @@ const USER_BOOST: f32 = 100.0; // one pick counts like 100 corpus occurrences
 const MAX_JOIN: usize = 3; // one Khmer word may be typed as up to 3 latin tokens ("pirn ng" -> ប៉ុណ្ណឹង)
 const JOIN_MAX_DIST: f32 = 1.5; // joined tokens must spell the word closely
 const JOIN_PENALTY: f32 = 2.0; // offsets the LM term a one-word path saves over a two-word path
+const EN_SWITCH: f32 = 1.0; // cost of switching from Khmer into English; raise if English steals Khmer phrases
 
 fn is_vowel(c: u8) -> bool {
     matches!(c, b'a' | b'e' | b'i' | b'o' | b'u' | b'y')
@@ -83,6 +87,16 @@ pub fn dist(t: &[u8], s: &[u8]) -> f32 {
     (0..=m).map(|j| prev[j] + TAIL_COST * (m - j) as f32).fold(f32::INFINITY, f32::min)
 }
 
+/// A typed latin token (not Khmer, not a marker like <s>).
+fn is_latin(w: &str) -> bool {
+    w.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'\'')
+}
+
+/// LM context for a word: latin tokens all look like the corpus's "foreign word here" marker.
+fn ctx(w: &str) -> &str {
+    if is_latin(w) { "<oth>" } else { w }
+}
+
 pub fn normalize(token: &str) -> String {
     token.to_lowercase().chars().filter(|c| c.is_ascii_alphanumeric()).collect()
 }
@@ -96,6 +110,8 @@ pub struct Engine {
     user: Counts,
     user_dir: Option<PathBuf>,
     total: f32,
+    english: HashMap<String, f32>, // normalized English word or "w1 w2" -> count
+    en_total: f32,                 // unigrams only
     // typed text -> candidates; while typing only the last token changes, so the rest are hits
     cache: RefCell<HashMap<String, Vec<(String, f32)>>>,
 }
@@ -145,6 +161,13 @@ impl Engine {
             read_counts(&u.join("user.tsv"), &mut user);
         }
         let total = counts[0].values().sum::<u64>() as f32;
+        let english: HashMap<String, f32> = fs::read_to_string(dir.join("english.tsv"))
+            .unwrap_or_default() // optional: without it, English words fall back to raw latin
+            .lines()
+            .filter_map(|l| l.split_once('\t'))
+            .filter_map(|(w, c)| Some((w.to_string(), c.parse().ok()?)))
+            .collect();
+        let en_total = english.iter().filter(|(w, _)| !w.contains(' ')).map(|(_, c)| c).sum();
         Ok(Engine {
             words,
             spellings,
@@ -152,6 +175,8 @@ impl Engine {
             user,
             user_dir: user_dir.map(Path::to_path_buf),
             total,
+            english,
+            en_total,
             cache: RefCell::default(),
         })
     }
@@ -170,7 +195,9 @@ impl Engine {
         let mut lines = String::new();
         for i in 2..padded.len() {
             for n in 1..=3 {
-                let key = padded[i + 1 - n..=i].join(" ");
+                let mut key: Vec<&str> = padded[i + 1 - n..i].iter().map(|w| ctx(w)).collect();
+                key.push(&padded[i]); // context as the LM sees it, the word itself as picked
+                let key = key.join(" ");
                 *self.user[n - 1].entry(key.clone()).or_default() += 1;
                 lines += &format!("{n}\t{key}\t1\n");
             }
@@ -204,6 +231,23 @@ impl Engine {
             return BACKOFF.ln() + (bi / cv).ln();
         }
         2.0 * BACKOFF.ln() + (self.count(w).max(0.5) / self.total).ln()
+    }
+
+    fn is_english(&self, w: &str) -> bool {
+        is_latin(w) && self.english.contains_key(&normalize(w))
+    }
+
+    /// English word `w` after (u, v): Khmer LM's "foreign word here" times English frequency
+    /// (English bigram if `v` is English too), or the user's own picks of `w`, whichever is higher.
+    fn lm_english(&self, u: &str, v: &str, w: &str) -> f32 {
+        let (vn, wn) = (normalize(v), normalize(w));
+        let uni = (self.english[&wn] / self.en_total).ln();
+        let english = match (self.is_english(v), self.english.get(&format!("{vn} {wn}"))) {
+            (true, Some(bi)) => (bi / self.english[&vn]).ln(),
+            (true, None) => BACKOFF.ln() + uni,
+            (false, _) => self.lm(ctx(u), ctx(v), "<oth>") + uni,
+        };
+        english.max(self.lm(ctx(u), ctx(v), w))
     }
 
     /// Top Khmer words for one typed token, scored without context: (word, -SPELL_WEIGHT*dist).
@@ -259,7 +303,8 @@ impl Engine {
             for len in 1..=MAX_JOIN.min(n - i) {
                 let cands = if len == 1 {
                     let mut c = self.candidates(toks[i], MAX_DIST);
-                    c.push((toks[i].to_string(), RAW_PENALTY));
+                    let english = self.english.contains_key(&normalize(toks[i]));
+                    c.push((toks[i].to_string(), if english { 0.0 } else { RAW_PENALTY })); // English: exact spelling
                     c
                 } else {
                     let mut c = self.candidates(&toks[i..i + len].concat(), JOIN_MAX_DIST);
@@ -269,7 +314,14 @@ impl Engine {
                 for p in &here {
                     let (u, v) = (&p.words[p.words.len() - 2], &p.words[p.words.len() - 1]);
                     for (w, spell) in &cands {
-                        let lm = if *spell == RAW_PENALTY { 0.0 } else { LM_WEIGHT * self.lm(u, v, w) };
+                        let lm = if *spell == RAW_PENALTY {
+                            0.0
+                        } else if is_latin(w) {
+                            let switch = if self.is_english(v) { 0.0 } else { EN_SWITCH };
+                            LM_WEIGHT * self.lm_english(u, v, w) - switch
+                        } else {
+                            LM_WEIGHT * self.lm(ctx(u), ctx(v), w)
+                        };
                         let mut words = p.words.clone();
                         words.push(w.clone());
                         beams[i + len].push(Path_ { words, score: p.score + lm + spell });
@@ -327,6 +379,10 @@ mod tests {
         assert_eq!(e.suggest("knhom tov sala rean", 1)[0].text, "ខ្ញុំទៅសាលារៀន");
         // one Khmer word typed as two tokens
         assert!(e.suggest("pin ng ot loy tt man", 1)[0].text.starts_with("ប៉ុណ្ណឹង"));
+        // English words stay English unless a common chat spelling reads better as Khmer
+        assert_eq!(e.suggest("thank you bong", 1)[0].text, "thank you បង");
+        assert_eq!(e.suggest("mean", 1)[0].text, "មាន");
+        assert!(e.suggest("mean", 9).iter().any(|s| s.text == "mean")); // IMEs show 9
     }
 
     #[test]
@@ -335,9 +391,9 @@ mod tests {
         let user = std::env::temp_dir().join(format!("typer-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&user);
         let Ok(mut e) = Engine::load(&dir, Some(&user)) else { return };
-        let before = e.suggest("ah ach", 5);
+        let before = e.suggest("ah ach", 9); // IMEs show 9
         assert_ne!(before[0].text, "អាអាចម៍");
-        let want = before.iter().find(|s| s.text == "អាអាចម៍").expect("in top 5").clone();
+        let want = before.iter().find(|s| s.text == "អាអាចម៍").expect("in top 9").clone();
         e.learn("ah ach", &want).unwrap();
         assert_eq!(e.suggest("ah ach", 1)[0].text, "អាអាចម៍");
         let reloaded = Engine::load(&dir, Some(&user)).unwrap();

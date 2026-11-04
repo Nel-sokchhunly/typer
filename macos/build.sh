@@ -32,7 +32,7 @@ fi
 
 cp macos/Info.plist "$APP/Contents/"
 cp macos/icon.tiff "$APP/Contents/Resources/"
-cp data/out/lexicon.tsv data/out/ngrams.tsv "$APP/Contents/Resources/data/"
+cp data/out/lexicon.tsv data/out/ngrams.tsv data/out/english.tsv "$APP/Contents/Resources/data/"
 codesign --force --deep -s - "$APP"
 
 case "${1:-}" in

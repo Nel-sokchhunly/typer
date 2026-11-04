@@ -33,6 +33,7 @@ OutputBaseFilename=Typer-windows-setup
 Source: "typer.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\data\out\lexicon.tsv"; DestDir: "{app}\data"; Flags: ignoreversion
 Source: "..\data\out\ngrams.tsv"; DestDir: "{app}\data"; Flags: ignoreversion
+Source: "..\data\out\english.tsv"; DestDir: "{app}\data"; Flags: ignoreversion
 ; Apps that already loaded Typer keep the old DLL until they restart; restartreplace swaps it then.
 Source: "target\x86_64-pc-windows-msvc\release\typer_tsf.dll"; DestDir: "{app}"; DestName: "typer64.dll"; Flags: ignoreversion regserver restartreplace uninsrestartdelete 64bit
 Source: "target\i686-pc-windows-msvc\release\typer_tsf.dll"; DestDir: "{app}"; DestName: "typer32.dll"; Flags: ignoreversion regserver restartreplace uninsrestartdelete 32bit
