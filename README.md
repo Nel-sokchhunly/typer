@@ -17,9 +17,13 @@ It works in any app: Messenger, Telegram, Notes, browsers, and so on.
 
 > Typer is an early preview. Expect wrong suggestions sometimes. It learns from what you pick, so it gets better the more you use it.
 
-## Install on macOS
+**Contents:** [Install](#install) ([macOS](#macos) · [Windows](#windows) · [Linux](#linux)) · [Use it](#use-it) · [Privacy](#privacy) · [Update](#update) · [Uninstall](#uninstall) · [Problems?](#problems) · [Development](#development)
 
-### 1. Download and install
+## Install
+
+### macOS
+
+**1. Download and install**
 
 Download **[Typer.pkg](https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer.pkg)**, double-click it in Downloads, and click through the installer.
 
@@ -49,7 +53,7 @@ mv Typer.app ~/Library/Input\ Methods/
 
 > **Why the `xattr` line?** Typer isn't signed with a paid Apple Developer certificate yet, so macOS blocks it by default when it comes from the internet. This line removes that block for Typer only. Only run it if you trust where you got the zip.
 
-### 2. Turn it on
+**2. Turn it on**
 
 1. Open **System Settings → Keyboard**.
 2. Under **Text Input**, click **Edit…** next to *Input Sources*.
@@ -57,9 +61,27 @@ mv Typer.app ~/Library/Input\ Methods/
 
 If Typer isn't in the list, **log out and log back in** (Apple menu → Log Out), then try again.
 
-### 3. Use it
+### Windows
 
-Switch to Typer with **`Ctrl Space`** or the **🌐 Globe** key. You can also pick it from the input menu in the menu bar.
+1. Download **[Typer-windows-setup.exe](https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-windows-setup.exe)** and double-click it.
+2. If Windows shows *"Windows protected your PC"*, click **More info → Run anyway**. Typer isn't signed with a paid certificate yet.
+3. Click **Install**, then **Finish**.
+
+### Linux
+
+Ubuntu 22.04+ or Debian 12+ (64-bit Intel/AMD) with IBus, the default on GNOME. Fcitx5 (common on KDE) isn't supported yet.
+
+1. Download **[Typer-linux-amd64.deb](https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-linux-amd64.deb)** and open it to install, or run `sudo apt install ./Typer-linux-amd64.deb`.
+2. Log out and back in (IBus only finds new input methods when it starts).
+3. Open **Settings → Keyboard → Input Sources → + → Khmer → Typer / សរសេរ**.
+
+## Use it
+
+Switch to Typer:
+
+- **macOS:** `Ctrl Space` or the **🌐 Globe** key, or pick it from the input menu in the menu bar.
+- **Windows:** `Windows Space`, then choose **Typer / សរសេរ**.
+- **Linux:** `Super Space`.
 
 Type Khmer in Latin letters, with spaces between words. Type the whole phrase: a list of suggestions appears under your text, and the first one is usually the whole phrase in Khmer.
 
@@ -75,7 +97,7 @@ knhom tov sala rean   →   ខ្ញុំទៅសាលារៀន
 | `1` to `9`, or click | Insert that suggestion |
 | `.` `,` `?` and other symbols | Stay in the phrase as typed: `knhom, tov te?` suggests **ខ្ញុំ, ទៅទេ?** |
 | `Esc` | Insert exactly what you typed, in Latin letters |
-| `Delete` | Edit what you're typing |
+| `Delete` (`Backspace` on Windows / Linux) | Edit what you're typing |
 | Tap `Ctrl` on its own, with nothing typed | Switch between Khmer and English |
 
 **Khmer or English?** A small yellow **ខ** or **EN** badge under the cursor shows the mode. It hides while you type and comes back when you pause for a second. In English mode your keys go straight to the app as normal English. Tap `Ctrl` again to go back to Khmer. Shortcuts like `Ctrl C` don't switch modes.
@@ -88,59 +110,50 @@ knhom tov sala rean   →   ខ្ញុំទៅសាលារៀន
 - `te` closing a negative becomes ទេ, however long the sentence: `ot mean luy te` suggests **អត់មានលុយទេ**.
 - For a word exactly as typed in Latin letters, type it and press `Esc`. You stay in Khmer.
 
-## Install on Windows
+**Platform differences**
 
-1. Download **[Typer-windows-setup.exe](https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-windows-setup.exe)** and double-click it.
-2. If Windows shows *"Windows protected your PC"*, click **More info → Run anyway**. Typer isn't signed with a paid certificate yet.
-3. Click **Install**, then **Finish**.
-4. Press **`Windows` + `Space`** and choose **Typer / សរសេរ**.
-
-The keys are the same as on the Mac (see the table above). Picking with the mouse isn't supported on Windows yet; use `Enter` or `1` to `9`.
-What you pick is saved in `%APPDATA%\Typer`. To uninstall, use **Settings → Apps → Installed apps → Typer**.
-
-## Install on Linux
-
-Ubuntu 22.04+ or Debian 12+ (64-bit Intel/AMD) with IBus, the default on GNOME.
-
-1. Download **[Typer-linux-amd64.deb](https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-linux-amd64.deb)** and open it to install, or run `sudo apt install ./Typer-linux-amd64.deb`.
-2. Log out and back in (IBus only finds new input methods when it starts).
-3. **Settings → Keyboard → Input Sources → + → Khmer → Typer / សរសេរ**. Switch with **`Super` + `Space`**.
-
-Same keys as on the Mac, including picking with the mouse. The Khmer / English mode shows in the top bar instead of under the cursor. What you pick is saved in `~/.local/share/typer/`.
-To uninstall: `sudo apt remove ibus-typer`. Fcitx5 (common on KDE) isn't supported yet.
+- **Windows:** picking with the mouse isn't supported yet; use `Enter` or `1` to `9`.
+- **Linux:** the Khmer / English mode shows in the top bar instead of under the cursor.
 
 ## Privacy
 
-Everything stays on your Mac. Typer has no network access and sends nothing anywhere.
+Everything stays on your computer. Typer has no network access and sends nothing anywhere.
 
 What you pick is saved locally so Typer can learn:
 
+| Platform | Folder |
+|---|---|
+| macOS | `~/Library/Application Support/Typer/` |
+| Windows | `%APPDATA%\Typer` |
+| Linux | `~/.local/share/typer/` |
+
 ```
-~/Library/Application Support/Typer/
-  user.tsv    words and word pairs you've picked
-  picks.tsv   what you typed → what you chose
+user.tsv    words and word pairs you've picked
+picks.tsv   what you typed → what you chose
 ```
 
 Delete that folder at any time to reset what Typer has learned.
 
 ## Update
 
-Run the install command from **step 1** again. What Typer has learned is kept. If it still behaves like the old version, switch to another input source and back, or log out and back in.
+Download and run the installer again (on a Mac you can also run the Terminal commands from [install](#macos) again). What Typer has learned is kept. If it still behaves like the old version, switch to another input source and back, or log out and back in. On Windows, apps that were open during the update switch to the new version after a restart.
 
 ## Uninstall
 
-1. Remove Typer from **System Settings → Keyboard → Input Sources**.
-2. Run this in Terminal:
+- **macOS:** remove Typer from **System Settings → Keyboard → Input Sources**, then run this in Terminal:
 
-```sh
-rm -rf ~/Library/Input\ Methods/Typer.app ~/Library/Application\ Support/Typer
-```
+  ```sh
+  rm -rf ~/Library/Input\ Methods/Typer.app ~/Library/Application\ Support/Typer
+  ```
+
+- **Windows:** **Settings → Apps → Installed apps → Typer → Uninstall**.
+- **Linux:** `sudo apt remove ibus-typer`, and remove Typer from **Input Sources**.
 
 ## Problems?
 
 - **No suggestions appear:** make sure Typer is the selected input source (check the menu bar). You may be in English mode; tap `Ctrl` once.
-- **"Typer can't be opened" or nothing happens:** run the `xattr` line from step 1 again, then log out and back in.
-- **Old icon in the Globe switcher or menu bar:** run `killall -9 TextInputSwitcher TextInputMenuAgent` in Terminal (macOS restarts them), or log out and back in.
+- **macOS: "Typer can't be opened" or nothing happens:** run the `xattr` line from [the macOS install](#macos) again, then log out and back in.
+- **macOS: old icon in the Globe switcher or menu bar:** run `killall -9 TextInputSwitcher TextInputMenuAgent` in Terminal (macOS restarts them), or log out and back in.
 - **Bad suggestion:** please report what you typed and what you expected at <https://github.com/Nel-sokchhunly/typer/issues>. These reports are how the engine improves.
 
 ## Development
