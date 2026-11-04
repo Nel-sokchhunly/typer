@@ -61,27 +61,32 @@ If Typer isn't in the list, **log out and log back in** (Apple menu → Log Out)
 
 Switch to Typer with **`Ctrl Space`** or the **🌐 Globe** key. You can also pick it from the input menu in the menu bar.
 
-Type Khmer in Latin letters, with spaces between words. A list of suggestions appears under your text.
+Type Khmer in Latin letters, with spaces between words. Type the whole phrase: a list of suggestions appears under your text, and the first one is usually the whole phrase in Khmer.
+
+```
+knhom tov sala rean   →   ខ្ញុំទៅសាលារៀន
+```
 
 | Key | What it does |
 |---|---|
-| `↓` / `↑` | Move through the suggestions (wraps around) |
+| `Space` | Separate words. It never inserts anything, so keep typing |
+| `↓` / `↑` or `Tab` / `Shift Tab` | Move through the suggestions (wraps around) |
 | `Enter` | Insert the highlighted suggestion (the first one unless you moved) |
-| `1` to `9` | Insert that suggestion |
-| Click | Insert the clicked suggestion |
+| `1` to `9`, or click | Insert that suggestion |
+| `.` `,` `?` and other symbols | Stay in the phrase as typed: `knhom, tov te?` suggests **ខ្ញុំ, ទៅទេ?** |
 | `Esc` | Insert exactly what you typed, in Latin letters |
 | `Delete` | Edit what you're typing |
-| `.` `,` `?` and other punctuation | Stays in the phrase as typed: `knhom, tov te?` suggests **ខ្ញុំ, ទៅទេ?** |
-| `Tab` / `Shift Tab` | Move through the suggestions, like `↓` / `↑` |
-| Tap `Ctrl` alone with nothing typed | Switch between Khmer and English. A small **ខ** / **EN** badge shows the mode |
+| Tap `Ctrl` on its own, with nothing typed | Switch between Khmer and English |
+
+**Khmer or English?** A small yellow **ខ** or **EN** badge under the cursor shows the mode. It hides while you type and comes back when you pause for a second. In English mode your keys go straight to the app as normal English. Tap `Ctrl` again to go back to Khmer. Shortcuts like `Ctrl C` don't switch modes.
 
 **Tips**
 
 - Spell words however you normally do. `knhom`, `knh` and `nh` all work for ខ្ញុំ.
 - When the right answer isn't first, pick it with a number. Typer remembers it and ranks it higher next time.
 - English words mix in: `thank you bong` suggests **thank you បង**. Words that are also common Khmer spellings (`mean` = មាន) stay Khmer first, with the English further down the list.
-- For one word exactly as typed in Latin letters, type it and press `Esc`. You stay in Khmer.
-- To type a lot of English, tap `Ctrl` on its own with nothing typed. Your keys then go straight through as normal English. Tap `Ctrl` again to go back to Khmer. Shortcuts like `Ctrl C` do not switch modes.
+- `te` closing a negative becomes ទេ, however long the sentence: `ot mean luy te` suggests **អត់មានលុយទេ**.
+- For a word exactly as typed in Latin letters, type it and press `Esc`. You stay in Khmer.
 
 ## Install on Windows
 
@@ -101,7 +106,7 @@ Ubuntu 22.04+ or Debian 12+ (64-bit Intel/AMD) with IBus, the default on GNOME.
 2. Log out and back in (IBus only finds new input methods when it starts).
 3. **Settings → Keyboard → Input Sources → + → Khmer → Typer / សរសេរ**. Switch with **`Super` + `Space`**.
 
-Same keys as on the Mac, including picking with the mouse. What you pick is saved in `~/.local/share/typer/`.
+Same keys as on the Mac, including picking with the mouse. The Khmer / English mode shows in the top bar instead of under the cursor. What you pick is saved in `~/.local/share/typer/`.
 To uninstall: `sudo apt remove ibus-typer`. Fcitx5 (common on KDE) isn't supported yet.
 
 ## Privacy
@@ -166,7 +171,7 @@ Release: `git tag v0.1.1 && git push origin v0.1.1`. CI (`.github/workflows/ci.y
 
 Then System Settings → Keyboard → Input Sources → Edit → + → Khmer → **Typer / សរសេរ**. Switch with Ctrl-Space / Globe.
 
-Type `knhom tov sala rean`: ↓/↑ = move highlight, Enter = insert highlighted, 1-9 = pick, Tab/Shift-Tab = move highlight, Esc = keep latin, Delete = edit,
+Type `knhom tov sala rean`: ↓/↑ or Tab/Shift-Tab = move highlight, Enter = insert highlighted, 1-9 = pick, Esc = keep latin, Delete = edit, symbols join the phrase,
 tap Ctrl alone (nothing typed) = toggle English passthrough.
 Picks are learned into `~/Library/Application Support/Typer/` (`user.tsv`, `picks.tsv`).
 After a rebuild, `install` restarts the input method; if it still looks stale, switch input source away and back.
