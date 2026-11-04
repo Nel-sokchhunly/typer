@@ -1,5 +1,5 @@
 //! Suggestion list and mode badge: one borderless popup per UI thread, painted with GDI.
-//! The badge stays under the caret, faint and click-through; bright for a moment after a toggle.
+//! The badge stays under the caret, yellow, faint and click-through; bright for a moment after a toggle.
 //! Rounded corners on Windows 11; light/dark follows the system app theme.
 use std::cell::RefCell;
 
@@ -28,7 +28,7 @@ const PAD: i32 = 5;
 const NUM_W: i32 = 28;
 const MIN_W: i32 = 180;
 const BADGE_MS: u32 = 800;
-const FAINT: u8 = 110; // badge opacity at rest, of 255
+const FAINT: u8 = 190; // badge opacity at rest, of 255
 
 pub fn show(items: &[String], selected: usize, caret: RECT) {
     if items.is_empty() {
@@ -251,7 +251,11 @@ const fn rgb(r: u8, g: u8, b: u8) -> COLORREF {
 unsafe fn paint(hwnd: HWND) {
     let mut ps = PAINTSTRUCT::default();
     let dc = BeginPaint(hwnd, &mut ps);
-    let (bg, fg, dim, border) = if dark_mode() {
+    let badge = P.with(|p| p.borrow().selected.is_none());
+    let yellow = rgb(0xf5, 0xc8, 0x42);
+    let (bg, fg, dim, border) = if badge {
+        (yellow, rgb(0x1a, 0x1a, 0x1a), yellow, yellow) // dark on yellow, either theme
+    } else if dark_mode() {
         (rgb(0x2c, 0x2c, 0x2c), rgb(0xff, 0xff, 0xff), rgb(0x9d, 0x9d, 0x9d), rgb(0x48, 0x48, 0x48))
     } else {
         (rgb(0xf9, 0xf9, 0xf9), rgb(0x1a, 0x1a, 0x1a), rgb(0x8a, 0x8a, 0x8a), rgb(0xdd, 0xdd, 0xdd))

@@ -1,10 +1,10 @@
 import Cocoa
 import InputMethodKit
 
-/// "EN" / "ខ" under the cursor: bright for a moment after a toggle, then faint and always there.
+/// "EN" / "ខ" under the cursor, on yellow: bright for a moment after a toggle, then faint and always there.
 /// Sits below the current line, click-through; moves after each key. Hidden while suggestions show.
 enum ModeBadge {
-    private static let faint: CGFloat = 0.4
+    private static let faint: CGFloat = 0.75
     // the app moves its caret after us; re-check soon and keep re-checking for slow apps
     private static let followDelays = [0.015, 0.05, 0.15]
     private static var generation = 0
@@ -12,6 +12,7 @@ enum ModeBadge {
         let l = NSTextField(labelWithString: "")
         l.font = .systemFont(ofSize: 12, weight: .semibold)
         l.alignment = .center
+        l.textColor = NSColor(white: 0.1, alpha: 1)  // dark on yellow, readable in light and dark mode
         return l
     }()
     private static let panel: NSPanel = {
@@ -20,6 +21,10 @@ enum ModeBadge {
         p.hasShadow = false
         p.setContentSize(NSSize(width: 30, height: 20))
         label.frame = NSRect(x: 0, y: 3, width: 30, height: 15)  // labels draw top-aligned; nudge to center
+        let fill = NSView(frame: NSRect(x: 0, y: 0, width: 30, height: 20))
+        fill.wantsLayer = true
+        fill.layer?.backgroundColor = NSColor(red: 0.96, green: 0.78, blue: 0.26, alpha: 1).cgColor  // #f5c842
+        v.addSubview(fill)
         v.addSubview(label)
         return p
     }()
@@ -63,7 +68,7 @@ enum ModeBadge {
         }
         label.stringValue = text
         // behind the caret (right edge on it), so it never covers what comes next
-        panel.setFrameOrigin(NSPoint(x: caret.minX - panel.frame.width, y: caret.minY - panel.frame.height - 2))
+        panel.setFrameOrigin(NSPoint(x: caret.minX - panel.frame.width, y: caret.minY - panel.frame.height - 6))
         panel.orderFrontRegardless()
         return true
     }
