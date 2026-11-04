@@ -25,6 +25,7 @@ install -Dm644 data/out/ngrams.tsv "$P/usr/share/typer/ngrams.tsv"
 install -Dm644 docs/img/apple-touch-icon.png "$P/usr/share/typer/icon.png"
 mkdir -p "$P/usr/share/ibus/component" "$P/DEBIAN"
 sed "s/@VERSION@/$version/" linux/typer.xml >"$P/usr/share/ibus/component/typer.xml"
+# Keep control ASCII: App Center reads it through PackageKit and shows Khmer as ????.
 cat >"$P/DEBIAN/control" <<EOF
 Package: ibus-typer
 Version: $version
@@ -34,8 +35,8 @@ Depends: ibus
 Section: utils
 Priority: optional
 Homepage: https://nel-sokchhunly.github.io/typer/
-Description: Typer / សរសេរ: type Khmer in Latin letters (Sing Khmer)
- An IBus input method. Type knhom tov sala rean and pick ខ្ញុំទៅសាលារៀន.
+Description: Typer: type Khmer in Latin letters (Sing Khmer)
+ An IBus input method. Type "knhom tov sala rean" and pick the Khmer sentence.
  Spell however you chat; it learns from what you pick. Works offline.
 EOF
 # ibus-daemon only rescans components when it starts; tell the user so instead of killing their session.
