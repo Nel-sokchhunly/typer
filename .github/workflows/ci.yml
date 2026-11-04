@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest # engine + data only; macOS runners are scarce, keep them for the release build
     steps:
       - uses: actions/checkout@v5
       - run: python3 data/build.py
