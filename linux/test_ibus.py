@@ -71,16 +71,18 @@ typed("knhom tov sala rean")
 assert (got := result(IBus.KEY_Return)) == "ខ្ញុំទៅសាលារៀន", got
 
 typed("hello")
-assert (got := result(IBus.KEY_Tab)) == "hello", got  # Tab keeps the latin
+assert (got := result(IBus.KEY_Escape)) == "hello", got  # Esc keeps the latin
+
+typed("ban")
+press(IBus.KEY_Tab)  # Tab moves to the second suggestion, like Down
+assert (got := result(IBus.KEY_Return)) not in ("", "ban", "បាន"), got
 
 typed("ban")
 assert (got := result(ord("2"))) not in ("", "ban", "បាន"), got  # 2 picks the second candidate
 
-typed("tov")
-committed.clear()
-assert not press(ord(".")), "punctuation should pass through to the app"
-pump()
-assert committed == ["ទៅ"], committed  # ...after inserting the top suggestion
+typed("tov.")  # punctuation joins the phrase as typed
+assert (got := result(IBus.KEY_Return)) == "ទៅ.", got
+assert not press(ord(".")), "with nothing typed, punctuation passes through to the app"
 
 key(IBus.KEY_Shift_L)  # Shift is for capitals, never a toggle
 key(IBus.KEY_Shift_L, release=True)

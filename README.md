@@ -71,8 +71,8 @@ Type Khmer in Latin letters, with spaces between words. A list of suggestions ap
 | Click | Insert the clicked suggestion |
 | `Esc` | Insert exactly what you typed, in Latin letters |
 | `Delete` | Edit what you're typing |
-| `.` `,` `?` and other punctuation | Insert the first suggestion, then the punctuation |
-| `Tab` | Insert what you typed as English, and stay in Khmer |
+| `.` `,` `?` and other punctuation | Stays in the phrase as typed: `knhom, tov te?` suggests **ខ្ញុំ, ទៅទេ?** |
+| `Tab` / `Shift Tab` | Move through the suggestions, like `↓` / `↑` |
 | Tap `Ctrl` alone with nothing typed | Switch between Khmer and English. A small **ខ** / **EN** badge shows the mode |
 
 **Tips**
@@ -80,7 +80,7 @@ Type Khmer in Latin letters, with spaces between words. A list of suggestions ap
 - Spell words however you normally do. `knhom`, `knh` and `nh` all work for ខ្ញុំ.
 - When the right answer isn't first, pick it with a number. Typer remembers it and ranks it higher next time.
 - English words mix in: `thank you bong` suggests **thank you បង**. Words that are also common Khmer spellings (`mean` = មាន) stay Khmer first, with the English further down the list.
-- For one English word in a Khmer sentence, type it and press `Tab`. It goes in exactly as typed, and you stay in Khmer.
+- For one word exactly as typed in Latin letters, type it and press `Esc`. You stay in Khmer.
 - To type a lot of English, tap `Ctrl` on its own with nothing typed. Your keys then go straight through as normal English. Tap `Ctrl` again to go back to Khmer. Shortcuts like `Ctrl C` do not switch modes.
 
 ## Install on Windows
@@ -166,7 +166,7 @@ Release: `git tag v0.1.1 && git push origin v0.1.1`. CI (`.github/workflows/ci.y
 
 Then System Settings → Keyboard → Input Sources → Edit → + → Khmer → **Typer / សរសេរ**. Switch with Ctrl-Space / Globe.
 
-Type `knhom tov sala rean`: ↓/↑ = move highlight, Enter = insert highlighted, 1-9 = pick, Tab/Esc = keep latin, Delete = edit,
+Type `knhom tov sala rean`: ↓/↑ = move highlight, Enter = insert highlighted, 1-9 = pick, Tab/Shift-Tab = move highlight, Esc = keep latin, Delete = edit,
 tap Ctrl alone (nothing typed) = toggle English passthrough.
 Picks are learned into `~/Library/Application Support/Typer/` (`user.tsv`, `picks.tsv`).
 After a rebuild, `install` restarts the input method; if it still looks stale, switch input source away and back.

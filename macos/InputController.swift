@@ -2,9 +2,9 @@ import Cocoa
 import InputMethodKit
 
 /// Letters and spaces build an underlined latin phrase; the panel shows Khmer suggestions.
-/// ↓/↑: move highlight. Enter: insert highlighted. 1-9 / click: insert that one.
-/// Inserted suggestions are learned. Tab or Esc: insert the latin as typed.
-/// Delete: edit the phrase. Punctuation or shortcuts: insert top suggestion, then pass the key on.
+/// ↓/↑ or Tab/Shift-Tab: move highlight. Enter: insert highlighted. 1-9 / click: insert that one.
+/// Inserted suggestions are learned. Esc: insert the latin as typed.
+/// Delete: edit the phrase. Punctuation joins the phrase as typed. Shortcuts: insert top suggestion, then pass the key on.
 /// Tap Ctrl alone with nothing typed: toggle English passthrough (keys go straight to the app).
 @objc(TyperInputController)
 class TyperInputController: IMKInputController {
@@ -54,7 +54,11 @@ class TyperInputController: IMKInputController {
             selected = (selected + (event.keyCode == 126 ? -1 : 1) + suggestions.count) % suggestions.count
             showPanel(client)
             return true
-        case 48, 53:  // tab, escape
+        case 48 where composing && !suggestions.isEmpty:  // tab, shift-tab; without suggestions it's an ordinary key
+            selected = (selected + (event.modifierFlags.contains(.shift) ? -1 : 1) + suggestions.count) % suggestions.count
+            showPanel(client)
+            return true
+        case 53:  // escape
             guard composing else { return false }
             insert(buffer, client)
             return true
@@ -80,6 +84,11 @@ class TyperInputController: IMKInputController {
         }
         if composing, let d = c.wholeNumberValue, (1...suggestions.count).contains(d) {
             commit(d - 1, client)
+            return true
+        }
+        if composing && c.isASCII && (c.isPunctuation || c.isSymbol) {
+            buffer.append(c)  // stays as typed in the suggestion: "knhom," -> ខ្ញុំ,
+            update(client)
             return true
         }
         if composing { commit(0, client) }

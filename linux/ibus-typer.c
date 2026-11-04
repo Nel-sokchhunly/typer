@@ -2,8 +2,8 @@
  *
  * Same keys as macOS / Windows: letters and spaces build a latin phrase (the preedit);
  * IBus's own candidate window lists Khmer. Up/Down: move. Enter / 1-9 / click: insert.
- * Tab or Esc: insert the latin as typed. Backspace: edit.
- * Punctuation or shortcuts: insert top suggestion, then the key goes on to the app.
+ * ↓/↑ or Tab/Shift+Tab: move highlight. Esc: insert the latin as typed. Backspace: edit.
+ * Punctuation joins the phrase as typed. Shortcuts: insert top suggestion, then the key goes on to the app.
  * Tap Ctrl alone with nothing typed: toggle English passthrough.
  */
 #include <ibus.h>
@@ -166,17 +166,20 @@ static gboolean process_key_event(IBusEngine *ie, guint keyval, guint keycode, g
         case IBUS_KEY_KP_Enter:
             commit(e, ibus_lookup_table_get_cursor_pos(e->table));
             return TRUE;
+        case IBUS_KEY_Tab:
+        case IBUS_KEY_ISO_Left_Tab: /* Shift+Tab */
+            if (!n) break;          /* no suggestions: an ordinary key */
+            /* fall through */
         case IBUS_KEY_Down:
         case IBUS_KEY_Up:
             if (n) {
-                if (keyval == IBUS_KEY_Up)
+                if (keyval == IBUS_KEY_Up || keyval == IBUS_KEY_ISO_Left_Tab)
                     ibus_lookup_table_cursor_up(e->table);
                 else
                     ibus_lookup_table_cursor_down(e->table);
                 ibus_engine_update_lookup_table(ie, e->table, TRUE);
             }
             return TRUE;
-        case IBUS_KEY_Tab:
         case IBUS_KEY_Escape:
             commit_latin(e);
             return TRUE;
@@ -198,6 +201,11 @@ static gboolean process_key_event(IBusEngine *ie, guint keyval, guint keycode, g
     }
     if (composing && keyval >= '1' && keyval <= '9' && keyval - '1' < n) {
         commit(e, keyval - '1');
+        return TRUE;
+    }
+    if (composing && keyval < 0x80 && g_ascii_ispunct((gchar)keyval)) {
+        g_string_append_c(e->buffer, (gchar)keyval); /* stays as typed in the suggestion */
+        update(e);
         return TRUE;
     }
     if (composing) commit(e, 0);

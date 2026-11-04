@@ -1,8 +1,8 @@
 //! Typer for Windows: a TSF keyboard text service (COM DLL) over the shared engine.
 //!
 //! Same keys as macOS: letters and spaces build a latin phrase (the composition); the popup lists Khmer.
-//! ↓/↑: move highlight. Enter / 1-9: insert. Tab or Esc: insert the latin as typed. Backspace: edit.
-//! Punctuation or shortcuts: insert top suggestion, then the key goes on to the app.
+//! ↓/↑ or Tab/Shift+Tab: move highlight. Enter / 1-9: insert. Esc: insert the latin as typed. Backspace: edit.
+//! Punctuation joins the phrase as typed. Shortcuts: insert top suggestion, then the key goes on to the app.
 //! Tap Ctrl alone with nothing typed: toggle English passthrough.
 #![allow(non_snake_case)]
 
@@ -320,9 +320,26 @@ fn typed_char(vk: VIRTUAL_KEY, shift: bool) -> Option<char> {
             Some(if shift != caps { c } else { c.to_ascii_lowercase() })
         }
         0x30..=0x39 if !shift => Some(char::from(vk.0 as u8)),
-        _ if vk == VK_OEM_7 && !shift => Some('\''),
+        0x30..=0x39 => b")!@#$%^&*(".get(vk.0 as usize - 0x30).map(|&b| char::from(b)),
         _ if vk == VK_SPACE => Some(' '),
-        _ => None,
+        _ => {
+            // US punctuation keys (the profile's layout), unshifted and shifted
+            let (plain, shifted) = match vk {
+                VK_OEM_1 => (';', ':'),
+                VK_OEM_PLUS => ('=', '+'),
+                VK_OEM_COMMA => (',', '<'),
+                VK_OEM_MINUS => ('-', '_'),
+                VK_OEM_PERIOD => ('.', '>'),
+                VK_OEM_2 => ('/', '?'),
+                VK_OEM_3 => ('`', '~'),
+                VK_OEM_4 => ('[', '{'),
+                VK_OEM_5 => ('\\', '|'),
+                VK_OEM_6 => (']', '}'),
+                VK_OEM_7 => ('\'', '"'),
+                _ => return None,
+            };
+            Some(if shift { shifted } else { plain })
+        }
     }
 }
 
@@ -355,14 +372,15 @@ impl TextService_Impl {
                     self.commit(ctx, i)
                 })
             }
-            (VK_DOWN | VK_UP, _) if composing && n > 0 => {
+            (VK_DOWN | VK_UP | VK_TAB, _) if composing && n > 0 => {
+                let back = vk == VK_UP || (vk == VK_TAB && down(VK_SHIFT));
                 return eat(&|_| {
                     let mut s = self.s.borrow_mut();
-                    s.selected = (s.selected + if vk == VK_UP { n - 1 } else { 1 }) % n;
+                    s.selected = (s.selected + if back { n - 1 } else { 1 }) % n;
                     popup::select(s.selected);
                 })
             }
-            (VK_TAB | VK_ESCAPE, _) if composing => {
+            (VK_ESCAPE, _) if composing => {
                 return eat(&|ctx| {
                     let text = self.s.borrow().buffer.clone();
                     self.finish(ctx, text);
@@ -386,6 +404,12 @@ impl TextService_Impl {
             }
             (_, Some(d @ '1'..='9')) if composing && (d as usize - '0' as usize) <= n => {
                 return eat(&|ctx| self.commit(ctx, d as usize - '1' as usize))
+            }
+            (_, Some(ch)) if composing && ch.is_ascii_punctuation() => {
+                return eat(&|ctx| {
+                    self.s.borrow_mut().buffer.push(ch); // stays as typed in the suggestion
+                    self.update(ctx);
+                })
             }
             _ => {}
         }

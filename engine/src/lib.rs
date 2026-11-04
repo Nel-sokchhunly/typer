@@ -7,6 +7,7 @@
 //!   P(<oth> | prev words) * P(word in English), so common chat spellings (mean = មាន) keep their Khmer;
 //!   right after another English word, by English bigrams instead ("thank you").
 //! - Negation frame: after អត់/មិន/... the closing ទេ gets a bonus, however far back the negation is.
+//! - Punctuation typed in the phrase stays as typed: "knhom, tov te?" -> ខ្ញុំ, ទៅទេ?
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -92,14 +93,47 @@ pub fn dist(t: &[u8], s: &[u8]) -> f32 {
     (0..=m).map(|j| prev[j] + TAIL_COST * (m - j) as f32).fold(f32::INFINITY, f32::min)
 }
 
-/// A typed latin token (not Khmer, not a marker like <s>).
-fn is_latin(w: &str) -> bool {
-    w.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'\'')
+fn is_word_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '\''
 }
 
-/// LM context for a word: latin tokens all look like the corpus's "foreign word here" marker.
+/// A typed latin token (not Khmer, not a marker like <s>).
+fn is_latin(w: &str) -> bool {
+    w.chars().all(is_word_char)
+}
+
+/// A typed symbol run like "," or "?!" (Khmer words and markers have no ASCII punctuation).
+fn is_punct(w: &str) -> bool {
+    !w.is_empty() && w.chars().all(|c| c.is_ascii_punctuation() && c != '\'')
+}
+
+/// LM context for a word: latin tokens look like the corpus's "foreign word here" marker;
+/// punctuation starts over like a new sentence.
 fn ctx(w: &str) -> &str {
-    if is_latin(w) { "<oth>" } else { w }
+    if is_latin(w) {
+        "<oth>"
+    } else if is_punct(w) {
+        "<s>"
+    } else {
+        w
+    }
+}
+
+/// Space-separated words, with each run of punctuation as its own token: "te?" -> ["te", "?"].
+pub fn tokens(input: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    for chunk in input.split_whitespace() {
+        let mut start = 0;
+        for (i, c) in chunk.char_indices().skip(1) {
+            let prev = chunk[..i].chars().next_back().unwrap();
+            if is_word_char(c) != is_word_char(prev) {
+                out.push(&chunk[start..i]);
+                start = i;
+            }
+        }
+        out.push(&chunk[start..]);
+    }
+    out
 }
 
 pub fn normalize(token: &str) -> String {
@@ -297,7 +331,7 @@ impl Engine {
 
     /// Top `k` Khmer renderings of a space-separated romanized phrase.
     pub fn suggest(&self, input: &str, k: usize) -> Vec<Suggestion> {
-        let toks: Vec<&str> = input.split_whitespace().collect();
+        let toks = tokens(input);
         let n = toks.len();
         // beams[i] = best paths that consumed the first i tokens; a word may consume 1..=MAX_JOIN tokens
         let mut beams: Vec<Vec<Path_>> = vec![Vec::new(); n + 1];
@@ -307,7 +341,12 @@ impl Engine {
             here.sort_by(|a, b| b.score.total_cmp(&a.score));
             here.truncate(BEAM);
             for len in 1..=MAX_JOIN.min(n - i) {
-                let cands = if len == 1 {
+                if len > 1 && toks[i..i + len].iter().any(|t| is_punct(t)) {
+                    break; // a word never spans punctuation
+                }
+                let cands = if is_punct(toks[i]) {
+                    vec![(toks[i].to_string(), 0.0)] // kept as typed
+                } else if len == 1 {
                     let mut c = self.candidates(toks[i], MAX_DIST);
                     let english = self.english.contains_key(&normalize(toks[i]));
                     c.push((toks[i].to_string(), if english { 0.0 } else { RAW_PENALTY })); // English: exact spelling
@@ -320,7 +359,7 @@ impl Engine {
                 for p in &here {
                     let (u, v) = (&p.words[p.words.len() - 2], &p.words[p.words.len() - 1]);
                     for (w, spell) in &cands {
-                        let lm = if *spell == RAW_PENALTY {
+                        let lm = if *spell == RAW_PENALTY || is_punct(w) {
                             0.0
                         } else if is_latin(w) {
                             let switch = if self.is_english(v) { 0.0 } else { EN_SWITCH };
@@ -329,7 +368,7 @@ impl Engine {
                             LM_WEIGHT * self.lm(ctx(u), ctx(v), w)
                         };
                         let closes = p.neg && w == NEG_CLOSE;
-                        let neg = (p.neg || NEGATIONS.contains(&w.as_str())) && !closes;
+                        let neg = (p.neg || NEGATIONS.contains(&w.as_str())) && !closes && !is_punct(w);
                         let bonus = if closes { NEG_BONUS } else { 0.0 };
                         let mut words = p.words.clone();
                         words.push(w.clone());
@@ -354,12 +393,12 @@ impl Engine {
     }
 }
 
-/// Khmer words join without spaces; latin tokens keep spaces around them.
+/// Khmer words join without spaces; latin tokens keep spaces around them;
+/// punctuation sticks to the word before it and has a space after.
 fn join(words: &[String]) -> String {
     let mut s = String::new();
     for (i, w) in words.iter().enumerate() {
-        let latin = |x: &String| x.is_ascii();
-        if i > 0 && (latin(w) || latin(&words[i - 1])) {
+        if i > 0 && !is_punct(w) && (is_latin(w) || is_latin(&words[i - 1]) || is_punct(&words[i - 1])) {
             s.push(' ');
         }
         s.push_str(w);
@@ -392,6 +431,9 @@ mod tests {
         assert_eq!(e.suggest("thank you bong", 1)[0].text, "thank you បង");
         assert_eq!(e.suggest("mean", 1)[0].text, "មាន");
         assert!(e.suggest("mean", 9).iter().any(|s| s.text == "mean")); // IMEs show 9
+        // punctuation stays as typed and doesn't break the words around it
+        assert_eq!(tokens("knhom, tov te?!"), ["knhom", ",", "tov", "te", "?!"]);
+        assert_eq!(e.suggest("knhom, tov sala rean?", 1)[0].text, "ខ្ញុំ, ទៅសាលារៀន?");
         // negation frame closes with ទេ, however far back the negation is; plain តែ stays
         assert_eq!(e.suggest("ot mean luy te", 1)[0].text, "អត់មានលុយទេ");
         assert_eq!(e.suggest("knhom mean te muoy", 1)[0].text, "ខ្ញុំមានតែមួយ");
