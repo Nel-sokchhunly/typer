@@ -21,6 +21,7 @@ modes = []  # top-bar indicator symbol, from the "InputMode" property
 ic.connect("update-property", lambda _ic, p: modes.append(p.get_symbol().get_text()))
 ic.set_capabilities(
     IBus.Capabilite.PREEDIT_TEXT | IBus.Capabilite.LOOKUP_TABLE | IBus.Capabilite.AUXILIARY_TEXT | IBus.Capabilite.FOCUS
+    | IBus.Capabilite.PROPERTY  # else the daemon sends mode updates to the panel, not to us
 )
 ic.focus_in()
 ic.set_engine("typer")
