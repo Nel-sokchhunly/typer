@@ -106,7 +106,9 @@ fn place(items: Vec<String>, selected: Option<usize>, caret: RECT, alpha: u8) ->
         if y + h > work.bottom {
             y = caret.top - h - px(6);
         }
-        let x = caret.left.min(work.right - w).max(work.left);
+        // badge sits behind the caret (right edge on it); the list starts at it
+        let left = if selected.is_none() { caret.left - w } else { caret.left };
+        let x = left.min(work.right - w).max(work.left);
         let _ = SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE | SWP_SHOWWINDOW);
         let _ = InvalidateRect(hwnd, None, TRUE);
     }

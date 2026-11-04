@@ -5,7 +5,8 @@ import InputMethodKit
 /// Sits below the current line, click-through; moves after each key. Hidden while suggestions show.
 enum ModeBadge {
     private static let faint: CGFloat = 0.4
-    private static let followDelay = 0.1  // let the app move its caret first
+    // the app moves its caret after us; re-check soon and keep re-checking for slow apps
+    private static let followDelays = [0.015, 0.05, 0.15]
     private static var generation = 0
     private static let label: NSTextField = {
         let l = NSTextField(labelWithString: "")
@@ -36,9 +37,11 @@ enum ModeBadge {
     /// Any key or focus change: move the faint badge to the caret.
     static func follow(_ text: String, near client: IMKTextInput) {
         let mine = bump()
-        DispatchQueue.main.asyncAfter(deadline: .now() + followDelay) {
-            guard mine == generation, place(text, client) else { return }
-            panel.alphaValue = faint
+        for delay in followDelays {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard mine == generation, place(text, client) else { return }
+                panel.alphaValue = faint
+            }
         }
     }
 
@@ -59,7 +62,8 @@ enum ModeBadge {
             return false
         }
         label.stringValue = text
-        panel.setFrameOrigin(NSPoint(x: caret.minX, y: caret.minY - panel.frame.height - 2))
+        // behind the caret (right edge on it), so it never covers what comes next
+        panel.setFrameOrigin(NSPoint(x: caret.minX - panel.frame.width, y: caret.minY - panel.frame.height - 2))
         panel.orderFrontRegardless()
         return true
     }
