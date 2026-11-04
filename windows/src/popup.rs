@@ -1,4 +1,5 @@
 //! Suggestion list and mode badge: one borderless popup per UI thread, painted with GDI.
+//! The badge stays under the caret, faint and click-through; bright for a moment after a toggle.
 //! Rounded corners on Windows 11; light/dark follows the system app theme.
 use std::cell::RefCell;
 
@@ -27,12 +28,13 @@ const PAD: i32 = 5;
 const NUM_W: i32 = 28;
 const MIN_W: i32 = 180;
 const BADGE_MS: u32 = 800;
+const FAINT: u8 = 110; // badge opacity at rest, of 255
 
 pub fn show(items: &[String], selected: usize, caret: RECT) {
     if items.is_empty() {
         return hide();
     }
-    place(items.to_vec(), Some(selected), caret);
+    place(items.to_vec(), Some(selected), caret, 255);
 }
 
 pub fn select(i: usize) {
@@ -45,9 +47,20 @@ pub fn select(i: usize) {
     });
 }
 
+/// Just toggled: bright, then faint (timer 1).
 pub fn badge(text: &str) {
-    let hwnd = place(vec![text.to_string()], None, caret_rect());
+    let hwnd = place(vec![text.to_string()], None, system_caret().unwrap_or_else(mouse), 255);
     unsafe { SetTimer(hwnd, 1, BADGE_MS, None) };
+}
+
+/// After a key or focus change: faint badge at `caret` (from TSF) or the system caret; hidden if neither.
+pub fn follow(text: &str, caret: Option<RECT>) {
+    match caret.or_else(system_caret) {
+        Some(rc) => {
+            place(vec![text.to_string()], None, rc, FAINT);
+        }
+        None => hide(),
+    }
 }
 
 pub fn hide() {
@@ -56,10 +69,11 @@ pub fn hide() {
     });
 }
 
-fn place(items: Vec<String>, selected: Option<usize>, caret: RECT) -> HWND {
+fn place(items: Vec<String>, selected: Option<usize>, caret: RECT, alpha: u8) -> HWND {
     let hwnd = window();
     unsafe {
         let _ = KillTimer(hwnd, 1);
+        let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), alpha, LWA_ALPHA);
         let px = scale(hwnd);
         // measure the widest suggestion
         let dc = GetDC(hwnd);
@@ -126,8 +140,8 @@ fn font(height: i32, face: PCWSTR) -> HFONT {
     }
 }
 
-/// Caret of the focused window (for the badge, which has no composition to measure); else the mouse.
-fn caret_rect() -> RECT {
+/// Caret of the focused window, for apps that use the system caret.
+fn system_caret() -> Option<RECT> {
     unsafe {
         let mut gui = GUITHREADINFO { cbSize: std::mem::size_of::<GUITHREADINFO>() as u32, ..Default::default() };
         if GetGUIThreadInfo(0, &mut gui).is_ok() && !gui.hwndCaret.is_invalid() {
@@ -136,8 +150,14 @@ fn caret_rect() -> RECT {
                 POINT { x: gui.rcCaret.right, y: gui.rcCaret.bottom },
             ];
             MapWindowPoints(gui.hwndCaret, None, &mut pts);
-            return RECT { left: pts[0].x, top: pts[0].y, right: pts[1].x, bottom: pts[1].y };
+            return Some(RECT { left: pts[0].x, top: pts[0].y, right: pts[1].x, bottom: pts[1].y });
         }
+        None
+    }
+}
+
+fn mouse() -> RECT {
+    unsafe {
         let mut p = POINT::default();
         let _ = GetCursorPos(&mut p);
         RECT { left: p.x, top: p.y, right: p.x, bottom: p.y + 16 }
@@ -161,7 +181,7 @@ fn window() -> HWND {
         };
         RegisterClassW(&wc); // fails harmlessly when another thread already registered it
         let hwnd = CreateWindowExW(
-            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
             class,
             w!(""),
             WS_POPUP,
@@ -194,9 +214,11 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) ->
             LRESULT(0)
         }
         WM_MOUSEACTIVATE => LRESULT(MA_NOACTIVATE as isize),
+        // badge: clicks fall through to the text under it
+        WM_NCHITTEST if P.with(|p| p.try_borrow().is_ok_and(|p| p.selected.is_none())) => LRESULT(-1), // HTTRANSPARENT
         WM_TIMER => {
             let _ = KillTimer(hwnd, w.0);
-            hide();
+            let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), FAINT, LWA_ALPHA);
             LRESULT(0)
         }
         _ => DefWindowProcW(hwnd, msg, w, l),

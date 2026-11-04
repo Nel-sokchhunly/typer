@@ -35,6 +35,7 @@ class TyperInputController: IMKInputController {
             return false
         }
         guard event.type == .keyDown else { return false }
+        defer { refreshBadge(client) }  // not on modifiers: they don't move the caret, and would cut the toggle flash
         shiftAlone = false  // Shift+letter is a capital, not a toggle
         if Self.english { return false }
         let composing = !buffer.isEmpty
@@ -88,7 +89,14 @@ class TyperInputController: IMKInputController {
     private func toggleEnglish(_ client: IMKTextInput) {
         guard buffer.isEmpty else { return }  // mid-phrase Shift is a stray capital, not a command
         Self.english.toggle()
-        ModeBadge.show(Self.english ? "EN" : "ខ", near: client)
+        ModeBadge.show(mode, near: client)
+    }
+
+    private var mode: String { Self.english ? "EN" : "ខ" }
+
+    /// Faint badge under the caret, except while the suggestion list has that spot.
+    private func refreshBadge(_ client: IMKTextInput) {
+        if buffer.isEmpty { ModeBadge.follow(mode, near: client) } else { ModeBadge.hide() }
     }
 
     private func update(_ client: IMKTextInput) {
@@ -128,8 +136,13 @@ class TyperInputController: IMKInputController {
         insert(buffer, client)
     }
 
+    override func activateServer(_ sender: Any!) {
+        if let client = sender as? IMKTextInput { ModeBadge.follow(mode, near: client) }
+    }
+
     override func deactivateServer(_ sender: Any!) {
         commitComposition(sender)
         CandidatePanel.shared.hide()
+        ModeBadge.hide()
     }
 }

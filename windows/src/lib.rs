@@ -34,6 +34,10 @@ const US_LAYOUT: usize = 0x0409_0409; // keys the app sees (punctuation, English
 
 static DLL: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
 static ENGLISH: AtomicBool = AtomicBool::new(false); // shared by all apps, like Caps Lock
+
+fn mode() -> &'static str {
+    if ENGLISH.load(Relaxed) { "EN" } else { "ខ" }
+}
 static ENGINE: Mutex<Option<Engine>> = Mutex::new(None);
 
 fn dll() -> HMODULE {
@@ -249,7 +253,12 @@ impl ITfTextInputProcessorEx_Impl for TextService_Impl {
 }
 
 impl ITfKeyEventSink_Impl for TextService_Impl {
-    fn OnSetFocus(&self, _: BOOL) -> Result<()> {
+    fn OnSetFocus(&self, foreground: BOOL) -> Result<()> {
+        if foreground.as_bool() {
+            popup::follow(mode(), None);
+        } else {
+            popup::hide();
+        }
         Ok(())
     }
 
@@ -266,13 +275,16 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
         })
     }
 
-    fn OnTestKeyUp(&self, _: Option<&ITfContext>, w: WPARAM, _: LPARAM) -> Result<BOOL> {
+    fn OnTestKeyUp(&self, ctx: Option<&ITfContext>, w: WPARAM, _: LPARAM) -> Result<BOOL> {
         let mut s = self.s.borrow_mut();
         let tap = VIRTUAL_KEY(w.0 as u16) == VK_SHIFT && std::mem::take(&mut s.shift_alone);
-        if tap && s.buffer.is_empty() {
-            drop(s);
-            let english = !ENGLISH.fetch_xor(true, Relaxed);
-            popup::badge(if english { "EN" } else { "ខ" });
+        let idle = s.buffer.is_empty(); // composing: the suggestion list has the badge's spot
+        drop(s);
+        if tap && idle {
+            ENGLISH.fetch_xor(true, Relaxed);
+            popup::badge(mode());
+        } else if idle {
+            popup::follow(mode(), ctx.and_then(|c| self.caret(c))); // the app has moved its caret by key-up
         }
         Ok(FALSE)
     }
@@ -387,9 +399,36 @@ impl TextService_Impl {
     }
 
     fn edit(&self, ctx: &ITfContext, f: impl Fn(u32) -> Result<()> + 'static) {
+        self.session(ctx, TF_ES_READWRITE, f);
+    }
+
+    fn session(&self, ctx: &ITfContext, access: TF_CONTEXT_EDIT_CONTEXT_FLAGS, f: impl Fn(u32) -> Result<()> + 'static) {
         let client = self.s.borrow().client;
         let session: ITfEditSession = Session(Box::new(f)).into();
-        let _ = unsafe { ctx.RequestEditSession(client, &session, TF_ES_SYNC | TF_ES_READWRITE) };
+        let _ = unsafe { ctx.RequestEditSession(client, &session, TF_ES_SYNC | access) };
+    }
+
+    /// Screen rect of the caret, when the app reports one.
+    fn caret(&self, ctx: &ITfContext) -> Option<RECT> {
+        let out: Rc<RefCell<Option<RECT>>> = Rc::default();
+        let (c, o) = (ctx.clone(), out.clone());
+        self.session(ctx, TF_ES_READ, move |ec| unsafe {
+            let mut sel = [TF_SELECTION {
+                range: ManuallyDrop::new(None),
+                style: TF_SELECTIONSTYLE { ase: TF_AE_NONE, fInterimChar: FALSE },
+            }];
+            let mut n = 0;
+            c.GetSelection(ec, TF_DEFAULT_SELECTION, &mut sel, &mut n)?;
+            let Some(range) = ManuallyDrop::take(&mut sel[0].range) else { return Ok(()) };
+            let mut rect = RECT::default();
+            let mut clipped = FALSE;
+            c.GetActiveView()?.GetTextExt(ec, &range, &mut rect, &mut clipped)?;
+            if rect.bottom > rect.top {
+                *o.borrow_mut() = Some(rect);
+            }
+            Ok(())
+        });
+        out.take()
     }
 
     /// Show the buffer as the composition and refresh the popup under it.

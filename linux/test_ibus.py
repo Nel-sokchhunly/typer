@@ -17,6 +17,8 @@ assert bus.is_connected(), "no ibus-daemon"
 ic = bus.create_input_context("typer-test")
 committed = []
 ic.connect("commit-text", lambda _ic, text: committed.append(text.get_text()))
+modes = []  # top-bar indicator symbol, from the "InputMode" property
+ic.connect("update-property", lambda _ic, p: modes.append(p.get_symbol().get_text()))
 ic.set_capabilities(
     IBus.Capabilite.PREEDIT_TEXT | IBus.Capabilite.LOOKUP_TABLE | IBus.Capabilite.AUXILIARY_TEXT | IBus.Capabilite.FOCUS
 )
@@ -82,8 +84,10 @@ assert committed == ["ទៅ"], committed  # ...after inserting the top suggesti
 key(IBus.KEY_Shift_L)  # tap Shift alone: English mode
 key(IBus.KEY_Shift_L, release=True)
 assert not press(ord("a")), "English mode should pass keys through"
+assert modes[-1:] == ["EN"], modes
 key(IBus.KEY_Shift_L)
 key(IBus.KEY_Shift_L, release=True)
 assert press(ord("a")), "back in Khmer mode"
+assert modes[-1:] == ["ខ"], modes
 
 print("ibus end-to-end: ok")

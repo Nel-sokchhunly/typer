@@ -18,6 +18,8 @@ typedef struct {
     IBusEngine parent;
     GString *buffer;
     IBusLookupTable *table;
+    IBusProperty *mode;   /* "InputMode": GNOME's top bar shows its symbol as the indicator */
+    IBusPropList *props;
     gboolean shift_alone; /* Shift pressed with no other key since */
 } TyperEngine;
 
@@ -39,6 +41,10 @@ static void typer_engine_init(TyperEngine *e) {
     e->buffer = g_string_new(NULL);
     e->table = g_object_ref_sink(ibus_lookup_table_new(9, 0, TRUE, TRUE));
     ibus_lookup_table_set_orientation(e->table, IBUS_ORIENTATION_VERTICAL);
+    e->mode = g_object_ref_sink(ibus_property_new("InputMode", PROP_TYPE_NORMAL, ibus_text_new_from_static_string("Typer"),
+                                                  NULL, NULL, TRUE, TRUE, PROP_STATE_UNCHECKED, NULL));
+    e->props = g_object_ref_sink(ibus_prop_list_new());
+    ibus_prop_list_append(e->props, e->mode);
 }
 
 static void typer_engine_destroy(IBusObject *o) {
@@ -48,6 +54,8 @@ static void typer_engine_destroy(IBusObject *o) {
         e->buffer = NULL;
     }
     g_clear_object(&e->table);
+    g_clear_object(&e->props);
+    g_clear_object(&e->mode);
     IBUS_OBJECT_CLASS(typer_engine_parent_class)->destroy(o);
 }
 
@@ -116,6 +124,18 @@ static void badge(TyperEngine *e, const gchar *text) {
     g_timeout_add(BADGE_MS, hide_badge, g_object_ref(e));
 }
 
+/* Persistent mode indicator, out of the way in the top bar. */
+static void show_mode(TyperEngine *e) {
+    ibus_property_set_symbol(e->mode, ibus_text_new_from_static_string(english ? "EN" : "ខ"));
+    ibus_property_set_label(e->mode, ibus_text_new_from_static_string(english ? "English" : "Khmer"));
+}
+
+static void focus_in(IBusEngine *ie) {
+    TyperEngine *e = (TyperEngine *)ie;
+    show_mode(e); /* english is shared: another app may have toggled it */
+    ibus_engine_register_properties(ie, e->props);
+}
+
 /* Mirrors macos/InputController.swift. TRUE = we handled the key. */
 static gboolean process_key_event(IBusEngine *ie, guint keyval, guint keycode, guint mods) {
     TyperEngine *e = (TyperEngine *)ie;
@@ -125,6 +145,8 @@ static gboolean process_key_event(IBusEngine *ie, guint keyval, guint keycode, g
         if (shift_key && e->shift_alone && e->buffer->len == 0) {
             english = !english;
             badge(e, english ? "EN" : "ខ");
+            show_mode(e);
+            ibus_engine_update_property(ie, e->mode);
         }
         if (shift_key) e->shift_alone = FALSE;
         return FALSE;
@@ -199,6 +221,8 @@ static void typer_engine_class_init(TyperEngineClass *klass) {
     IBusEngineClass *ec = IBUS_ENGINE_CLASS(klass);
     ec->process_key_event = process_key_event;
     ec->candidate_clicked = candidate_clicked;
+    ec->focus_in = focus_in;
+    ec->enable = focus_in;
     ec->focus_out = keep_latin;
     ec->reset = keep_latin;
     ec->disable = keep_latin;
