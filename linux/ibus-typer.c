@@ -4,7 +4,7 @@
  * IBus's own candidate window lists Khmer. Up/Down: move. Enter / 1-9 / click: insert.
  * Tab or Esc: insert the latin as typed. Backspace: edit.
  * Punctuation or shortcuts: insert top suggestion, then the key goes on to the app.
- * Tap Shift alone with nothing typed: toggle English passthrough.
+ * Tap Ctrl alone with nothing typed: toggle English passthrough.
  */
 #include <ibus.h>
 #include "typer.h"
@@ -20,7 +20,7 @@ typedef struct {
     IBusLookupTable *table;
     IBusProperty *mode;   /* "InputMode": GNOME's top bar shows its symbol as the indicator */
     IBusPropList *props;
-    gboolean shift_alone; /* Shift pressed with no other key since */
+    gboolean ctrl_alone; /* Ctrl pressed with no other key since */
 } TyperEngine;
 
 typedef struct {
@@ -140,19 +140,19 @@ static void focus_in(IBusEngine *ie) {
 static gboolean process_key_event(IBusEngine *ie, guint keyval, guint keycode, guint mods) {
     TyperEngine *e = (TyperEngine *)ie;
     (void)keycode;
-    gboolean shift_key = keyval == IBUS_KEY_Shift_L || keyval == IBUS_KEY_Shift_R;
+    gboolean ctrl_key = keyval == IBUS_KEY_Control_L || keyval == IBUS_KEY_Control_R;
     if (mods & IBUS_RELEASE_MASK) {
-        if (shift_key && e->shift_alone && e->buffer->len == 0) {
+        if (ctrl_key && e->ctrl_alone && e->buffer->len == 0) {
             english = !english;
             badge(e, english ? "EN" : "ខ");
             show_mode(e);
             ibus_engine_update_property(ie, e->mode);
         }
-        if (shift_key) e->shift_alone = FALSE;
+        if (ctrl_key) e->ctrl_alone = FALSE;
         return FALSE;
     }
-    e->shift_alone = shift_key; /* any other key: Shift was a modifier, not a tap */
-    if (shift_key || english) return FALSE;
+    e->ctrl_alone = ctrl_key; /* any other key: Ctrl was a modifier, not a tap */
+    if (ctrl_key || keyval == IBUS_KEY_Shift_L || keyval == IBUS_KEY_Shift_R || english) return FALSE;
 
     gboolean composing = e->buffer->len > 0;
     guint n = ibus_lookup_table_get_number_of_candidates(e->table);

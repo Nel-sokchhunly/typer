@@ -82,12 +82,15 @@ assert not press(ord(".")), "punctuation should pass through to the app"
 pump()
 assert committed == ["ទៅ"], committed  # ...after inserting the top suggestion
 
-key(IBus.KEY_Shift_L)  # tap Shift alone: English mode
+key(IBus.KEY_Shift_L)  # Shift is for capitals, never a toggle
 key(IBus.KEY_Shift_L, release=True)
+assert "EN" not in modes, modes
+key(IBus.KEY_Control_L)  # tap Ctrl alone: English mode
+key(IBus.KEY_Control_L, release=True)
 assert not press(ord("a")), "English mode should pass keys through"
 assert modes[-1:] == ["EN"], modes
-key(IBus.KEY_Shift_L)
-key(IBus.KEY_Shift_L, release=True)
+key(IBus.KEY_Control_L)
+key(IBus.KEY_Control_L, release=True)
 assert press(ord("a")), "back in Khmer mode"
 assert modes[-1:] == ["ខ"], modes
 

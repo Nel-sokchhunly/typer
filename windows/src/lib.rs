@@ -3,7 +3,7 @@
 //! Same keys as macOS: letters and spaces build a latin phrase (the composition); the popup lists Khmer.
 //! ↓/↑: move highlight. Enter / 1-9: insert. Tab or Esc: insert the latin as typed. Backspace: edit.
 //! Punctuation or shortcuts: insert top suggestion, then the key goes on to the app.
-//! Tap Shift alone with nothing typed: toggle English passthrough.
+//! Tap Ctrl alone with nothing typed: toggle English passthrough.
 #![allow(non_snake_case)]
 
 mod popup;
@@ -202,7 +202,7 @@ struct State {
     buffer: String,
     suggestions: Vec<String>,
     selected: usize,
-    shift_alone: bool, // Shift pressed with no other key since
+    ctrl_alone: bool, // Ctrl pressed with no other key since
 }
 
 #[implement(ITfTextInputProcessorEx, ITfKeyEventSink, ITfCompositionSink)]
@@ -277,7 +277,7 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
 
     fn OnTestKeyUp(&self, ctx: Option<&ITfContext>, w: WPARAM, _: LPARAM) -> Result<BOOL> {
         let mut s = self.s.borrow_mut();
-        let tap = VIRTUAL_KEY(w.0 as u16) == VK_SHIFT && std::mem::take(&mut s.shift_alone);
+        let tap = VIRTUAL_KEY(w.0 as u16) == VK_CONTROL && std::mem::take(&mut s.ctrl_alone);
         let idle = s.buffer.is_empty(); // composing: the suggestion list has the badge's spot
         drop(s);
         if tap && idle {
@@ -330,8 +330,8 @@ impl TextService_Impl {
     /// Decide what `w` does; with `ctx` (OnKeyDown) also do it. Mirrors macos/InputController.swift.
     fn key(&self, ctx: Option<&ITfContext>, w: WPARAM) -> Act {
         let vk = VIRTUAL_KEY(w.0 as u16);
-        self.s.borrow_mut().shift_alone = vk == VK_SHIFT; // any other key: Shift was a modifier
-        if vk == VK_SHIFT || ENGLISH.load(Relaxed) {
+        self.s.borrow_mut().ctrl_alone = vk == VK_CONTROL; // any other key: Ctrl was a modifier
+        if matches!(vk, VK_SHIFT | VK_CONTROL) || ENGLISH.load(Relaxed) {
             return Act::Pass;
         }
         let down = |k: VIRTUAL_KEY| unsafe { GetKeyState(k.0 as i32) } < 0;

@@ -73,14 +73,14 @@ Type Khmer in Latin letters, with spaces between words. A list of suggestions ap
 | `Delete` | Edit what you're typing |
 | `.` `,` `?` and other punctuation | Insert the first suggestion, then the punctuation |
 | `Tab` | Insert what you typed as English, and stay in Khmer |
-| Tap `Shift` with nothing typed | Switch between Khmer and English. A small **ខ** / **EN** badge shows the mode |
+| Tap `Ctrl` alone with nothing typed | Switch between Khmer and English. A small **ខ** / **EN** badge shows the mode |
 
 **Tips**
 
 - Spell words however you normally do. `knhom`, `knh` and `nh` all work for ខ្ញុំ.
 - When the right answer isn't first, pick it with a number. Typer remembers it and ranks it higher next time.
 - For one English word in a Khmer sentence, type it and press `Tab`. It goes in exactly as typed, and you stay in Khmer.
-- To type a lot of English, tap `Shift` with nothing typed. Your keys then go straight through as normal English. Tap `Shift` again to go back to Khmer. Holding `Shift` to type a capital letter does not switch modes.
+- To type a lot of English, tap `Ctrl` on its own with nothing typed. Your keys then go straight through as normal English. Tap `Ctrl` again to go back to Khmer. Shortcuts like `Ctrl C` do not switch modes.
 
 ## Install on Windows
 
@@ -132,7 +132,7 @@ rm -rf ~/Library/Input\ Methods/Typer.app ~/Library/Application\ Support/Typer
 
 ## Problems?
 
-- **No suggestions appear:** make sure Typer is the selected input source (check the menu bar). You may be in English mode; tap `Shift` once.
+- **No suggestions appear:** make sure Typer is the selected input source (check the menu bar). You may be in English mode; tap `Ctrl` once.
 - **"Typer can't be opened" or nothing happens:** run the `xattr` line from step 1 again, then log out and back in.
 - **Old icon in the Globe switcher or menu bar:** run `killall -9 TextInputSwitcher TextInputMenuAgent` in Terminal (macOS restarts them), or log out and back in.
 - **Bad suggestion:** please report what you typed and what you expected at <https://github.com/Nel-sokchhunly/typer/issues>. These reports are how the engine improves.
@@ -166,7 +166,7 @@ Release: `git tag v0.1.1 && git push origin v0.1.1`. CI (`.github/workflows/ci.y
 Then System Settings → Keyboard → Input Sources → Edit → + → Khmer → **Typer / សរសេរ**. Switch with Ctrl-Space / Globe.
 
 Type `knhom tov sala rean`: ↓/↑ = move highlight, Enter = insert highlighted, 1-9 = pick, Tab/Esc = keep latin, Delete = edit,
-tap Shift alone (nothing typed) = toggle English passthrough.
+tap Ctrl alone (nothing typed) = toggle English passthrough.
 Picks are learned into `~/Library/Application Support/Typer/` (`user.tsv`, `picks.tsv`).
 After a rebuild, `install` restarts the input method; if it still looks stale, switch input source away and back.
 

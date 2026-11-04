@@ -5,11 +5,11 @@ import InputMethodKit
 /// ↓/↑: move highlight. Enter: insert highlighted. 1-9 / click: insert that one.
 /// Inserted suggestions are learned. Tab or Esc: insert the latin as typed.
 /// Delete: edit the phrase. Punctuation or shortcuts: insert top suggestion, then pass the key on.
-/// Tap Shift alone with nothing typed: toggle English passthrough (keys go straight to the app).
+/// Tap Ctrl alone with nothing typed: toggle English passthrough (keys go straight to the app).
 @objc(TyperInputController)
 class TyperInputController: IMKInputController {
     private static var english = false  // shared by all apps, like the system Caps Lock
-    private var shiftAlone = false  // Shift pressed with no other key since
+    private var ctrlAlone = false  // Ctrl pressed with no other key since
     private var buffer = ""
     private var suggestions: [String] = []
     private var selected = 0  // highlighted row; Enter inserts it
@@ -22,21 +22,21 @@ class TyperInputController: IMKInputController {
     override func handle(_ event: NSEvent!, client sender: Any!) -> Bool {
         guard let event, let client = sender as? IMKTextInput else { return false }
         if event.type == .flagsChanged {
-            let shiftKey = event.keyCode == 56 || event.keyCode == 60
-            let others = !event.modifierFlags.intersection([.command, .control, .option]).isEmpty
-            if !shiftKey || others {
-                shiftAlone = false
-            } else if event.modifierFlags.contains(.shift) {
-                shiftAlone = true
-            } else if shiftAlone {
-                shiftAlone = false
+            let ctrlKey = event.keyCode == 59 || event.keyCode == 62
+            let others = !event.modifierFlags.intersection([.command, .shift, .option]).isEmpty
+            if !ctrlKey || others {
+                ctrlAlone = false
+            } else if event.modifierFlags.contains(.control) {
+                ctrlAlone = true
+            } else if ctrlAlone {
+                ctrlAlone = false
                 toggleEnglish(client)
             }
             return false
         }
         guard event.type == .keyDown else { return false }
         defer { refreshBadge(client) }  // not on modifiers: they don't move the caret, and would cut the toggle flash
-        shiftAlone = false  // Shift+letter is a capital, not a toggle
+        ctrlAlone = false  // Ctrl+key is a shortcut, not a toggle
         if Self.english { return false }
         let composing = !buffer.isEmpty
 
@@ -87,7 +87,7 @@ class TyperInputController: IMKInputController {
     }
 
     private func toggleEnglish(_ client: IMKTextInput) {
-        guard buffer.isEmpty else { return }  // mid-phrase Shift is a stray capital, not a command
+        guard buffer.isEmpty else { return }  // mid-phrase: a stray tap, not a command
         Self.english.toggle()
         ModeBadge.show(mode, near: client)
     }
@@ -137,10 +137,12 @@ class TyperInputController: IMKInputController {
     }
 
     override func activateServer(_ sender: Any!) {
+        ctrlAlone = false  // Ctrl+Space switched input source: its Ctrl release is not a tap
         if let client = sender as? IMKTextInput { ModeBadge.follow(mode, near: client) }
     }
 
     override func deactivateServer(_ sender: Any!) {
+        ctrlAlone = false
         commitComposition(sender)
         CandidatePanel.shared.hide()
         ModeBadge.hide()
