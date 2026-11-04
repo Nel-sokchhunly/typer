@@ -2,11 +2,10 @@ import Cocoa
 import InputMethodKit
 
 /// "EN" / "ខ" under the cursor, on yellow: bright for a moment after a toggle, then faint and always there.
-/// Sits below the current line, click-through; moves after each key. Hidden while suggestions show.
+/// Sits below the current line, click-through. Hidden while typing; back at the caret after a pause.
 enum ModeBadge {
     private static let faint: CGFloat = 0.75
-    // the app moves its caret after us; re-check soon and keep re-checking for slow apps
-    private static let followDelays = [0.015, 0.05, 0.15]
+    private static let restDelay = 1.0  // typing pause before it comes back
     private static var generation = 0
     private static let label: NSTextField = {
         let l = NSTextField(labelWithString: "")
@@ -39,14 +38,13 @@ enum ModeBadge {
         }
     }
 
-    /// Any key or focus change: move the faint badge to the caret.
+    /// Any key or focus change: out of the way now, faint at the caret once typing pauses.
     static func follow(_ text: String, near client: IMKTextInput) {
         let mine = bump()
-        for delay in followDelays {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                guard mine == generation, place(text, client) else { return }
-                panel.alphaValue = faint
-            }
+        panel.orderOut(nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + restDelay) {
+            guard mine == generation, place(text, client) else { return }
+            panel.alphaValue = faint
         }
     }
 

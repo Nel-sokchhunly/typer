@@ -1,5 +1,6 @@
 //! Suggestion list and mode badge: one borderless popup per UI thread, painted with GDI.
-//! The badge stays under the caret, yellow, faint and click-through; bright for a moment after a toggle.
+//! The badge sits under the caret, yellow, faint and click-through; bright for a moment after a toggle,
+//! hidden while typing and back once typing pauses.
 //! Rounded corners on Windows 11; light/dark follows the system app theme.
 use std::cell::RefCell;
 
@@ -16,6 +17,7 @@ struct Popup {
     hwnd: HWND,
     items: Vec<String>,
     selected: Option<usize>, // None: mode badge
+    rest: Option<(String, RECT)>, // badge to show when timer 2 fires
 }
 
 thread_local! {
@@ -29,6 +31,7 @@ const NUM_W: i32 = 28;
 const MIN_W: i32 = 180;
 const BADGE_MS: u32 = 800;
 const FAINT: u8 = 190; // badge opacity at rest, of 255
+const REST_MS: u32 = 1000; // typing pause before the badge comes back
 
 pub fn show(items: &[String], selected: usize, caret: RECT) {
     if items.is_empty() {
@@ -53,19 +56,22 @@ pub fn badge(text: &str) {
     unsafe { SetTimer(hwnd, 1, BADGE_MS, None) };
 }
 
-/// After a key or focus change: faint badge at `caret` (from TSF) or the system caret; hidden if neither.
+/// After a key or focus change: hidden now, faint at `caret` (from TSF) or the system caret once
+/// typing pauses (timer 2); stays hidden if neither.
 pub fn follow(text: &str, caret: Option<RECT>) {
-    match caret.or_else(system_caret) {
-        Some(rc) => {
-            place(vec![text.to_string()], None, rc, FAINT);
-        }
-        None => hide(),
+    hide();
+    if let Some(rc) = caret.or_else(system_caret) {
+        let hwnd = window();
+        P.with(|p| p.borrow_mut().rest = Some((text.to_string(), rc)));
+        unsafe { SetTimer(hwnd, 2, REST_MS, None) };
     }
 }
 
 pub fn hide() {
     P.with(|p| unsafe {
-        let _ = ShowWindow(p.borrow().hwnd, SW_HIDE);
+        let hwnd = p.borrow().hwnd;
+        let _ = KillTimer(hwnd, 2);
+        let _ = ShowWindow(hwnd, SW_HIDE);
     });
 }
 
@@ -73,6 +79,7 @@ fn place(items: Vec<String>, selected: Option<usize>, caret: RECT, alpha: u8) ->
     let hwnd = window();
     unsafe {
         let _ = KillTimer(hwnd, 1);
+        let _ = KillTimer(hwnd, 2); // anything shown now beats a badge waiting for a pause
         let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), alpha, LWA_ALPHA);
         let px = scale(hwnd);
         // measure the widest suggestion
@@ -220,7 +227,13 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) ->
         WM_NCHITTEST if P.with(|p| p.try_borrow().is_ok_and(|p| p.selected.is_none())) => LRESULT(-1), // HTTRANSPARENT
         WM_TIMER => {
             let _ = KillTimer(hwnd, w.0);
-            let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), FAINT, LWA_ALPHA);
+            if w.0 == 2 {
+                if let Some((text, rc)) = P.with(|p| p.borrow_mut().rest.take()) {
+                    place(vec![text], None, rc, FAINT);
+                }
+            } else {
+                let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), FAINT, LWA_ALPHA);
+            }
             LRESULT(0)
         }
         _ => DefWindowProcW(hwnd, msg, w, l),
