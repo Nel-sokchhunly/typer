@@ -6,6 +6,7 @@
 //! - English: a token that is an English word (data/out/english.tsv) may stay English, scored as
 //!   P(<oth> | prev words) * P(word in English), so common chat spellings (mean = មាន) keep their Khmer;
 //!   right after another English word, by English bigrams instead ("thank you").
+//! - Negation frame: after អត់/មិន/... the closing ទេ gets a bonus, however far back the negation is.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -29,6 +30,10 @@ const USER_BOOST: f32 = 100.0; // one pick counts like 100 corpus occurrences
 const MAX_JOIN: usize = 3; // one Khmer word may be typed as up to 3 latin tokens ("pirn ng" -> ប៉ុណ្ណឹង)
 const JOIN_MAX_DIST: f32 = 1.5; // joined tokens must spell the word closely
 const JOIN_PENALTY: f32 = 2.0; // offsets the LM term a one-word path saves over a two-word path
+// ponytail: one hand rule for the commonest long-range pattern; more frames want a real sentence model
+const NEGATIONS: [&str; 5] = ["អត់", "មិន", "គ្មាន", "ពុំ", "កុំ"];
+const NEG_CLOSE: &str = "ទេ";
+const NEG_BONUS: f32 = 1.0; // ទេ after an open negation ("ot mean te" -> អត់មានទេ, not អត់មានតែ)
 const EN_SWITCH: f32 = 1.0; // cost of switching from Khmer into English; raise if English steals Khmer phrases
 
 fn is_vowel(c: u8) -> bool {
@@ -139,6 +144,7 @@ fn read_counts(path: &Path, counts: &mut Counts) {
 struct Path_ {
     words: Vec<String>, // Khmer word, or raw latin token
     score: f32,
+    neg: bool, // a negation is waiting for its ទេ
 }
 
 impl Engine {
@@ -295,7 +301,7 @@ impl Engine {
         let n = toks.len();
         // beams[i] = best paths that consumed the first i tokens; a word may consume 1..=MAX_JOIN tokens
         let mut beams: Vec<Vec<Path_>> = vec![Vec::new(); n + 1];
-        beams[0].push(Path_ { words: vec!["<s>".into(), "<s>".into()], score: 0.0 });
+        beams[0].push(Path_ { words: vec!["<s>".into(), "<s>".into()], score: 0.0, neg: false });
         for i in 0..n {
             let mut here = std::mem::take(&mut beams[i]);
             here.sort_by(|a, b| b.score.total_cmp(&a.score));
@@ -322,9 +328,12 @@ impl Engine {
                         } else {
                             LM_WEIGHT * self.lm(ctx(u), ctx(v), w)
                         };
+                        let closes = p.neg && w == NEG_CLOSE;
+                        let neg = (p.neg || NEGATIONS.contains(&w.as_str())) && !closes;
+                        let bonus = if closes { NEG_BONUS } else { 0.0 };
                         let mut words = p.words.clone();
                         words.push(w.clone());
-                        beams[i + len].push(Path_ { words, score: p.score + lm + spell });
+                        beams[i + len].push(Path_ { words, score: p.score + lm + spell + bonus, neg });
                     }
                 }
             }
@@ -383,6 +392,9 @@ mod tests {
         assert_eq!(e.suggest("thank you bong", 1)[0].text, "thank you បង");
         assert_eq!(e.suggest("mean", 1)[0].text, "មាន");
         assert!(e.suggest("mean", 9).iter().any(|s| s.text == "mean")); // IMEs show 9
+        // negation frame closes with ទេ, however far back the negation is; plain តែ stays
+        assert_eq!(e.suggest("ot mean luy te", 1)[0].text, "អត់មានលុយទេ");
+        assert_eq!(e.suggest("knhom mean te muoy", 1)[0].text, "ខ្ញុំមានតែមួយ");
     }
 
     #[test]
