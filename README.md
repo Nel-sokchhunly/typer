@@ -110,6 +110,14 @@ knhom tov sala rean   →   ខ្ញុំទៅសាលារៀន
 - `te` closing a negative becomes ទេ, however long the sentence: `ot mean luy te` suggests **អត់មានលុយទេ**.
 - For a word exactly as typed in Latin letters, type it and press `Esc`. You stay in Khmer.
 
+**Settings**
+
+Open **Typer Settings** to switch features on or off (all on by default): extra words with guessed spellings, English words in suggestions, learning from your picks, and the ខ / EN badge. Changes apply on your next keystroke.
+
+- **macOS:** click the input menu in the menu bar → **Typer Settings…**
+- **Windows:** Start menu → **Typer Settings**, or **Settings → Time & language → Language & region → Khmer → Typer → Options**.
+- **Linux:** the keyboard menu in the top bar → **Typer Settings…**, or **Typer Settings** in your apps.
+
 **Platform differences**
 
 - **Windows:** picking with the mouse isn't supported yet; use `Enter` or `1` to `9`.

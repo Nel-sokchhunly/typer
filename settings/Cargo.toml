@@ -1,0 +1,15 @@
+[package]
+name = "typer-settings"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+typer = { path = "../engine" }
+tauri = { version = "2", features = [] }
+
+[profile.release]
+opt-level = "s"
+strip = true

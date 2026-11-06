@@ -28,6 +28,7 @@ jobs:
           for t in x86_64-pc-windows-msvc i686-pc-windows-msvc; do
             cargo build --release --manifest-path windows/Cargo.toml --target $t
           done
+      - run: cargo build --release --manifest-path settings/Cargo.toml
       - name: Check DLL exports and runtime imports
         run: |
           pip install -q pefile
@@ -50,7 +51,10 @@ jobs:
     runs-on: ubuntu-22.04 # oldest supported glibc, so the .deb installs on 22.04+ and Debian 12
     steps:
       - uses: actions/checkout@v5
-      - run: sudo apt-get update -qq && sudo apt-get install -y -qq libibus-1.0-dev ibus python3-gi gir1.2-ibus-1.0 dbus
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libibus-1.0-dev ibus python3-gi gir1.2-ibus-1.0 dbus \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev libxdo-dev libssl-dev
       - run: TYPER_VERSION="${GITHUB_REF_NAME#v}" linux/build.sh deb
         if: startsWith(github.ref, 'refs/tags/v')
       - run: linux/build.sh deb
@@ -64,6 +68,14 @@ jobs:
         with:
           name: linux-deb
           path: build/Typer-linux-amd64.deb
+
+  macos:
+    needs: test
+    if: ${{ !startsWith(github.ref, 'refs/tags/v') }} # tags build macOS in the release job
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: macos/build.sh
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')

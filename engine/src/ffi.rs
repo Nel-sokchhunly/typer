@@ -39,6 +39,13 @@ pub unsafe extern "C" fn typer_pick(e: *mut Engine, input: *const c_char, index:
     let _ = e.pick(input, index as usize); // ponytail: learning failure is silent; surface it if users report lost picks
 }
 
+/// Whether switch `name` ("badge", "english", ...; see SETTINGS) is on. Cheap: call it per keystroke.
+#[no_mangle]
+pub unsafe extern "C" fn typer_setting(e: *const Engine, name: *const c_char) -> bool {
+    let (Some(e), Some(name)) = (e.as_ref(), str_arg(name)) else { return true };
+    e.setting(name)
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn typer_string_free(s: *mut c_char) {
     if !s.is_null() {

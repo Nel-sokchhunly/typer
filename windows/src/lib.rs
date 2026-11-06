@@ -61,6 +61,18 @@ fn with_engine<T>(f: impl FnOnce(&mut Engine) -> T) -> Option<T> {
     g.as_mut().map(f)
 }
 
+/// The ខ/EN badge setting (Typer Settings); on when the engine can't load.
+fn badge_on() -> bool {
+    with_engine(|e| e.setting("badge")).unwrap_or(true)
+}
+
+/// Typer Settings, installed next to the DLLs.
+fn open_settings() {
+    if let Some(dir) = dll_path().parent() {
+        let _ = std::process::Command::new(dir.join("typer-settings.exe")).spawn();
+    }
+}
+
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().collect()
 }
@@ -205,7 +217,7 @@ struct State {
     ctrl_alone: bool, // Ctrl pressed with no other key since
 }
 
-#[implement(ITfTextInputProcessorEx, ITfKeyEventSink, ITfCompositionSink)]
+#[implement(ITfTextInputProcessorEx, ITfKeyEventSink, ITfCompositionSink, ITfFnConfigure)]
 #[derive(Default)]
 struct TextService {
     s: RefCell<State>,
@@ -248,6 +260,20 @@ impl ITfTextInputProcessorEx_Impl for TextService_Impl {
         let mut s = self.s.borrow_mut();
         s.thread_mgr = Some(tm);
         s.client = tid;
+        Ok(())
+    }
+}
+
+// Windows Settings > Time & language > Language > Khmer > Typer > Options
+impl ITfFunction_Impl for TextService_Impl {
+    fn GetDisplayName(&self) -> Result<BSTR> {
+        Ok(BSTR::from("Typer Settings"))
+    }
+}
+
+impl ITfFnConfigure_Impl for TextService_Impl {
+    fn Show(&self, _: HWND, _: u16, _: *const GUID) -> Result<()> {
+        open_settings();
         Ok(())
     }
 }

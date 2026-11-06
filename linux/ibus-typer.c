@@ -12,12 +12,14 @@
 #ifndef TYPER_DATADIR
 #define TYPER_DATADIR "/usr/share/typer"
 #endif
+#define TYPER_SETTINGS "/usr/lib/ibus-typer/typer-settings"
 
 typedef struct {
     IBusEngine parent;
     GString *buffer;
     IBusLookupTable *table;
     IBusProperty *mode;   /* "InputMode": GNOME's top bar shows its symbol as the indicator */
+    IBusProperty *settings; /* "Settings…" in the top-bar menu: opens Typer Settings */
     IBusPropList *props;
     gboolean ctrl_alone; /* Ctrl pressed with no other key since */
 } TyperEngine;
@@ -42,8 +44,12 @@ static void typer_engine_init(TyperEngine *e) {
     ibus_lookup_table_set_orientation(e->table, IBUS_ORIENTATION_VERTICAL);
     e->mode = g_object_ref_sink(ibus_property_new("InputMode", PROP_TYPE_NORMAL, ibus_text_new_from_static_string("Typer"),
                                                   NULL, NULL, TRUE, TRUE, PROP_STATE_UNCHECKED, NULL));
+    e->settings = g_object_ref_sink(ibus_property_new("settings", PROP_TYPE_NORMAL,
+                                                      ibus_text_new_from_static_string("Typer Settings…"), NULL, NULL,
+                                                      TRUE, TRUE, PROP_STATE_UNCHECKED, NULL));
     e->props = g_object_ref_sink(ibus_prop_list_new());
     ibus_prop_list_append(e->props, e->mode);
+    ibus_prop_list_append(e->props, e->settings);
 }
 
 static void typer_engine_destroy(IBusObject *o) {
@@ -55,6 +61,7 @@ static void typer_engine_destroy(IBusObject *o) {
     g_clear_object(&e->table);
     g_clear_object(&e->props);
     g_clear_object(&e->mode);
+    g_clear_object(&e->settings);
     IBUS_OBJECT_CLASS(typer_engine_parent_class)->destroy(o);
 }
 
@@ -121,7 +128,7 @@ static void show_mode(TyperEngine *e) {
     IBusEngine *ie = (IBusEngine *)e;
     ibus_property_set_symbol(e->mode, ibus_text_new_from_static_string(english ? "EN" : "ខ"));
     ibus_property_set_label(e->mode, ibus_text_new_from_static_string(english ? "English" : "Khmer"));
-    if (e->buffer->len)
+    if (e->buffer->len || (core && !typer_setting(core, "badge")))
         ibus_engine_hide_auxiliary_text(ie);
     else
         ibus_engine_update_auxiliary_text(ie, ibus_text_new_from_static_string(english ? "EN" : "ខ"), TRUE);
@@ -208,6 +215,12 @@ static gboolean process_key_event(IBusEngine *ie, guint keyval, guint keycode, g
     return FALSE;
 }
 
+static void property_activate(IBusEngine *ie, const gchar *name, guint state) {
+    (void)ie;
+    (void)state;
+    if (g_strcmp0(name, "settings") == 0) g_spawn_command_line_async(TYPER_SETTINGS, NULL);
+}
+
 static void candidate_clicked(IBusEngine *ie, guint index, guint button, guint state) {
     (void)button;
     (void)state;
@@ -225,6 +238,7 @@ static void typer_engine_class_init(TyperEngineClass *klass) {
     IBusEngineClass *ec = IBUS_ENGINE_CLASS(klass);
     ec->process_key_event = process_key_event;
     ec->candidate_clicked = candidate_clicked;
+    ec->property_activate = property_activate;
     ec->focus_in = focus_in;
     ec->enable = focus_in;
     ec->focus_out = keep_latin;
