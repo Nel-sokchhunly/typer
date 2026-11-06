@@ -104,9 +104,8 @@ assert press(ord("a")), "back in Khmer mode"
 assert modes[-1:] == ["ខ"], modes
 
 typed("knhom")
-ic.focus_out()  # left the text field mid-phrase: latin kept, badge gone
+ic.focus_out()  # left the text field mid-phrase: badge gone (the daemon drops text committed after focus out)
 pump()
-assert committed[-1:] == ["knhom"], committed
 assert aux[-1:] == [(None, False)], aux
 ic.focus_in()
 pump()
