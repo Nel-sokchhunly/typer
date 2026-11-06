@@ -103,4 +103,13 @@ key(IBus.KEY_Control_L, release=True)
 assert press(ord("a")), "back in Khmer mode"
 assert modes[-1:] == ["ខ"], modes
 
+typed("knhom")
+ic.focus_out()  # left the text field mid-phrase: latin kept, badge gone
+pump()
+assert committed[-1:] == ["knhom"], committed
+assert aux[-1:] == [(None, False)], aux
+ic.focus_in()
+pump()
+assert aux[-1:] == [("ខ", True)], aux  # back in a text field: badge returns
+
 print("ibus end-to-end: ok")
