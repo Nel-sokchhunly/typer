@@ -14,7 +14,7 @@ jobs:
       - run: python3 data/build.py
       - run: cargo test --release --manifest-path engine/Cargo.toml
 
-  windows:
+  windows-check: # also builds the installer for v* tags
     needs: test
     runs-on: windows-latest
     defaults:
@@ -46,7 +46,7 @@ jobs:
           name: windows-setup
           path: build/Typer-windows-setup.exe
 
-  linux:
+  linux-check: # also builds the .deb for v* tags
     needs: test
     runs-on: ubuntu-22.04 # oldest supported glibc, so the .deb installs on 22.04+ and Debian 12
     steps:
@@ -79,7 +79,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test, windows, linux]
+    needs: [test, windows-check, linux-check]
     runs-on: macos-latest
     permissions:
       contents: write
