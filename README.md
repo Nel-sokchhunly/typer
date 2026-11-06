@@ -100,7 +100,7 @@ knhom tov sala rean   →   ខ្ញុំទៅសាលារៀន
 | `Delete` (`Backspace` on Windows / Linux) | Edit what you're typing |
 | Tap `Ctrl` on its own, with nothing typed | Switch between Khmer and English |
 
-**Khmer or English?** A small yellow **ខ** or **EN** badge under the cursor shows the mode. It hides while you type and comes back when you pause for a second. In English mode your keys go straight to the app as normal English. Tap `Ctrl` again to go back to Khmer. Shortcuts like `Ctrl C` don't switch modes.
+**Khmer or English?** A small yellow **ខ** or **EN** badge under the cursor shows the mode. It hides while you type and comes back when you pause for a second. It goes away when you leave a text field. In English mode your keys go straight to the app as normal English. Tap `Ctrl` again to go back to Khmer. Shortcuts like `Ctrl C` don't switch modes.
 
 **Tips**
 
@@ -120,7 +120,7 @@ New in 0.4.0. Open **Typer Settings** to switch features on or off. Everything i
 
 - **macOS:** click the input menu in the menu bar, then **Typer Settings…**
 - **Windows:** Start menu → **Typer Settings**, or **Settings → Time & language → Language & region → Khmer → Typer → Options**.
-- **Linux:** the keyboard menu in the top bar → **Typer Settings…**, or open **Typer Settings** from your apps.
+- **Linux:** the keyboard menu in the top bar → **Typer Settings…**, **Settings → Keyboard → Input Sources → Typer → Preferences**, or open **Typer Settings** from your apps.
 
 | Switch | What it does |
 |---|---|

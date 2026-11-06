@@ -233,6 +233,13 @@ static void keep_latin(IBusEngine *ie) {
     if (e->buffer->len) commit_latin(e);
 }
 
+/* Focus left the text field (or Typer was switched off): keep the latin, and take the badge with us,
+ * or it stays on screen where the caret used to be. */
+static void focus_out(IBusEngine *ie) {
+    keep_latin(ie);
+    ibus_engine_hide_auxiliary_text(ie);
+}
+
 static void typer_engine_class_init(TyperEngineClass *klass) {
     IBUS_OBJECT_CLASS(klass)->destroy = typer_engine_destroy;
     IBusEngineClass *ec = IBUS_ENGINE_CLASS(klass);
@@ -241,9 +248,9 @@ static void typer_engine_class_init(TyperEngineClass *klass) {
     ec->property_activate = property_activate;
     ec->focus_in = focus_in;
     ec->enable = focus_in;
-    ec->focus_out = keep_latin;
+    ec->focus_out = focus_out;
     ec->reset = keep_latin;
-    ec->disable = keep_latin;
+    ec->disable = focus_out;
 }
 
 static void quit(IBusBus *bus, gpointer data) {
