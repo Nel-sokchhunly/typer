@@ -21,6 +21,7 @@
       <description>Type Khmer in Latin letters, spelled however you like</description>
       <rank>0</rank>
       <symbol>ស</symbol>
+      <setup>/usr/lib/ibus-typer/typer-settings</setup>
     </engine>
   </engines>
 </component>

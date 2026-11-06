@@ -8,12 +8,14 @@
 //!   right after another English word, by English bigrams instead ("thank you").
 //! - Negation frame: after អត់/មិន/... the closing ទេ gets a bonus, however far back the negation is.
 //! - Punctuation typed in the phrase stays as typed: "knhom, tov te?" -> ខ្ញុំ, ទៅទេ?
+//! - Settings: on/off switches in `user_dir/settings.txt` (SETTINGS), re-read when the file changes.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 pub mod ffi;
 
@@ -142,8 +144,35 @@ pub fn normalize(token: &str) -> String {
 
 type Counts = [HashMap<String, u64>; 3]; // n-gram key "w1 w2" -> count, by n-1
 
+/// User switches, all on by default. "badge" is read by the frontends (the ខ/EN mode badge).
+pub const SETTINGS: [&str; 4] = ["generated", "english", "learn", "badge"];
+
+/// Names switched off in `dir/settings.txt` ("name=off" lines; anything else counts as on).
+pub fn read_settings(dir: &Path) -> HashSet<String> {
+    let text = fs::read_to_string(dir.join("settings.txt")).unwrap_or_default();
+    text.lines()
+        .filter_map(|l| l.split_once('='))
+        .filter(|(_, v)| v.trim() == "off")
+        .map(|(k, _)| k.trim().to_string())
+        .collect()
+}
+
+/// Switch `name` on or off in `dir/settings.txt`; running engines pick it up on their next keystroke.
+pub fn write_setting(dir: &Path, name: &str, on: bool) -> std::io::Result<()> {
+    let mut off = read_settings(dir);
+    if on {
+        off.remove(name);
+    } else {
+        off.insert(name.to_string());
+    }
+    fs::create_dir_all(dir)?;
+    let text: String = SETTINGS.iter().map(|k| format!("{k}={}\n", if off.contains(*k) { "off" } else { "on" })).collect();
+    fs::write(dir.join("settings.txt"), text)
+}
+
 pub struct Engine {
     words: Vec<String>,
+    first_generated: usize, // words from here on have rule-generated spellings (generated.tsv)
     spellings: Vec<(Vec<u8>, u32)>, // (roman, word id)
     counts: Counts,
     user: Counts,
@@ -153,6 +182,7 @@ pub struct Engine {
     en_total: f32,                 // unigrams only
     // typed text -> candidates; while typing only the last token changes, so the rest are hits
     cache: RefCell<HashMap<String, Vec<(String, f32)>>>,
+    settings: RefCell<(Option<SystemTime>, HashSet<String>)>, // settings.txt mtime, names switched off
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -186,12 +216,20 @@ impl Engine {
     pub fn load(dir: &Path, user_dir: Option<&Path>) -> std::io::Result<Engine> {
         let mut words = Vec::new();
         let mut spellings = Vec::new();
-        for line in fs::read_to_string(dir.join("lexicon.tsv"))?.lines() {
-            let Some((word, romans)) = line.split_once('\t') else { continue };
-            for r in romans.split(',') {
-                spellings.push((r.as_bytes().to_vec(), words.len() as u32));
+        let lexicon = fs::read_to_string(dir.join("lexicon.tsv"))?;
+        let generated = fs::read_to_string(dir.join("generated.tsv")).unwrap_or_default(); // optional
+        let mut first_generated = 0;
+        for (i, text) in [lexicon, generated].iter().enumerate() {
+            if i == 1 {
+                first_generated = words.len();
             }
-            words.push(word.to_string());
+            for line in text.lines() {
+                let Some((word, romans)) = line.split_once('\t') else { continue };
+                for r in romans.split(',') {
+                    spellings.push((r.as_bytes().to_vec(), words.len() as u32));
+                }
+                words.push(word.to_string());
+            }
         }
         let ngrams = dir.join("ngrams.tsv");
         fs::metadata(&ngrams)?; // fail loudly if data is missing; user.tsv may not exist yet
@@ -210,6 +248,7 @@ impl Engine {
         let en_total = english.iter().filter(|(w, _)| !w.contains(' ')).map(|(_, c)| c).sum();
         Ok(Engine {
             words,
+            first_generated,
             spellings,
             counts,
             user,
@@ -218,7 +257,20 @@ impl Engine {
             english,
             en_total,
             cache: RefCell::default(),
+            settings: RefCell::default(),
         })
+    }
+
+    /// Whether switch `name` (one of SETTINGS) is on. Re-reads settings.txt when it changed.
+    pub fn setting(&self, name: &str) -> bool {
+        let Some(dir) = &self.user_dir else { return true };
+        let mtime = fs::metadata(dir.join("settings.txt")).and_then(|m| m.modified()).ok();
+        let mut s = self.settings.borrow_mut();
+        if s.0 != mtime {
+            *s = (mtime, read_settings(dir));
+            self.cache.borrow_mut().clear(); // candidates depend on "generated"
+        }
+        !s.1.contains(name)
     }
 
     fn count(&self, key: &str) -> f32 {
@@ -230,6 +282,9 @@ impl Engine {
     /// Remember that `typed` produced suggestion `s`: its 1-3 grams get user counts,
     /// appended to user.tsv; the pick is logged to picks.tsv (future eval / training data).
     pub fn learn(&mut self, typed: &str, s: &Suggestion) -> std::io::Result<()> {
+        if !self.setting("learn") {
+            return Ok(());
+        }
         let mut padded = vec!["<s>".to_string(), "<s>".to_string()];
         padded.extend(s.words.iter().cloned());
         let mut lines = String::new();
@@ -297,13 +352,18 @@ impl Engine {
         if t.is_empty() {
             return vec![];
         }
+        let generated_on = self.setting("generated"); // before the cache: a change clears it
         let key = format!("{max_dist}\t{t}");
         if let Some(hit) = self.cache.borrow().get(&key) {
             return hit.clone();
         }
         let mut best: HashMap<u32, f32> = HashMap::new();
+        let spellings = match generated_on {
+            true => &self.spellings[..],
+            false => &self.spellings[..self.spellings.partition_point(|(_, id)| (*id as usize) < self.first_generated)],
+        };
         // ponytail: linear scan of ~38k spellings (~7ms) per uncached token; index by first consonant if it lags
-        for (s, id) in &self.spellings {
+        for (s, id) in spellings {
             let d = dist(t.as_bytes(), s);
             if d <= max_dist {
                 let e = best.entry(*id).or_insert(f32::INFINITY);
@@ -314,11 +374,13 @@ impl Engine {
             .into_iter()
             .map(|(id, d)| (self.words[id as usize].clone(), if d == 0.0 { EXACT_BONUS } else { -SPELL_WEIGHT * d }))
             .collect();
-        // pre-rank by spelling + unigram so the beam sees plausible words first
+        // pre-rank by spelling + unigram so the beam sees plausible words first; exact spellings
+        // always survive the cut, so a rare word (count 1, e.g. rule-generated) typed exactly isn't
+        // crowded out by common near-misses
         out.sort_by(|a, b| {
             let sa = a.1 + (self.count(&a.0).max(0.5) / self.total).ln();
             let sb = b.1 + (self.count(&b.0).max(0.5) / self.total).ln();
-            sb.total_cmp(&sa)
+            (b.1 == EXACT_BONUS).cmp(&(a.1 == EXACT_BONUS)).then(sb.total_cmp(&sa))
         });
         out.truncate(CANDIDATES_PER_TOKEN);
         let mut cache = self.cache.borrow_mut();
@@ -333,6 +395,7 @@ impl Engine {
     pub fn suggest(&self, input: &str, k: usize) -> Vec<Suggestion> {
         let toks = tokens(input);
         let n = toks.len();
+        let english_on = self.setting("english");
         // beams[i] = best paths that consumed the first i tokens; a word may consume 1..=MAX_JOIN tokens
         let mut beams: Vec<Vec<Path_>> = vec![Vec::new(); n + 1];
         beams[0].push(Path_ { words: vec!["<s>".into(), "<s>".into()], score: 0.0, neg: false });
@@ -348,7 +411,7 @@ impl Engine {
                     vec![(toks[i].to_string(), 0.0)] // kept as typed
                 } else if len == 1 {
                     let mut c = self.candidates(toks[i], MAX_DIST);
-                    let english = self.english.contains_key(&normalize(toks[i]));
+                    let english = english_on && self.english.contains_key(&normalize(toks[i]));
                     c.push((toks[i].to_string(), if english { 0.0 } else { RAW_PENALTY })); // English: exact spelling
                     c
                 } else {
@@ -431,12 +494,42 @@ mod tests {
         assert_eq!(e.suggest("thank you bong", 1)[0].text, "thank you បង");
         assert_eq!(e.suggest("mean", 1)[0].text, "មាន");
         assert!(e.suggest("mean", 9).iter().any(|s| s.text == "mean")); // IMEs show 9
+        // rare words (count 1: hand-added or rule-generated spellings) typed exactly still show up
+        for (typed, want) in [("zin", "ហ្សីន"), ("fesbuk", "ហ្វេសប៊ុក")] {
+            assert!(e.suggest(typed, 9).iter().any(|s| s.text == want), "{typed} buried");
+        }
         // punctuation stays as typed and doesn't break the words around it
         assert_eq!(tokens("knhom, tov te?!"), ["knhom", ",", "tov", "te", "?!"]);
         assert_eq!(e.suggest("knhom, tov sala rean?", 1)[0].text, "ខ្ញុំ, ទៅសាលារៀន?");
         // negation frame closes with ទេ, however far back the negation is; plain តែ stays
         assert_eq!(e.suggest("ot mean luy te", 1)[0].text, "អត់មានលុយទេ");
         assert_eq!(e.suggest("knhom mean te muoy", 1)[0].text, "ខ្ញុំមានតែមួយ");
+    }
+
+    #[test]
+    fn settings_switch_features_live() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../data/out");
+        let user = std::env::temp_dir().join(format!("typer-settings-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&user);
+        let Ok(mut e) = Engine::load(&dir, Some(&user)) else { return };
+        let has = |e: &Engine, typed: &str, want: &str| e.suggest(typed, 9).iter().any(|s| s.text == want);
+        assert!(SETTINGS.iter().all(|k| e.setting(k))); // no settings.txt: all on
+        assert!(has(&e, "fesbuk", "ហ្វេសប៊ុក") && has(&e, "thank you bong", "thank you បង"));
+
+        write_setting(&user, "generated", false).unwrap();
+        write_setting(&user, "english", false).unwrap();
+        write_setting(&user, "learn", false).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20)); // distinct mtime
+        assert!(!has(&e, "fesbuk", "ហ្វេសប៊ុក"), "generated words switched off");
+        assert!(!has(&e, "thank you bong", "thank you បង"), "English switched off");
+        e.pick("ah ach", 0).unwrap();
+        assert!(!user.join("picks.tsv").exists(), "learning switched off");
+        assert!(e.setting("badge"));
+
+        write_setting(&user, "generated", true).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        assert!(has(&e, "fesbuk", "ហ្វេសប៊ុក"));
+        fs::remove_dir_all(&user).unwrap();
     }
 
     #[test]

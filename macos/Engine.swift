@@ -15,6 +15,12 @@ enum Typer {
         return String(cString: p).split(separator: "\n").map(String.init)
     }
 
+    /// Typer Settings switch ("badge", ...); on when the engine can't load.
+    static func setting(_ name: String) -> Bool {
+        guard let engine else { return true }
+        return typer_setting(engine, name)
+    }
+
     static func pick(_ input: String, _ index: Int) {
         if let engine { typer_pick(engine, input, UInt32(index)) }
     }

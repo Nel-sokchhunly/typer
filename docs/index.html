@@ -52,6 +52,7 @@
   <a href="#windows">Install on Windows</a>
   <a href="#linux">Install on Linux</a>
   <a href="#use">Use it</a>
+  <a href="#settings">Settings</a>
   <a href="#privacy">Privacy</a>
   <a href="#update">Update</a>
   <a href="#uninstall">Uninstall</a>
@@ -156,8 +157,22 @@ echo "Typer installed"</code></pre>
   <li>A word exactly as typed in Latin letters: type it, then press <kbd>Esc</kbd>. You stay in Khmer.</li>
 </ul>
 
+<h2 id="settings">Settings</h2>
+<p>New in 0.4.0. Open <b>Typer Settings</b> to switch features on or off. Everything is on by default, and changes apply on your next keystroke.</p>
+<ul>
+  <li><b>macOS:</b> click the input menu in the menu bar, then <b>Typer Settings…</b></li>
+  <li><b>Windows:</b> Start menu → <b>Typer Settings</b>, or <b>Settings → Time &amp; language → Language &amp; region → Khmer → Typer → Options</b>.</li>
+  <li><b>Linux:</b> the keyboard menu in the top bar → <b>Typer Settings…</b>, or open <b>Typer Settings</b> from your apps.</li>
+</ul>
+<ul>
+  <li><b>Extra words:</b> suggest words whose Latin spelling Typer guessed by rule (<code>zin</code> → ហ្សីន). They always rank below known words.</li>
+  <li><b>English words:</b> mix English into suggestions, like <code>thank you bong</code> → <b>thank you បង</b>.</li>
+  <li><b>Learn from my picks:</b> rank what you pick higher next time. Off: nothing new is saved.</li>
+  <li><b>Mode badge:</b> show the <b>ខ</b> / <b>EN</b> badge under the cursor.</li>
+</ul>
+
 <h2 id="privacy">Privacy</h2>
-<p>Everything stays on your computer. Typer has no network access and sends nothing anywhere. What you pick is saved locally so Typer can learn: in <code>~/Library/Application Support/Typer/</code> on a Mac, <code>%APPDATA%\Typer</code> on Windows, <code>~/.local/share/typer/</code> on Linux. Delete that folder at any time to reset it.</p>
+<p>Everything stays on your computer. Typer has no network access and sends nothing anywhere. What you pick is saved locally so Typer can learn: in <code>~/Library/Application Support/Typer/</code> on a Mac, <code>%APPDATA%\Typer</code> on Windows, <code>~/.local/share/typer/</code> on Linux. Delete that folder at any time to reset it. To stop saving picks, switch off <b>Learn from my picks</b> in <a href="#settings">Typer Settings</a>.</p>
 
 <h2 id="update">Update</h2>
 <p>Download and run the installer again (on a Mac you can also use the Terminal command). What Typer has learned is kept. On Windows, apps that were open during the update switch to the new version after a restart. If it still behaves like the old version, switch to another input source and back, or log out and back in.</p>

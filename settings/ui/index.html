@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Typer Settings</title>
+<style>
+  :root { --bg: #edeae3; --fg: #1a1a1a; --muted: #5f5b53; --line: #cfc9bc; --sage: #a7b8b2; --accent: #2a4a44; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1d1c1a; --fg: #edeae3; --muted: #a8a294; --line: #3a3833; --sage: #5d7a72; --accent: #a7b8b2; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 -apple-system, "Segoe UI", Ubuntu, sans-serif; user-select: none; }
+  .km { font-family: "Khmer Sangam MN", "Khmer MN", "Noto Sans Khmer", "Khmer UI", sans-serif; color: var(--muted); }
+  main { padding: 28px 28px 20px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: 13px; }
+  label { display: flex; gap: 16px; align-items: center; padding: 14px 0; border-top: 1px solid var(--line); cursor: pointer; }
+  label:last-of-type { border-bottom: 1px solid var(--line); }
+  .text { flex: 1; }
+  .name { font-weight: 600; }
+  .desc { color: var(--muted); font-size: 13px; }
+  input { appearance: none; flex: none; width: 42px; height: 24px; border-radius: 12px; background: var(--line); position: relative; cursor: pointer; transition: background .15s; margin: 0; }
+  input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  input:checked { background: var(--accent); }
+  input:checked::after { transform: translateX(18px); }
+  input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #err { color: #b3261e; font-size: 13px; min-height: 1.5em; margin: 10px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Typer <span class="km">សរសេរ</span></h1>
+  <p class="sub">Changes apply on your next keystroke.</p>
+  <div id="list"></div>
+  <p id="err" role="alert"></p>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

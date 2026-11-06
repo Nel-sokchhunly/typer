@@ -9,8 +9,9 @@ export PATH="$HOME/.cargo/bin:$PATH"
 python3 data/build.py >/dev/null
 
 APP=build/Typer.app
+SET="$APP/Contents/Resources/Typer Settings.app" # opened from Typer's input menu
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/data"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/data" "$SET/Contents/MacOS"
 
 swift_build() { # $1 = rust lib dir, $2 = output, $3 = optional swiftc target
     swiftc -O -swift-version 5 ${3:+-target "$3"} -import-objc-header engine/typer.h macos/*.swift \
@@ -25,14 +26,35 @@ if [ "${1:-}" = dist ]; then
     swift_build engine/target/x86_64-apple-darwin/release build/Typer-x86_64 x86_64-apple-macos13
     lipo -create build/Typer-arm64 build/Typer-x86_64 -output "$APP/Contents/MacOS/Typer"
     rm build/Typer-arm64 build/Typer-x86_64
+    for arch in aarch64 x86_64; do
+        cargo build --release --manifest-path settings/Cargo.toml --target "$arch-apple-darwin"
+    done
+    lipo -create settings/target/aarch64-apple-darwin/release/typer-settings \
+        settings/target/x86_64-apple-darwin/release/typer-settings -output "$SET/Contents/MacOS/typer-settings"
 else
     cargo build --release --manifest-path engine/Cargo.toml
     swift_build engine/target/release "$APP/Contents/MacOS/Typer"
+    cargo build --release --manifest-path settings/Cargo.toml
+    cp settings/target/release/typer-settings "$SET/Contents/MacOS/"
 fi
+cat >"$SET/Contents/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key><string>typer-settings</string>
+	<key>CFBundleIdentifier</key><string>com.chhunly.typer.settings</string>
+	<key>CFBundleName</key><string>Typer Settings</string>
+	<key>CFBundlePackageType</key><string>APPL</string>
+	<key>LSMinimumSystemVersion</key><string>13.0</string>
+	<key>NSHighResolutionCapable</key><true/>
+</dict>
+</plist>
+EOF
 
 cp macos/Info.plist "$APP/Contents/"
 cp macos/icon.tiff "$APP/Contents/Resources/"
-cp data/out/lexicon.tsv data/out/ngrams.tsv data/out/english.tsv "$APP/Contents/Resources/data/"
+cp data/out/lexicon.tsv data/out/generated.tsv data/out/ngrams.tsv data/out/english.tsv "$APP/Contents/Resources/data/"
 codesign --force --deep -s - "$APP"
 
 case "${1:-}" in

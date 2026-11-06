@@ -145,6 +145,20 @@ class TyperInputController: IMKInputController {
         insert(buffer, client)
     }
 
+    /// Typer's entry in the input menu (menu bar): opens the bundled Typer Settings app.
+    override func menu() -> NSMenu! {
+        let m = NSMenu()
+        let item = NSMenuItem(title: "Typer Settings…", action: #selector(openSettings(_:)), keyEquivalent: "")
+        item.target = self
+        m.addItem(item)
+        return m
+    }
+
+    @objc private func openSettings(_ sender: Any?) {
+        let app = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Typer Settings.app")
+        NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration())
+    }
+
     override func activateServer(_ sender: Any!) {
         ctrlAlone = false  // Ctrl+Space switched input source: its Ctrl release is not a tap
         if let client = sender as? IMKTextInput { ModeBadge.follow(mode, near: client) }

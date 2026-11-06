@@ -30,6 +30,7 @@ enum ModeBadge {
 
     /// Just toggled: bright, then fade to faint.
     static func show(_ text: String, near client: IMKTextInput) {
+        guard Typer.setting("badge") else { return hide() }
         guard place(text, client) else { return }
         panel.alphaValue = 1
         let mine = bump()
@@ -42,6 +43,7 @@ enum ModeBadge {
     static func follow(_ text: String, near client: IMKTextInput) {
         let mine = bump()
         panel.orderOut(nil)
+        guard Typer.setting("badge") else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + restDelay) {
             guard mine == generation, place(text, client) else { return }
             panel.alphaValue = faint

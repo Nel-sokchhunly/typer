@@ -32,11 +32,18 @@ OutputBaseFilename=Typer-windows-setup
 [Files]
 Source: "typer.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\data\out\lexicon.tsv"; DestDir: "{app}\data"; Flags: ignoreversion
+Source: "..\data\out\generated.tsv"; DestDir: "{app}\data"; Flags: ignoreversion
+; Typer Settings (Tauri; needs the WebView2 runtime, built into Windows 11 and updated Windows 10).
+; Opened from Windows Settings > Typer > Options (the DLL looks for it next to itself) and the Start menu.
+Source: "..\settings\target\release\typer-settings.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\data\out\ngrams.tsv"; DestDir: "{app}\data"; Flags: ignoreversion
 Source: "..\data\out\english.tsv"; DestDir: "{app}\data"; Flags: ignoreversion
 ; Apps that already loaded Typer keep the old DLL until they restart; restartreplace swaps it then.
 Source: "target\x86_64-pc-windows-msvc\release\typer_tsf.dll"; DestDir: "{app}"; DestName: "typer64.dll"; Flags: ignoreversion regserver restartreplace uninsrestartdelete 64bit
 Source: "target\i686-pc-windows-msvc\release\typer_tsf.dll"; DestDir: "{app}"; DestName: "typer32.dll"; Flags: ignoreversion regserver restartreplace uninsrestartdelete 32bit
+
+[Icons]
+Name: "{autoprograms}\Typer Settings"; Filename: "{app}\typer-settings.exe"; IconFilename: "{app}\typer.ico"
 
 [Messages]
 FinishedLabelNoIcons=Typer / សរសេរ is installed.%n%nPress Windows + Space and choose Typer / សរសេរ to start typing. Type Khmer in Latin letters with spaces between words, then press Enter or a number to pick.

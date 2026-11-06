@@ -52,6 +52,9 @@ pub fn select(i: usize) {
 
 /// Just toggled: bright, then faint (timer 1).
 pub fn badge(text: &str) {
+    if !crate::badge_on() {
+        return hide();
+    }
     let hwnd = place(vec![text.to_string()], None, system_caret().unwrap_or_else(mouse), 255);
     unsafe { SetTimer(hwnd, 1, BADGE_MS, None) };
 }
@@ -60,6 +63,9 @@ pub fn badge(text: &str) {
 /// typing pauses (timer 2); stays hidden if neither.
 pub fn follow(text: &str, caret: Option<RECT>) {
     hide();
+    if !crate::badge_on() {
+        return;
+    }
     if let Some(rc) = caret.or_else(system_caret) {
         let hwnd = window();
         P.with(|p| p.borrow_mut().rest = Some((text.to_string(), rc)));
