@@ -3,6 +3,10 @@
 out/lexicon.tsv  khmer_word<TAB>roman1,roman2,...   (spelling data)
 out/ngrams.tsv   n<TAB>w1 w2 w3<TAB>count            (Khmer language model, n=1..3)
 out/english.tsv  w1 [w2]<TAB>count                    (English 1-2 grams, for English words typed in Khmer mode)
+out/generated.tsv  same as lexicon.tsv, for words whose spellings are rule-generated (can be switched off)
+
+Words with no recorded spelling (data/raw/words.txt, one Khmer word per line) get rule-based
+spellings from romanize.py.
 
 Run: python3 data/build.py
 """
@@ -10,6 +14,8 @@ import json
 import re
 from collections import defaultdict
 from pathlib import Path
+
+from romanize import romanize
 
 HERE = Path(__file__).parent
 RAW = HERE / "raw"
@@ -68,22 +74,40 @@ def build():
             romans[t] |= romans.pop(w)
             ngrams[(1, t)] += ngrams.pop((1, w), 0)
 
+    # Khmer words with no recorded spelling (raw/words.txt, n-gram-only words): rule-based spellings.
+    # Lowest priority: count 1, and never a spelling that is already real for another word, so
+    # dataset words keep winning exact matches.
+    real = {r for v in romans.values() for r in v}
+    unspelled = {clean_word(l.strip()) for l in open(RAW / "words.txt", encoding="utf-8")}
+    unspelled |= {w for (_, ws) in ngrams for w in ws.split(" ") if w not in MARKERS}
+    generated = {}
+    for w in unspelled - {k for k, v in romans.items() if v} - {""}:
+        if re.search("[។៕៖ៗ៘៙៚]", w):  # punctuation, not a word (។ល។ = etc.)
+            continue
+        rs = [r for r in romanize(w) if r not in real]
+        if rs:
+            generated[w] = rs
+            romans[w] = set(rs)
+            ngrams.setdefault((1, w), 1)
+
     romans = {k: v for k, v in romans.items() if v}
     OUT.mkdir(exist_ok=True)
-    with open(OUT / "lexicon.tsv", "w", encoding="utf-8") as f:
-        for k in sorted(romans, key=lambda k: -ngrams.get((1, k), 0)):
-            f.write(f"{k}\t{','.join(sorted(romans[k]))}\n")
+    # generated spellings go in their own file, so the engine can switch them off
+    for name, keep in [("lexicon.tsv", lambda k: k not in generated), ("generated.tsv", lambda k: k in generated)]:
+        with open(OUT / name, "w", encoding="utf-8") as f:
+            for k in sorted(filter(keep, romans), key=lambda k: -ngrams.get((1, k), 0)):
+                f.write(f"{k}\t{','.join(sorted(romans[k]))}\n")
     with open(OUT / "ngrams.tsv", "w", encoding="utf-8") as f:
         for (n, ws), c in sorted(ngrams.items(), key=lambda t: (t[0][0], -t[1])):
             f.write(f"{n}\t{ws}\t{c}\n")
     with open(OUT / "english.tsv", "w", encoding="utf-8") as f:
         for w, c in sorted(english.items(), key=lambda t: -t[1]):
             f.write(f"{w}\t{c}\n")
-    return romans, ngrams, english
+    return romans, ngrams, english, generated
 
 
 if __name__ == "__main__":
-    romans, ngrams, english = build()
+    romans, ngrams, english, generated = build()
     # self-check: known words survive with chat spellings, junk is gone
     assert {"knhom", "knh", "nh"} <= romans["ខ្ញុំ"], romans["ខ្ញុំ"]
     assert {"sala", "sla"} <= romans["សាលា"]
@@ -93,9 +117,12 @@ if __name__ == "__main__":
     assert not any(r in ("unitedstates", "costarica") for v in romans.values() for r in v)
     assert "ម្តាយ" not in romans and "ម្ដាយ" in romans  # twin folded into corpus spelling
     assert english["hello"] > 10000 and english["dont"] > 0 and english["thank you"] > 0 and "<s>" not in english
+    assert "zin" in romans["ហ្សីន"]  # hand spelling kept
+    assert generated and "kh" not in {r for v in generated.values() for r in v}  # real spellings never reused
     by_n = defaultdict(int)
     for n, _ in ngrams:
         by_n[n] += 1
     print(f"lexicon: {len(romans)} words, {sum(map(len, romans.values()))} spellings")
     print(f"ngrams: {dict(by_n)}")
+    print(f"generated: {len(generated)} words, e.g. {dict(list(generated.items())[:3])}")
     print(f"english: {sum(' ' not in w for w in english)} words, {sum(' ' in w for w in english)} bigrams")
