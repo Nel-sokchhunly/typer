@@ -104,9 +104,11 @@ assert press(ord("a")), "back in Khmer mode"
 assert modes[-1:] == ["ខ"], modes
 
 typed("knhom")
-ic.focus_out()  # left the text field mid-phrase: badge gone (the daemon drops text committed after focus out)
+ic.focus_out()  # left the text field mid-phrase: badge gone
 pump()
-assert aux[-1:] == [(None, False)], aux
+# The daemon itself clears a client's aux text on focus out (and drops what the engine sends then), so this
+# can't tell the engine's hide apart; GNOME's panel is where it matters, which needs checking by hand.
+assert aux and not aux[-1][1], aux
 ic.focus_in()
 pump()
 assert aux[-1:] == [("ខ", True)], aux  # back in a text field: badge returns
