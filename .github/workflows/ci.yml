@@ -69,9 +69,9 @@ jobs:
           name: linux-deb
           path: build/Typer-linux-amd64.deb
 
-  macos:
+  macos-check: # PRs / main only; on v* tags the release job builds macOS (universal pkg + zip)
     needs: test
-    if: ${{ !startsWith(github.ref, 'refs/tags/v') }} # tags build macOS in the release job
+    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
