@@ -113,7 +113,6 @@ knhom tov sala rean   →   ខ្ញុំទៅសាលារៀន
 **Platform differences**
 
 - **Windows:** picking with the mouse isn't supported yet; use `Enter` or `1` to `9`.
-- **Linux:** the Khmer / English mode shows in the top bar instead of under the cursor.
 
 ## Privacy
 
@@ -147,7 +146,7 @@ Download and run the installer again (on a Mac you can also run the Terminal com
   ```
 
 - **Windows:** **Settings → Apps → Installed apps → Typer → Uninstall**.
-- **Linux:** `sudo apt remove ibus-typer`, and remove Typer from **Input Sources**.
+- **Linux:** `sudo apt remove typer`, and remove Typer from **Input Sources**.
 
 ## Problems?
 

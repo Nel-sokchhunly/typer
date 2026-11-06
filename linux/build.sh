@@ -28,7 +28,10 @@ mkdir -p "$P/usr/share/ibus/component" "$P/DEBIAN"
 sed "s/@VERSION@/$version/" linux/typer.xml >"$P/usr/share/ibus/component/typer.xml"
 # Keep control ASCII: App Center reads it through PackageKit and shows Khmer as ????.
 cat >"$P/DEBIAN/control" <<EOF
-Package: ibus-typer
+Package: typer
+Provides: ibus-typer
+Conflicts: ibus-typer
+Replaces: ibus-typer
 Version: $version
 Architecture: $arch
 Maintainer: Nel Sokchhunly <sokchhunlynel@gmail.com>
