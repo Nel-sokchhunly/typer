@@ -11,6 +11,10 @@ jobs:
     runs-on: ubuntu-latest # engine + data only; macOS runners are scarce, keep them for the release build
     steps:
       - uses: actions/checkout@v5
+      - uses: Swatinem/rust-cache@v2 # reuse compiled crates (Tauri is ~400); tags read main's cache
+        with:
+          workspaces: |
+            engine -> target
       - run: python3 data/build.py
       - run: cargo test --release --manifest-path engine/Cargo.toml
 
@@ -22,6 +26,11 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v5
+      - uses: Swatinem/rust-cache@v2 # reuse compiled crates (Tauri is ~400); tags read main's cache
+        with:
+          workspaces: |
+            windows -> target
+            settings -> target
       - run: python data/build.py
       - run: rustup target add x86_64-pc-windows-msvc i686-pc-windows-msvc
       - run: |
@@ -51,6 +60,11 @@ jobs:
     runs-on: ubuntu-22.04 # oldest supported glibc, so the .deb installs on 22.04+ and Debian 12
     steps:
       - uses: actions/checkout@v5
+      - uses: Swatinem/rust-cache@v2 # reuse compiled crates (Tauri is ~400); tags read main's cache
+        with:
+          workspaces: |
+            engine -> target
+            settings -> target
       - run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq libibus-1.0-dev ibus python3-gi gir1.2-ibus-1.0 dbus \
@@ -75,6 +89,11 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
+      - uses: Swatinem/rust-cache@v2 # reuse compiled crates (Tauri is ~400); tags read main's cache
+        with:
+          workspaces: |
+            engine -> target
+            settings -> target
       - run: macos/build.sh
 
   release:
@@ -85,6 +104,11 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v5
+      - uses: Swatinem/rust-cache@v2 # reuse compiled crates (Tauri is ~400); tags read main's cache
+        with:
+          workspaces: |
+            engine -> target
+            settings -> target
       - run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - name: Stamp version from tag
         run: |
