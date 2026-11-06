@@ -17,7 +17,7 @@ It works in any app: Messenger, Telegram, Notes, browsers, and so on.
 
 > Typer is an early preview. Expect wrong suggestions sometimes. It learns from what you pick, so it gets better the more you use it.
 
-**Contents:** [Install](#install) ([macOS](#macos) · [Windows](#windows) · [Linux](#linux)) · [Use it](#use-it) · [Privacy](#privacy) · [Update](#update) · [Uninstall](#uninstall) · [Problems?](#problems) · [Development](#development)
+**Contents:** [Install](#install) ([macOS](#macos) · [Windows](#windows) · [Linux](#linux)) · [Use it](#use-it) · [Settings](#settings) · [Privacy](#privacy) · [Update](#update) · [Uninstall](#uninstall) · [Problems?](#problems) · [Development](#development)
 
 ## Install
 
@@ -110,17 +110,24 @@ knhom tov sala rean   →   ខ្ញុំទៅសាលារៀន
 - `te` closing a negative becomes ទេ, however long the sentence: `ot mean luy te` suggests **អត់មានលុយទេ**.
 - For a word exactly as typed in Latin letters, type it and press `Esc`. You stay in Khmer.
 
-**Settings**
-
-Open **Typer Settings** to switch features on or off (all on by default): extra words with guessed spellings, English words in suggestions, learning from your picks, and the ខ / EN badge. Changes apply on your next keystroke.
-
-- **macOS:** click the input menu in the menu bar → **Typer Settings…**
-- **Windows:** Start menu → **Typer Settings**, or **Settings → Time & language → Language & region → Khmer → Typer → Options**.
-- **Linux:** the keyboard menu in the top bar → **Typer Settings…**, or **Typer Settings** in your apps.
-
 **Platform differences**
 
 - **Windows:** picking with the mouse isn't supported yet; use `Enter` or `1` to `9`.
+
+## Settings
+
+New in 0.4.0. Open **Typer Settings** to switch features on or off. Everything is on by default, and changes apply on your next keystroke.
+
+- **macOS:** click the input menu in the menu bar, then **Typer Settings…**
+- **Windows:** Start menu → **Typer Settings**, or **Settings → Time & language → Language & region → Khmer → Typer → Options**.
+- **Linux:** the keyboard menu in the top bar → **Typer Settings…**, or open **Typer Settings** from your apps.
+
+| Switch | What it does |
+|---|---|
+| Extra words | Suggest words whose Latin spelling Typer guessed by rule (`zin` → ហ្សីន). They always rank below known words. |
+| English words | Mix English into suggestions: `thank you bong` → **thank you បង** |
+| Learn from my picks | Rank what you pick higher next time. Off: nothing new is saved. |
+| Mode badge | Show the ខ / EN badge under the cursor |
 
 ## Privacy
 
@@ -135,9 +142,12 @@ What you pick is saved locally so Typer can learn:
 | Linux | `~/.local/share/typer/` |
 
 ```
-user.tsv    words and word pairs you've picked
-picks.tsv   what you typed → what you chose
+user.tsv      words and word pairs you've picked
+picks.tsv     what you typed → what you chose
+settings.txt  your Typer Settings switches
 ```
+
+To stop saving picks, switch off **Learn from my picks** in [Typer Settings](#settings).
 
 Delete that folder at any time to reset what Typer has learned.
 
@@ -168,7 +178,8 @@ Download and run the installer again (on a Mac you can also run the Terminal com
 Sing Khmer input engine: `knhom tov sala rean` → `ខ្ញុំទៅសាលារៀន`.
 
 ```
-python3 data/build.py                                  # raw sources -> data/out/{lexicon,ngrams}.tsv
+python3 data/build.py                                  # raw sources -> data/out/{lexicon,generated,ngrams,english}.tsv
+python3 -I data/romanize.py                            # score the rule-based speller; or pass Khmer words to see spellings
 cd engine && cargo test --release                      # unit + real-data check
 cd .. && engine/target/release/typer "knhom tov sala rean"
 engine/target/release/typer                            # REPL; type a number after a phrase to pick/learn it
@@ -180,6 +191,14 @@ Tunables live at the top of `engine/src/lib.rs`.
 
 User learning: picks append 1-3 gram counts to `$TYPER_USER/user.tsv` (default `data/user/`, boosted ×100 over corpus counts)
 and log `typed<TAB>chosen` to `picks.tsv`. C ABI for frontends: `engine/typer.h`.
+
+New words: add Khmer words one per line to `data/raw/words.txt` (no spelling needed): `data/romanize.py` guesses their
+chat spellings into `data/out/generated.tsv`, ranked below every known word. Words with a known spelling go in
+`data/raw/user-romans.txt` as `ខ្មែរ=khmer,kmer` instead.
+
+Settings: `settings.txt` in the user folder holds `name=on|off` switches (`engine::SETTINGS`), re-read when it changes.
+`settings/` is the Typer Settings app (Tauri) that edits it; each platform build bundles it
+(Linux build needs `libwebkit2gtk-4.1-dev libgtk-3-dev`).
 
 ### macOS input method
 
@@ -201,6 +220,7 @@ After a rebuild, `install` restarts the input method; if it still looks stale, s
 `windows/` is a TSF text service (COM DLL, Rust + `windows` crate) over the same engine; `windows/installer.iss` is the Inno Setup wizard.
 CI builds the x64 + x86 DLLs on every push and, on tags, `Typer-windows-setup.exe` for the release.
 From a Mac you can type-check it: `rustup target add x86_64-pc-windows-msvc && cargo check --manifest-path windows/Cargo.toml --target x86_64-pc-windows-msvc`.
+Typer Settings is installed next to the DLLs; Windows Settings' **Options** button for Typer opens it (`ITfFnConfigure`).
 
 ### Linux input method
 
