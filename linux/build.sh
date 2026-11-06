@@ -30,7 +30,9 @@ install -Dm644 data/out/ngrams.tsv "$P/usr/share/typer/ngrams.tsv"
 install -Dm644 data/out/english.tsv "$P/usr/share/typer/english.tsv"
 install -Dm644 docs/img/apple-touch-icon.png "$P/usr/share/typer/icon.png"
 mkdir -p "$P/usr/share/ibus/component" "$P/usr/share/applications" "$P/DEBIAN"
-cat >"$P/usr/share/applications/typer-settings.desktop" <<EOF
+# GNOME Settings' Input Sources > Preferences opens ibus-setup-<engine>.desktop (not typer.xml's <setup>,
+# which only ibus-setup uses); the same entry puts Typer Settings in the app grid.
+cat >"$P/usr/share/applications/ibus-setup-typer.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Typer Settings
