@@ -124,5 +124,5 @@ if __name__ == "__main__":
         by_n[n] += 1
     print(f"lexicon: {len(romans)} words, {sum(map(len, romans.values()))} spellings")
     print(f"ngrams: {dict(by_n)}")
-    print(f"generated: {len(generated)} words, e.g. {dict(list(generated.items())[:3])}")
+    print(f"generated: {len(generated)} words")  # no Khmer: Windows consoles are cp1252
     print(f"english: {sum(' ' not in w for w in english)} words, {sum(' ' in w for w in english)} bigrams")
