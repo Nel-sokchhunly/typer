@@ -18,6 +18,9 @@ ic = bus.create_input_context("typer-test")
 committed = []
 ic.connect("commit-text", lambda _ic, text: committed.append(text.get_text()))
 modes = []  # top-bar indicator symbol, from the "InputMode" property
+aux = []  # badge under the caret: (text, visible)
+ic.connect("update-auxiliary-text", lambda _ic, t, v: aux.append((t.get_text(), v)))
+ic.connect("hide-auxiliary-text", lambda _ic: aux.append((None, False)))
 ic.connect("update-property", lambda _ic, p: modes.append(p.get_symbol().get_text()))
 ic.set_capabilities(
     IBus.Capabilite.PREEDIT_TEXT | IBus.Capabilite.LOOKUP_TABLE | IBus.Capabilite.AUXILIARY_TEXT | IBus.Capabilite.FOCUS
@@ -68,6 +71,7 @@ else:
     raise SystemExit("engine 'typer' never became active")
 
 typed("knhom tov sala rean")
+assert aux[-1:] == [(None, False)], aux  # suggestions have the badge's spot
 assert (got := result(IBus.KEY_Return)) == "ខ្ញុំទៅសាលារៀន", got
 
 typed("hello")
@@ -84,13 +88,16 @@ typed("tov.")  # punctuation joins the phrase as typed
 assert (got := result(IBus.KEY_Return)) == "ទៅ.", got
 assert not press(ord(".")), "with nothing typed, punctuation passes through to the app"
 
+assert aux[-1:] == [("ខ", True)], aux  # idle: badge stays up
 key(IBus.KEY_Shift_L)  # Shift is for capitals, never a toggle
 key(IBus.KEY_Shift_L, release=True)
 assert "EN" not in modes, modes
 key(IBus.KEY_Control_L)  # tap Ctrl alone: English mode
 key(IBus.KEY_Control_L, release=True)
 assert not press(ord("a")), "English mode should pass keys through"
+pump(1.2)  # outlives the old 800ms flash
 assert modes[-1:] == ["EN"], modes
+assert aux[-1:] == [("EN", True)], aux
 key(IBus.KEY_Control_L)
 key(IBus.KEY_Control_L, release=True)
 assert press(ord("a")), "back in Khmer mode"

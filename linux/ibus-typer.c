@@ -12,7 +12,6 @@
 #ifndef TYPER_DATADIR
 #define TYPER_DATADIR "/usr/share/typer"
 #endif
-#define BADGE_MS 800
 
 typedef struct {
     IBusEngine parent;
@@ -59,9 +58,12 @@ static void typer_engine_destroy(IBusObject *o) {
     IBUS_OBJECT_CLASS(typer_engine_parent_class)->destroy(o);
 }
 
+static void show_mode(TyperEngine *e);
+
 /* Show the buffer as underlined preedit and refresh the candidates under it. */
 static void update(TyperEngine *e) {
     IBusEngine *ie = (IBusEngine *)e;
+    show_mode(e);
     ibus_lookup_table_clear(e->table);
     if (e->buffer->len == 0) {
         ibus_engine_hide_preedit_text(ie);
@@ -93,6 +95,7 @@ static void finish(TyperEngine *e, const gchar *text) {
     if (*text) ibus_engine_commit_text(ie, ibus_text_new_from_string(text));
     g_string_truncate(e->buffer, 0);
     ibus_lookup_table_clear(e->table);
+    show_mode(e);
 }
 
 /* Insert candidate `i` (or the latin if there is none) and learn the pick. */
@@ -112,22 +115,16 @@ static void commit_latin(TyperEngine *e) {
     g_free(raw);
 }
 
-static gboolean hide_badge(gpointer data) {
-    ibus_engine_hide_auxiliary_text(IBUS_ENGINE(data));
-    g_object_unref(data);
-    return G_SOURCE_REMOVE;
-}
-
-/* Brief "EN" / "ខ" note in the candidate popup after a mode switch. */
-static void badge(TyperEngine *e, const gchar *text) {
-    ibus_engine_update_auxiliary_text((IBusEngine *)e, ibus_text_new_from_string(text), TRUE);
-    g_timeout_add(BADGE_MS, hide_badge, g_object_ref(e));
-}
-
-/* Persistent mode indicator, out of the way in the top bar. */
+/* Persistent mode indicator: "EN" / "ខ" in the popup under the caret while idle
+ * (the suggestion list has that spot while composing), and as the top-bar symbol. */
 static void show_mode(TyperEngine *e) {
+    IBusEngine *ie = (IBusEngine *)e;
     ibus_property_set_symbol(e->mode, ibus_text_new_from_static_string(english ? "EN" : "ខ"));
     ibus_property_set_label(e->mode, ibus_text_new_from_static_string(english ? "English" : "Khmer"));
+    if (e->buffer->len)
+        ibus_engine_hide_auxiliary_text(ie);
+    else
+        ibus_engine_update_auxiliary_text(ie, ibus_text_new_from_static_string(english ? "EN" : "ខ"), TRUE);
 }
 
 static void focus_in(IBusEngine *ie) {
@@ -144,7 +141,6 @@ static gboolean process_key_event(IBusEngine *ie, guint keyval, guint keycode, g
     if (mods & IBUS_RELEASE_MASK) {
         if (ctrl_key && e->ctrl_alone && e->buffer->len == 0) {
             english = !english;
-            badge(e, english ? "EN" : "ខ");
             show_mode(e);
             ibus_engine_update_property(ie, e->mode);
         }
