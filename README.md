@@ -234,3 +234,7 @@ an `ubuntu:22.04` container with `build-essential pkg-config libibus-1.0-dev pyt
 - `data/raw/mobile-keyboard-data.json`: shared open Khmer/English keyboard n-gram data.
 - `data/raw/hand-romans.txt`: from [khmer-text-transliteration](https://github.com/Chhunneng/khmer-text-transliteration),
   MIT License, Copyright (c) 2025 Chrea Chanchhunneng.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Bundled data keeps its own credits above.
