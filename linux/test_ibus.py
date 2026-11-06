@@ -18,7 +18,7 @@ ic = bus.create_input_context("typer-test")
 committed = []
 ic.connect("commit-text", lambda _ic, text: committed.append(text.get_text()))
 modes = []  # top-bar indicator symbol, from the "InputMode" property
-aux = []  # badge under the caret: (text, visible)
+aux = []  # badge under the caret: (text, visible); only for a moment after a toggle
 ic.connect("update-auxiliary-text", lambda _ic, t, v: aux.append((t.get_text(), v)))
 ic.connect("hide-auxiliary-text", lambda _ic: aux.append((None, False)))
 ic.connect("update-property", lambda _ic, p: modes.append(p.get_symbol().get_text()))
@@ -71,7 +71,6 @@ else:
     raise SystemExit("engine 'typer' never became active")
 
 typed("knhom tov sala rean")
-assert aux[-1:] == [(None, False)], aux  # suggestions have the badge's spot
 assert (got := result(IBus.KEY_Return)) == "ខ្ញុំទៅសាលារៀន", got
 
 typed("hello")
@@ -88,29 +87,27 @@ typed("tov.")  # punctuation joins the phrase as typed
 assert (got := result(IBus.KEY_Return)) == "ទៅ.", got
 assert not press(ord(".")), "with nothing typed, punctuation passes through to the app"
 
-assert aux[-1:] == [("ខ", True)], aux  # idle: badge stays up
 key(IBus.KEY_Shift_L)  # Shift is for capitals, never a toggle
 key(IBus.KEY_Shift_L, release=True)
 assert "EN" not in modes, modes
 key(IBus.KEY_Control_L)  # tap Ctrl alone: English mode
 key(IBus.KEY_Control_L, release=True)
+pump()
+assert aux[-1:] == [("EN", True)], aux  # toggle: badge flashes
 assert not press(ord("a")), "English mode should pass keys through"
-pump(1.2)  # outlives the old 800ms flash
-assert modes[-1:] == ["EN"], modes
-assert aux[-1:] == [("EN", True)], aux
+pump(1.2)  # outlives the 800ms flash
+assert modes[-1:] == ["EN"], modes  # top bar keeps the mode
+assert aux and not aux[-1][1], aux  # badge gone: not persistent
 key(IBus.KEY_Control_L)
 key(IBus.KEY_Control_L, release=True)
 assert press(ord("a")), "back in Khmer mode"
 assert modes[-1:] == ["ខ"], modes
 
 typed("knhom")
-ic.focus_out()  # left the text field mid-phrase: badge gone
+ic.focus_out()  # left the text field mid-phrase
 pump()
-# The daemon itself clears a client's aux text on focus out (and drops what the engine sends then), so this
-# can't tell the engine's hide apart; GNOME's panel is where it matters, which needs checking by hand.
-assert aux and not aux[-1][1], aux
 ic.focus_in()
 pump()
-assert aux[-1:] == [("ខ", True)], aux  # back in a text field: badge returns
+assert aux and not aux[-1][1], aux  # no badge on focus in: only a toggle shows it
 
 print("ibus end-to-end: ok")

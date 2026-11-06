@@ -22,6 +22,7 @@ typedef struct {
     IBusProperty *settings; /* "Settings…" in the top-bar menu: opens Typer Settings */
     IBusPropList *props;
     gboolean ctrl_alone; /* Ctrl pressed with no other key since */
+    guint flash;         /* timer that hides the badge shown on a toggle */
 } TyperEngine;
 
 typedef struct {
@@ -62,15 +63,35 @@ static void typer_engine_destroy(IBusObject *o) {
     g_clear_object(&e->props);
     g_clear_object(&e->mode);
     g_clear_object(&e->settings);
+    g_clear_handle_id(&e->flash, g_source_remove);
     IBUS_OBJECT_CLASS(typer_engine_parent_class)->destroy(o);
 }
 
-static void show_mode(TyperEngine *e);
+#define FLASH_MS 800 /* like windows/src/popup.rs BADGE_MS */
+
+static void hide_badge(TyperEngine *e) {
+    g_clear_handle_id(&e->flash, g_source_remove);
+    ibus_engine_hide_auxiliary_text((IBusEngine *)e);
+}
+
+static gboolean flash_done(gpointer e) {
+    ((TyperEngine *)e)->flash = 0; /* the source is removed by returning FALSE */
+    ibus_engine_hide_auxiliary_text(e);
+    return G_SOURCE_REMOVE;
+}
+
+/* After a toggle: "EN" / "ខ" under the caret for a moment. The top bar shows the mode the rest of the time. */
+static void flash_mode(TyperEngine *e) {
+    if (core && !typer_setting(core, "badge")) return;
+    g_clear_handle_id(&e->flash, g_source_remove);
+    ibus_engine_update_auxiliary_text((IBusEngine *)e, ibus_text_new_from_static_string(english ? "EN" : "ខ"), TRUE);
+    e->flash = g_timeout_add(FLASH_MS, flash_done, e);
+}
 
 /* Show the buffer as underlined preedit and refresh the candidates under it. */
 static void update(TyperEngine *e) {
     IBusEngine *ie = (IBusEngine *)e;
-    show_mode(e);
+    hide_badge(e); /* the suggestion list has its spot */
     ibus_lookup_table_clear(e->table);
     if (e->buffer->len == 0) {
         ibus_engine_hide_preedit_text(ie);
@@ -102,7 +123,6 @@ static void finish(TyperEngine *e, const gchar *text) {
     if (*text) ibus_engine_commit_text(ie, ibus_text_new_from_string(text));
     g_string_truncate(e->buffer, 0);
     ibus_lookup_table_clear(e->table);
-    show_mode(e);
 }
 
 /* Insert candidate `i` (or the latin if there is none) and learn the pick. */
@@ -122,16 +142,10 @@ static void commit_latin(TyperEngine *e) {
     g_free(raw);
 }
 
-/* Persistent mode indicator: "EN" / "ខ" in the popup under the caret while idle
- * (the suggestion list has that spot while composing), and as the top-bar symbol. */
+/* Mode indicator: "EN" / "ខ" as the top-bar symbol. */
 static void show_mode(TyperEngine *e) {
-    IBusEngine *ie = (IBusEngine *)e;
     ibus_property_set_symbol(e->mode, ibus_text_new_from_static_string(english ? "EN" : "ខ"));
     ibus_property_set_label(e->mode, ibus_text_new_from_static_string(english ? "English" : "Khmer"));
-    if (e->buffer->len || (core && !typer_setting(core, "badge")))
-        ibus_engine_hide_auxiliary_text(ie);
-    else
-        ibus_engine_update_auxiliary_text(ie, ibus_text_new_from_static_string(english ? "EN" : "ខ"), TRUE);
 }
 
 static void focus_in(IBusEngine *ie) {
@@ -150,6 +164,7 @@ static gboolean process_key_event(IBusEngine *ie, guint keyval, guint keycode, g
             english = !english;
             show_mode(e);
             ibus_engine_update_property(ie, e->mode);
+            flash_mode(e);
         }
         if (ctrl_key) e->ctrl_alone = FALSE;
         return FALSE;
@@ -233,11 +248,11 @@ static void keep_latin(IBusEngine *ie) {
     if (e->buffer->len) commit_latin(e);
 }
 
-/* Focus left the text field (or Typer was switched off): keep the latin, and take the badge with us,
+/* Focus left the text field (or Typer was switched off): keep the latin, and take a flashing badge with us,
  * or it stays on screen where the caret used to be. */
 static void focus_out(IBusEngine *ie) {
     keep_latin(ie);
-    ibus_engine_hide_auxiliary_text(ie);
+    hide_badge((TyperEngine *)ie);
 }
 
 static void typer_engine_class_init(TyperEngineClass *klass) {
