@@ -39,6 +39,10 @@
   textarea { width: 100%; font: 20px/1.4 "Khmer Sangam MN", "Khmer MN", "Noto Sans Khmer", "Khmer UI", sans-serif; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; resize: none; user-select: text; -webkit-user-select: text; }
   textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   #done { color: var(--accent); font-weight: 600; }
+  .demo { position: relative; margin: 0 0 8px; }
+  .demo video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 10px; background: #000; }
+  .demo button { position: absolute; right: 8px; bottom: 8px; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font-size: 12px; cursor: pointer; }
+  .demo button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>
 </head>
 <body style="visibility: hidden"><!-- app.js shows it once the tab and key names are set -->
@@ -55,6 +59,7 @@
   </section>
   <!-- Text from README.md "Use it" and docs/km/index.html#use -->
   <section id="tutorial" hidden>
+    <div class="demo"><video autoplay muted loop playsinline preload="metadata" poster="demo-poster.jpg" aria-label="Demo: type knhom tov sala rean, press Enter to get ខ្ញុំទៅសាលារៀន, then tap Ctrl to switch between ខ and EN"><source src="demo.webm" type="video/webm"><source src="demo.mp4" type="video/mp4"></video><button type="button" data-pause="Pause demo" data-play="Play demo"></button></div>
     <h2>Switch to Typer <span class="km">ប្តូរទៅ Typer</span></h2>
     <p data-os="macos"><b>macOS:</b> <kbd>Ctrl</kbd> <kbd>Space</kbd> or the 🌐 Globe key, or pick it from the input menu in the menu bar.<br>
       <span class="km">ចុច <kbd>Ctrl</kbd> <kbd>Space</kbd> ឬគ្រាប់ចុច 🌐 Globe ឬជ្រើសវាពីម៉ឺនុយ Input នៅលើរបារម៉ឺនុយ។</span></p>
