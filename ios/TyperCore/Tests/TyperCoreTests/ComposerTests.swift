@@ -194,6 +194,67 @@ final class ComposerTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: userDir.appendingPathComponent("picks.tsv").path))
     }
 
+    var settings: Settings { Settings(userDir: userDir.path) }
+    var settingsFile: URL { userDir.appendingPathComponent("settings.txt") }
+
+    func testSettingsFormat() throws {
+        XCTAssertTrue(Settings.names.allSatisfy(settings.isOn), "no settings.txt: all on, like the engine")
+        try FileManager.default.createDirectory(at: userDir, withIntermediateDirectories: true)
+        try "# note\nlearn = off\nbadge=off\nfoo=bar".write(to: settingsFile, atomically: true, encoding: .utf8)
+        XCTAssertFalse(settings.isOn("learn"))
+        XCTAssertFalse(settings.isOn("badge"))
+        XCTAssertTrue(settings.isOn("english"))
+        try settings.set("learn", true)
+        try settings.set("english", false)
+        XCTAssertEqual(try String(contentsOf: settingsFile), "# note\nlearn=on\nbadge=off\nfoo=bar\nenglish=off\n")
+        XCTAssertTrue(spy.engine.setting("learn"))
+        XCTAssertFalse(spy.engine.setting("english"))
+        XCTAssertFalse(spy.engine.setting("badge"))
+    }
+
+    func testEnglishSwitchAppliesNextKeystroke() throws {
+        let want = "thank you បង"
+        type("thank you bong")
+        XCTAssertTrue(composer.suggestions.contains(want))
+        for on in [false, true, false] {
+            try settings.set("english", on)
+            backspace()
+            type("g")
+            XCTAssertEqual(composer.suggestions.contains(want), on, "english=\(on)")
+        }
+    }
+
+    func testLearnOffPickDoesNotRank() throws {
+        try settings.set("learn", false)
+        type("ah ach")
+        let i = try XCTUnwrap(composer.suggestions.firstIndex(of: "អាអាចម៍"))
+        XCTAssertGreaterThan(i, 0)
+        _ = composer.candidateTapped(i)
+        XCTAssertEqual(spy.picks, ["ah ach"], "the Composer still calls pick; the engine ignores it")
+        type("ah ach")
+        XCTAssertEqual(composer.suggestions.firstIndex(of: "អាអាចម៍"), i)
+        XCTAssertEqual(picks, "")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: userDir.appendingPathComponent("user.tsv").path))
+    }
+
+    func testResetLearning() throws {
+        try settings.set("generated", false)
+        type("ah ach")
+        let fresh = composer.suggestions
+        _ = composer.candidateTapped(try XCTUnwrap(fresh.firstIndex(of: "អាអាចម៍")))
+        type("ah ach")
+        XCTAssertNotEqual(composer.suggestions, fresh)
+        _ = composer.rawLatin()
+        try spy.engine.resetLearning()
+        type("ah ach")
+        XCTAssertEqual(composer.suggestions, fresh, "same as before any pick, with no new Composer")
+        for f in ["user.tsv", "picks.tsv"] {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: userDir.appendingPathComponent(f).path))
+        }
+        XCTAssertFalse(settings.isOn("generated"), "settings survive a reset")
+        try spy.engine.resetLearning()  // nothing to delete
+    }
+
     func testExternalChangeKeepsLatin() {
         type("knhom")
         proxy.moveCaretLeft(2)
