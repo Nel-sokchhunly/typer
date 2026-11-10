@@ -5,3 +5,6 @@ __pycache__/
 data/user/
 build/
 settings/gen/
+settings/ui/demo.webm
+settings/ui/demo.mp4
+settings/ui/demo-poster.jpg

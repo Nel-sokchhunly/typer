@@ -38,7 +38,7 @@
 <h1>Typer <span class="h1-sep">/</span> <span class="km h1-km" lang="km">សរសេរ</span></h1>
 <p class="lead">Type Khmer the way you already chat: in Latin letters, spelled however you like. Free for macOS, Windows and Linux.</p>
 
-<div class="hero"><img src="img/hero.png" alt="Typing nh jg tv sala rean in Notes; Typer suggests ខ្ញុំចង់ទៅសាលារៀន first"></div>
+<div class="hero"><div class="demo"><video autoplay muted loop playsinline preload="metadata" poster="img/demo-poster.jpg" aria-label="Demo: type knhom tov sala rean, press Enter to get ខ្ញុំទៅសាលារៀន, then tap Ctrl to switch between ខ and EN"><source src="img/demo.webm" type="video/webm"><source src="img/demo.mp4" type="video/mp4"></video><button type="button" data-pause="Pause demo" data-play="Play demo"></button></div></div>
 
 <p class="btns">
   <a class="btn" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer.pkg">Download for macOS</a>
@@ -193,6 +193,13 @@ echo "Typer installed"</code></pre>
 
 </main>
 <script>
+  document.querySelectorAll(".demo").forEach(d => {
+    const v = d.querySelector("video"), b = d.querySelector("button");
+    const sync = () => { b.textContent = v.paused ? "▶" : "⏸"; b.setAttribute("aria-label", v.paused ? b.dataset.play : b.dataset.pause); };
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { v.removeAttribute("autoplay"); v.pause(); }
+    b.onclick = () => v.paused ? v.play().catch(() => {}) : v.pause();
+    v.onplay = v.onpause = sync; sync();
+  });
   document.querySelectorAll("pre").forEach(pre => {
     const b = document.createElement("button");
     b.textContent = "Copy";

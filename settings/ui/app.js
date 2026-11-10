@@ -51,3 +51,11 @@ const practice = document.getElementById("practice");
 practice.addEventListener("input", () => {
   document.getElementById("done").hidden = !practice.value.includes("ខ្ញុំទៅសាលារៀន");
 });
+
+document.querySelectorAll(".demo").forEach(d => {
+  const v = d.querySelector("video"), b = d.querySelector("button");
+  const sync = () => { b.textContent = v.paused ? "▶" : "⏸"; b.setAttribute("aria-label", v.paused ? b.dataset.play : b.dataset.pause); };
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) { v.removeAttribute("autoplay"); v.pause(); }
+  b.onclick = () => v.paused ? v.play().catch(() => {}) : v.pause();
+  v.onplay = v.onpause = sync; sync();
+});
