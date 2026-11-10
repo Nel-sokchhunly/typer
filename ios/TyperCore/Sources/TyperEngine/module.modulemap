@@ -1,0 +1,5 @@
+module TyperEngine [system] {
+    header "../../../../engine/typer.h"
+    link "typer"
+    export *
+}
