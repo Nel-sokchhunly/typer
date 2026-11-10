@@ -9,9 +9,9 @@
     :root { --bg: #1d1c1a; --fg: #edeae3; --muted: #a8a294; --line: #3a3833; --sage: #5d7a72; --accent: #a7b8b2; }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 -apple-system, "Segoe UI", Ubuntu, sans-serif; user-select: none; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.35 -apple-system, "Segoe UI", Ubuntu, sans-serif; user-select: none; }
   .km { font-family: "Khmer Sangam MN", "Khmer MN", "Noto Sans Khmer", "Khmer UI", sans-serif; color: var(--muted); }
-  main { padding: 28px 28px 20px; }
+  main { padding: 16px 24px 12px; }
   h1 { font-size: 22px; margin: 0 0 4px; }
   .sub { color: var(--muted); margin: 0 0 20px; font-size: 13px; }
   label { display: flex; gap: 16px; align-items: center; padding: 14px 0; border-top: 1px solid var(--line); cursor: pointer; }
@@ -25,14 +25,14 @@
   input:checked::after { transform: translateX(18px); }
   input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   #err { color: #b3261e; font-size: 13px; min-height: 1.5em; margin: 10px 0 0; }
-  nav { display: flex; gap: 6px; margin: 12px 0 18px; }
+  nav { display: flex; gap: 6px; margin: 10px 0 12px; }
   nav button { font: inherit; font-size: 13px; color: var(--fg); background: none; border: 1px solid var(--line); border-radius: 14px; padding: 3px 12px; cursor: pointer; }
   nav button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
   nav button[aria-selected="true"] .km { color: inherit; }
-  h2 { font-size: 15px; margin: 18px 0 6px; }
-  #tutorial p { margin: 0 0 10px; }
+  h2 { font-size: 15px; margin: 10px 0 3px; }
+  #tutorial p { margin: 0 0 6px; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
-  td { border-top: 1px solid var(--line); padding: 6px 0; vertical-align: top; }
+  td { border-top: 1px solid var(--line); padding: 3px 0; vertical-align: top; }
   td:first-child { width: 128px; padding-right: 10px; }
   kbd, code { font: 12px ui-monospace, Menlo, Consolas, monospace; }
   kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; background: var(--bg); }
@@ -81,7 +81,7 @@
       <tr><td><kbd class="del">Backspace</kbd></td><td>Edit what you're typing<br><span class="km">កែអ្វីដែលអ្នកកំពុងវាយ</span></td></tr>
       <tr><td>Tap <kbd>Ctrl</kbd> on its own, with nothing typed</td><td>Switch between Khmer and English<br><span class="km">ប្តូររវាងខ្មែរ និងអង់គ្លេស</span></td></tr>
     </table>
-    <p style="margin-top:10px">A small yellow <b>ខ</b> or <b>EN</b> badge under the cursor shows the mode.<br>
+    <p style="margin-top:8px">A small yellow <b>ខ</b> or <b>EN</b> badge under the cursor shows the mode.<br>
       <span class="km">ស្លាកពណ៌លឿងតូច ខ ឬ EN នៅក្រោមទស្សន៍ទ្រនិច បង្ហាញរបៀបដែលកំពុងប្រើ។</span></p>
   </section>
 </main>
