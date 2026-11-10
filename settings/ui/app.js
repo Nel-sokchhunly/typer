@@ -28,3 +28,26 @@ invoke("get_settings").then(settings => {
     list.append(label);
   }
 }).catch(e => { err.textContent = "Couldn't read settings: " + e; });
+
+const tabs = document.querySelectorAll("nav button");
+const show = tab => {
+  for (const b of tabs) b.setAttribute("aria-selected", b.dataset.tab === tab);
+  for (const s of document.querySelectorAll("section")) s.hidden = s.id !== tab;
+};
+for (const b of tabs) b.addEventListener("click", () => show(b.dataset.tab));
+
+invoke("welcome").then(([tutorial, os]) => {
+  if (["macos", "windows", "linux"].includes(os)) {
+    for (const p of document.querySelectorAll("[data-os]")) p.hidden = p.dataset.os !== os;
+  }
+  if (os === "macos") {
+    for (const k of document.querySelectorAll(".enter")) k.textContent = "Return";
+    for (const k of document.querySelectorAll(".del")) k.textContent = "Delete";
+  }
+  if (tutorial) show("tutorial");
+});
+
+const practice = document.getElementById("practice");
+practice.addEventListener("input", () => {
+  document.getElementById("done").hidden = !practice.value.includes("ខ្ញុំទៅសាលារៀន");
+});

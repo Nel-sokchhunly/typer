@@ -25,14 +25,65 @@
   input:checked::after { transform: translateX(18px); }
   input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   #err { color: #b3261e; font-size: 13px; min-height: 1.5em; margin: 10px 0 0; }
+  nav { display: flex; gap: 6px; margin: 12px 0 18px; }
+  nav button { font: inherit; font-size: 13px; color: var(--fg); background: none; border: 1px solid var(--line); border-radius: 14px; padding: 3px 12px; cursor: pointer; }
+  nav button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  nav button[aria-selected="true"] .km { color: inherit; }
+  h2 { font-size: 15px; margin: 18px 0 6px; }
+  #tutorial p { margin: 0 0 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  td { border-top: 1px solid var(--line); padding: 6px 0; vertical-align: top; }
+  td:first-child { width: 128px; padding-right: 10px; }
+  kbd, code { font: 12px ui-monospace, Menlo, Consolas, monospace; }
+  kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; background: var(--bg); }
+  textarea { width: 100%; font: 20px/1.4 "Khmer Sangam MN", "Khmer MN", "Noto Sans Khmer", "Khmer UI", sans-serif; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; resize: none; user-select: text; -webkit-user-select: text; }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  #done { color: var(--accent); font-weight: 600; }
 </style>
 </head>
 <body>
 <main>
   <h1>Typer <span class="km">សរសេរ</span></h1>
-  <p class="sub">Changes apply on your next keystroke.</p>
-  <div id="list"></div>
-  <p id="err" role="alert"></p>
+  <nav role="tablist">
+    <button role="tab" data-tab="settings" aria-selected="true">Settings <span class="km">ការកំណត់</span></button>
+    <button role="tab" data-tab="tutorial" aria-selected="false">Tutorial <span class="km">របៀបប្រើ</span></button>
+  </nav>
+  <section id="settings">
+    <p class="sub">Changes apply on your next keystroke.</p>
+    <div id="list"></div>
+    <p id="err" role="alert"></p>
+  </section>
+  <!-- Text from README.md "Use it" and docs/km/index.html#use -->
+  <section id="tutorial" hidden>
+    <h2>Switch to Typer <span class="km">ប្តូរទៅ Typer</span></h2>
+    <p data-os="macos"><b>macOS:</b> <kbd>Ctrl</kbd> <kbd>Space</kbd> or the 🌐 Globe key, or pick it from the input menu in the menu bar.<br>
+      <span class="km">ចុច <kbd>Ctrl</kbd> <kbd>Space</kbd> ឬគ្រាប់ចុច 🌐 Globe ឬជ្រើសវាពីម៉ឺនុយ Input នៅលើរបារម៉ឺនុយ។</span></p>
+    <p data-os="windows"><b>Windows:</b> <kbd>Windows</kbd> <kbd>Space</kbd>, then choose <b>Typer / សរសេរ</b>.<br>
+      <span class="km">ចុច <kbd>Windows</kbd> <kbd>Space</kbd> ហើយជ្រើស Typer / សរសេរ (នៅក្រោម Khmer)។</span></p>
+    <p data-os="linux"><b>Linux:</b> <kbd>Super</kbd> <kbd>Space</kbd>.<br>
+      <span class="km">ចុច <kbd>Super</kbd> <kbd>Space</kbd>។</span></p>
+
+    <h2>Try it <span class="km">សាកល្បង</span></h2>
+    <p>Switch to Typer, then type <code>knhom tov sala rean</code> and press <kbd class="enter">Enter</kbd>.<br>
+      <span class="km">ប្តូរទៅ Typer រួចវាយ <code>knhom tov sala rean</code> ហើយចុច <kbd class="enter">Enter</kbd>។</span></p>
+    <textarea id="practice" rows="2" placeholder="knhom tov sala rean" spellcheck="false"></textarea>
+    <p id="done" hidden>✓ ខ្ញុំទៅសាលារៀន</p>
+    <p>Type Khmer in Latin letters, with spaces between words. Type the whole phrase: the first suggestion is usually the whole phrase in Khmer.<br>
+      <span class="km">វាយខ្មែរជាអក្សរឡាតាំង ដោយដកឃ្លារវាងពាក្យនីមួយៗ។ វាយឃ្លាទាំងមូលសិន ទើបជ្រើស៖ ពាក្យណែនាំទីមួយ ជាធម្មតាគឺឃ្លាទាំងមូលជាខ្មែរ។</span></p>
+
+    <h2>Keys <span class="km">គ្រាប់ចុច</span></h2>
+    <table>
+      <tr><td><kbd>Space</kbd></td><td>Separate words. It never inserts anything, so keep typing<br><span class="km">ដកឃ្លារវាងពាក្យ។ វាមិនបញ្ចូលអ្វីទេ ដូច្នេះវាយបន្តបាន</span></td></tr>
+      <tr><td><kbd>↓</kbd> <kbd>↑</kbd> or <kbd>Tab</kbd> / <kbd>Shift</kbd> <kbd>Tab</kbd></td><td>Move through the suggestions<br><span class="km">រំកិលក្នុងបញ្ជីពាក្យណែនាំ</span></td></tr>
+      <tr><td><kbd class="enter">Enter</kbd></td><td>Insert the highlighted suggestion (the first one unless you moved)<br><span class="km">បញ្ចូលពាក្យណែនាំដែលកំពុងរំលេច (ពាក្យទីមួយ បើអ្នកមិនបានរំកិល)</span></td></tr>
+      <tr><td><kbd>1</kbd> to <kbd>9</kbd>, or click</td><td>Insert that suggestion<br><span class="km">បញ្ចូលពាក្យណែនាំនោះ</span></td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Insert exactly what you typed, in Latin letters<br><span class="km">បញ្ចូលតាមអ្វីដែលអ្នកវាយ ជាអក្សរឡាតាំង</span></td></tr>
+      <tr><td><kbd class="del">Backspace</kbd></td><td>Edit what you're typing<br><span class="km">កែអ្វីដែលអ្នកកំពុងវាយ</span></td></tr>
+      <tr><td>Tap <kbd>Ctrl</kbd> on its own, with nothing typed</td><td>Switch between Khmer and English<br><span class="km">ប្តូររវាងខ្មែរ និងអង់គ្លេស</span></td></tr>
+    </table>
+    <p style="margin-top:10px">A small yellow <b>ខ</b> or <b>EN</b> badge under the cursor shows the mode.<br>
+      <span class="km">ស្លាកពណ៌លឿងតូច ខ ឬ EN នៅក្រោមទស្សន៍ទ្រនិច បង្ហាញរបៀបដែលកំពុងប្រើ។</span></p>
+  </section>
 </main>
 <script src="app.js"></script>
 </body>
