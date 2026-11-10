@@ -45,7 +45,7 @@ invoke("welcome").then(([tutorial, os]) => {
     for (const k of document.querySelectorAll(".del")) k.textContent = "Delete";
   }
   if (tutorial) show("tutorial");
-});
+}).finally(() => { document.body.style.visibility = ""; });
 
 const practice = document.getElementById("practice");
 practice.addEventListener("input", () => {

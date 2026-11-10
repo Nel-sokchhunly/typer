@@ -4,6 +4,7 @@
 //! Its Tutorial tab opens by itself on first launch and with `--tutorial`.
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 
 /// The input method's user folder (user.tsv, picks.tsv, settings.txt), as each frontend sets it.
@@ -34,14 +35,13 @@ fn set_setting(name: String, on: bool) -> Result<(), String> {
     typer::write_setting(&user_dir(), &name, on).map_err(|e| e.to_string())
 }
 
-/// True the first time it runs for `dir`: leaves a `tutorial-seen` file there so it won't again.
+/// True the first time it runs for `dir`: creates a `tutorial-seen` file there so it won't again.
+/// Any failure (read-only disk, ...) counts as seen, so the tutorial never opens every launch.
 fn first_launch(dir: &Path) -> bool {
-    let seen = dir.join("tutorial-seen");
-    if seen.exists() {
-        return false;
-    }
-    let _ = std::fs::create_dir_all(dir).and_then(|_| std::fs::write(seen, ""));
-    true
+    // HOME / APPDATA / XDG_DATA_HOME unset: user_dir() is relative, so keep nothing and skip it.
+    dir.is_absolute()
+        && std::fs::create_dir_all(dir).is_ok()
+        && OpenOptions::new().write(true).create_new(true).open(dir.join("tutorial-seen")).is_ok()
 }
 
 /// (open on the Tutorial, OS: "macos" / "windows" / "linux").
@@ -65,4 +65,6 @@ fn tutorial_opens_once() {
     assert!(first_launch(&dir));
     assert!(!first_launch(&dir));
     std::fs::remove_dir_all(&dir).unwrap();
+    assert!(!first_launch(Path::new("typer"))); // user_dir() with HOME unset
+    assert!(!Path::new("typer").exists());
 }

@@ -4,3 +4,4 @@ data/out/
 __pycache__/
 data/user/
 build/
+settings/gen/
