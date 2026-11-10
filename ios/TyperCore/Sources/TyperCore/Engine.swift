@@ -8,6 +8,7 @@ public protocol Suggester: AnyObject {
 
 /// Thin wrapper over the Rust C ABI (engine/typer.h), like macos/Engine.swift.
 /// If the data can't load, it suggests nothing and learns nothing, so the keyboard still types Latin.
+/// Main thread only: the C engine isn't thread-safe.
 public final class Engine: Suggester {
     private let engine: OpaquePointer?
 
@@ -21,13 +22,13 @@ public final class Engine: Suggester {
     public var loaded: Bool { engine != nil }
 
     public func suggest(_ input: String, _ k: Int = 9) -> [String] {
-        guard let engine, let p = typer_suggest(engine, input, UInt32(k)) else { return [] }
+        guard k > 0, let engine, let p = typer_suggest(engine, input, UInt32(k)) else { return [] }
         defer { typer_string_free(p) }
         return String(cString: p).split(separator: "\n").map(String.init)
     }
 
     public func pick(_ input: String, _ index: Int) {
-        if let engine { typer_pick(engine, input, UInt32(index)) }
+        if index >= 0, let engine { typer_pick(engine, input, UInt32(index)) }
     }
 
     /// Settings switch ("learn", "english", "generated"); on when the engine can't load.

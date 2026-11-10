@@ -3,27 +3,40 @@ import XCTest
 
 @testable import TyperCore
 
-/// A text field: the document, with the last `marked` characters marked and the caret at the end.
+/// A text field: `before` + `after` with the caret between; the last `marked` characters of `before` are marked.
 final class FakeProxy: TextProxy {
-    var doc = ""
+    var before = ""
+    var after = ""
     var marked = 0
-    var markedText: String { String(doc.suffix(marked)) }
+    var contextHasMarked = true  // whether the host counts marked text as before the caret
+    var contextNil = false  // hosts that never report context
+    var doc: String { before + after }
+    var markedText: String { String(before.suffix(marked)) }
 
+    var documentContextBeforeInput: String? {
+        contextNil ? nil : contextHasMarked ? before : String(before.dropLast(marked))
+    }
     func setMarkedText(_ text: String) {
-        doc.removeLast(marked)
-        doc += text
+        before.removeLast(marked)
+        before += text
         marked = text.count
     }
     func unmarkText() { marked = 0 }
     func insertText(_ text: String) {
-        doc.removeLast(marked)  // like UIKit: inserting replaces the marked text
-        doc += text
+        before.removeLast(marked)  // like UIKit: inserting replaces the marked text
+        before += text
         marked = 0
     }
     func deleteBackward() {
-        guard !doc.isEmpty else { return }
-        doc.removeLast()
+        guard !before.isEmpty else { return }
+        before.removeLast()
         marked = max(0, marked - 1)
+    }
+    /// The user taps `n` characters to the left; the host keeps the marked text as plain text.
+    func moveCaretLeft(_ n: Int) {
+        marked = 0
+        after = String(before.suffix(n)) + after
+        before.removeLast(n)
     }
 }
 
@@ -52,11 +65,9 @@ final class ComposerTests: XCTestCase {
     var composer: Composer!
 
     override func setUpWithError() throws {
-        try XCTSkipUnless(
-            FileManager.default.fileExists(atPath: Self.dataDir + "/lexicon.tsv"), "run python3 data/build.py")
         userDir = FileManager.default.temporaryDirectory.appendingPathComponent("typer-ios-\(UUID())")
         make()
-        XCTAssertTrue(spy.engine.loaded)
+        XCTAssertTrue(spy.engine.loaded, "no engine data: run python3 data/build.py")
         if composer.mode == "EN" { _ = composer.toggleMode() }  // mode is static: undo other tests
     }
 
@@ -138,7 +149,7 @@ final class ComposerTests: XCTestCase {
         XCTAssertEqual(proxy.marked, 0)
         XCTAssertEqual(composer.suggestions, [])
         XCTAssertFalse(composer.isComposing)
-        proxy.doc = "ab"
+        proxy.before = "ab"
         XCTAssertFalse(composer.backspace(), "idle backspace passes through")
     }
 
@@ -185,6 +196,7 @@ final class ComposerTests: XCTestCase {
 
     func testExternalChangeKeepsLatin() {
         type("knhom")
+        proxy.moveCaretLeft(2)
         XCTAssertTrue(composer.textChanged())
         XCTAssertEqual(proxy.doc, "knhom")
         XCTAssertEqual(proxy.marked, 0)
@@ -192,15 +204,86 @@ final class ComposerTests: XCTestCase {
         XCTAssertEqual(spy.picks, [])
     }
 
-    func testOwnChangeIgnored() {
+    func testEchoesOfOwnWritesIgnored() {
+        for hasMarked in [true, false] {
+            proxy.contextHasMarked = hasMarked
+            type("knhom")
+            XCTAssertFalse(composer.textChanged(), "selectionDidChange after setMarkedText")
+            XCTAssertFalse(composer.textChanged(), "double echo")
+            XCTAssertEqual(proxy.markedText, "knhom")
+            _ = composer.candidateTapped(0)
+            XCTAssertFalse(composer.textChanged(), "the commit's echo")
+        }
+        XCTAssertEqual(spy.picks.count, 2)
+    }
+
+    func testNoEchoThenRealChange() {
         type("knhom")
-        _ = composer.candidateTapped(0)
-        XCTAssertTrue(composer.ownChangePending)
+        _ = composer.candidateTapped(0)  // no textChanged follows
         type("tov")
-        XCTAssertFalse(composer.textChanged(), "the commit's own textDidChange")
-        XCTAssertTrue(composer.isComposing)
-        XCTAssertTrue(composer.textChanged(), "a real one")
+        proxy.moveCaretLeft(1)
+        XCTAssertTrue(composer.textChanged())
         XCTAssertEqual(proxy.doc, "ខ្ញុំtov")
+        XCTAssertFalse(composer.isComposing)
+    }
+
+    func testNilContextNeverCommits() {
+        proxy.contextNil = true
+        type("knhom")
+        XCTAssertFalse(composer.textChanged())
+        XCTAssertEqual(proxy.markedText, "knhom")
+    }
+
+    func testFallbackDoubleEcho() {
+        make(usesMarkedText: false)
+        type("kn")
+        XCTAssertFalse(composer.textChanged())
+        XCTAssertFalse(composer.textChanged())
+        type("hom")
+        XCTAssertEqual(proxy.doc, "knhom")
+        XCTAssertTrue(composer.isComposing)
+    }
+
+    func testFallbackCaretMovedBeforeCommit() throws {
+        make(usesMarkedText: false)
+        proxy.before = "hi "
+        type("knhom")
+        let i = try XCTUnwrap(composer.suggestions.firstIndex(of: "ខ្ញុំ"))
+        proxy.moveCaretLeft(2)  // no textChanged arrives
+        XCTAssertTrue(composer.candidateTapped(i))
+        XCTAssertEqual(proxy.doc, "hi knhom", "nothing deleted blind")
+        XCTAssertFalse(composer.isComposing)
+        XCTAssertEqual(spy.picks, [], "not inserted, so not learned")
+    }
+
+    func testSameTraitsReportedAgain() {
+        type("knhom")
+        XCTAssertFalse(composer.fieldTraitsChanged(secure: false, type: .text))
+        XCTAssertTrue(composer.isComposing)
+        XCTAssertEqual(proxy.markedText, "knhom")
+    }
+
+    func testModeFlipMidPhrase() {
+        type("knhom")
+        let other = Composer(engine: spy, proxy: FakeProxy())  // another keyboard instance
+        XCTAssertTrue(other.toggleMode())
+        XCTAssertFalse(composer.returnKey())
+        XCTAssertEqual(proxy.doc, "knhom")
+        XCTAssertEqual(proxy.marked, 0, "no marked text left dangling")
+        XCTAssertFalse(composer.isComposing)
+        for flip in [{ self.composer.backspace() }, { self.composer.candidateTapped(0) }, { self.composer.rawLatin() }] {
+            XCTAssertFalse(flip())
+        }
+        XCTAssertTrue(other.toggleMode())
+    }
+
+    func testBadIndexes() {
+        type("knhom")
+        XCTAssertTrue(composer.candidateTapped(-1), "out of range: the Latin")
+        XCTAssertEqual(proxy.doc, "knhom")
+        XCTAssertEqual(spy.picks, [])
+        XCTAssertEqual(spy.engine.suggest("knhom", -1), [])
+        spy.engine.pick("knhom", -1)
     }
 
     func testFieldEndedKeepsLatin() {
@@ -276,7 +359,7 @@ final class ComposerTests: XCTestCase {
 
     func testMarkedTextFallback() throws {
         make(usesMarkedText: false)
-        proxy.doc = "hi "
+        proxy.before = "hi "
         type("knhomx")
         XCTAssertEqual(proxy.doc, "hi knhomx")
         XCTAssertEqual(proxy.marked, 0, "no marked text at all")
@@ -294,6 +377,7 @@ final class ComposerTests: XCTestCase {
         XCTAssertFalse(composer.isComposing)
         type("x")
         XCTAssertFalse(composer.textChanged(), "the insert's own textDidChange")
+        proxy.moveCaretLeft(1)
         XCTAssertTrue(composer.textChanged())
         XCTAssertEqual(proxy.doc, "hi ខ្ញុំtovx")
     }
