@@ -14,7 +14,7 @@ object AutoCap {
             Kind.WORDS -> text.lastOrNull()?.isWhitespace() ?: true
             Kind.SENTENCES -> {
                 val last = text.lastOrNull() ?: return true
-                if (last == '\n' || last == '\r') return true
+                if (last in "\n\r\u000B\u000C\u0085\u2028\u2029") return true  // Swift's Character.isNewline
                 if (!last.isWhitespace()) return false
                 // whitespace after a sentence end; the end itself must come right before the spaces
                 val end = text.trimEnd().lastOrNull() ?: return true

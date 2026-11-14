@@ -55,7 +55,8 @@ class ProxyAdapter(private val connection: () -> InputConnection?) : TextProxy {
         val ic = connection() ?: return null
         val before = ic.getTextBeforeCursor(typed.length, 0)?.toString() ?: return null
         val selected = ic.getSelectedText(0)
-        if (before != typed || !selected.isNullOrEmpty()) return false
+        if (!selected.isNullOrEmpty()) return false
+        if (before != typed) return if (composeStart >= 0) false else null  // no span to go by: the context rule decides
         if (composeStart < 0) {
             ic.getExtractedText(ExtractedTextRequest(), 0)?.let { t ->
                 val caret = t.startOffset + t.selectionEnd

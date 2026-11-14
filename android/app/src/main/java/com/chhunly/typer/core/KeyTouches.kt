@@ -16,6 +16,8 @@ sealed interface KeyEffect {
     /** Space-bar drag: move the caret by this many clusters (negative = left). */
     data class MoveCaret(val clusters: Int) : KeyEffect
     data object DragStarted : KeyEffect
+    /** The drag is over (finger up, cancelled, or a new touch took over): the caret is the user's again. */
+    data object DragEnded : KeyEffect
 }
 
 /**
@@ -54,8 +56,9 @@ class KeyTouches(private val step: Float = 10f) {
     /** What an earlier touch does when a new one lands (rollover). */
     private fun finish(h: Held): List<KeyEffect> = when {
         h.repeating -> listOf(KeyEffect.StopRepeat)
-        h.spaceAfterAll -> listOf(KeyEffect.Fire(KeyAction.Space))
-        h.long || h.dragging -> emptyList()
+        h.spaceAfterAll -> listOf(KeyEffect.DragEnded, KeyEffect.Fire(KeyAction.Space))
+        h.dragging -> listOf(KeyEffect.DragEnded)
+        h.long -> emptyList()
         else -> listOf(KeyEffect.Fire(h.key.action))
     }
 
@@ -103,8 +106,9 @@ class KeyTouches(private val step: Float = 10f) {
         held = null
         return when {
             h.repeating -> listOf(KeyEffect.StopRepeat)
-            h.spaceAfterAll -> listOf(KeyEffect.Fire(KeyAction.Space))
-            h.long || h.dragging -> emptyList()
+            h.spaceAfterAll -> listOf(KeyEffect.DragEnded, KeyEffect.Fire(KeyAction.Space))
+            h.dragging -> listOf(KeyEffect.DragEnded)
+            h.long -> emptyList()
             else -> listOf(KeyEffect.Fire(key.action))
         }
     }
@@ -113,10 +117,17 @@ class KeyTouches(private val step: Float = 10f) {
         val h = held ?: return emptyList()
         if (h.id != id) return emptyList()
         held = null
-        return if (h.repeating) listOf(KeyEffect.StopRepeat) else emptyList()
+        return when {
+            h.repeating -> listOf(KeyEffect.StopRepeat)
+            h.dragging -> listOf(KeyEffect.DragEnded)
+            else -> emptyList()
+        }
     }
 
-    fun reset() {
+    /** Drop the live touch; a drag in progress ends. */
+    fun reset(): List<KeyEffect> {
+        val h = held ?: return emptyList()
         held = null
+        return if (h.dragging) listOf(KeyEffect.DragEnded) else emptyList()
     }
 }

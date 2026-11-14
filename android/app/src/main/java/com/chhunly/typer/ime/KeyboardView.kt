@@ -124,6 +124,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     // strip and panel touches (one finger)
     private var stripDown: StripSlot? = null
+    /** The finger that owns the strip or panel touch; other fingers can't end it. */
+    private var ownPointer = -1
     private var panelDownY = -1f
     private var panelLastY = 0f
     private var panelScrolling = false
@@ -430,9 +432,11 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> when {
                 y < metrics.rowsTop - 2f -> if (e.actionMasked == MotionEvent.ACTION_DOWN) {
                     stripDown = stripSlots().firstOrNull { it.box.contains(x, metrics.stripHeight / 2) }
+                    ownPointer = id
                     invalidate()
                 }
                 state.panelOpen -> if (e.actionMasked == MotionEvent.ACTION_DOWN) {
+                    ownPointer = id
                     panelDownY = e.getY(i)
                     panelLastY = panelDownY
                     panelScrolling = false
@@ -441,7 +445,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             }
             MotionEvent.ACTION_MOVE -> {
                 if (state.panelOpen && panelDownY >= 0) {
-                    val py = e.getY(0)
+                    val py = e.findPointerIndex(ownPointer).let { if (it >= 0) e.getY(it) else panelLastY }
                     if (!panelScrolling && abs(py - panelDownY) > slop) panelScrolling = true
                     if (panelScrolling) {
                         panelScroll = (panelScroll - (py - panelLastY)).coerceIn(0f, maxScroll())
@@ -457,8 +461,9 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 val strip = stripDown
+                val owner = id == ownPointer  // the strip or panel finger; any other finger is a key touch
                 when {
-                    strip != null -> {
+                    owner && strip != null -> {
                         stripDown = null
                         invalidate()
                         if (strip.box.contains(x, y.coerceAtMost(metrics.stripHeight - 1f).coerceAtLeast(0f)) && y < metrics.rowsTop + 8f) {
@@ -466,27 +471,21 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                             listener.onStrip(strip.action)
                         }
                     }
-                    panelDownY >= 0 -> {
+                    owner && panelDownY >= 0 -> {
                         panelDownY = -1f
                         if (!panelScrolling) panelIndexAt(y)?.let { row ->
                             haptic(HapticFeedbackConstants.KEYBOARD_TAP)
                             listener.onPanel(if (row == state.suggestions.size) -1 else row)
                         }
                     }
-                    else -> {
-                        val dragging = tracker.dragging
-                        KeyLayout.hit(x, y, keys)?.let { run(id, tracker.up(id, it)) }
-                        if (dragging && !tracker.dragging) listener.onDragEnd()
-                    }
+                    else -> KeyLayout.hit(x, y, keys)?.let { run(id, tracker.up(id, it)) }
                 }
                 if (e.actionMasked == MotionEvent.ACTION_UP) endTouches()
             }
             MotionEvent.ACTION_CANCEL -> {
                 stripDown = null
                 panelDownY = -1f
-                val dragging = tracker.dragging
                 for (p in 0 until e.pointerCount) run(e.getPointerId(p), tracker.cancel(e.getPointerId(p)))
-                if (dragging) listener.onDragEnd()
                 endTouches()
             }
         }
@@ -502,13 +501,13 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     /** Stop everything in flight (the Keyboard hides or the field changes). */
     fun reset() {
-        if (tracker.dragging) listener.onDragEnd()
         repeating?.let { handler.removeCallbacks(it) }
         repeating = null
         endTouches()
-        tracker.reset()
+        run(-1, tracker.reset())
         stripDown = null
         panelDownY = -1f
+        ownPointer = -1
         invalidate()
     }
 
@@ -554,6 +553,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                 listener.onDragStart()
             }
             is KeyEffect.MoveCaret -> listener.onCaret(fx.clusters)
+            KeyEffect.DragEnded -> listener.onDragEnd()
         }
     }
 

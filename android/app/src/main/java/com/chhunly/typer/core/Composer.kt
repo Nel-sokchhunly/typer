@@ -39,9 +39,8 @@ class Scheduler(
 
         /** One engine thread; `main` posts to the UI thread (the Keyboard passes Handler::post). */
         fun background(main: (Runnable) -> Unit): Scheduler {
-            val engineThread = AtomicInteger()
             val q: ExecutorService = Executors.newSingleThreadExecutor { r ->
-                Thread(r, "typer-engine").also { engineThread.set(it.hashCode()); it.priority = Thread.MAX_PRIORITY - 1 }
+                Thread(r, "typer-engine").also { it.priority = Thread.MAX_PRIORITY - 1 }
             }
             return Scheduler(
                 async = { job -> q.execute(job) },
