@@ -10,11 +10,12 @@
 //! - Punctuation typed in the phrase stays as typed: "knhom, tov te?" -> ខ្ញុំ, ទៅទេ?
 //! - Settings: on/off switches in `user_dir/settings.txt` (SETTINGS), re-read when the file changes.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::time::SystemTime;
 
 pub mod ffi;
@@ -174,6 +175,7 @@ pub struct Engine {
     words: Vec<String>,
     first_generated: usize, // words from here on have rule-generated spellings (generated.tsv)
     spellings: Vec<(Vec<u8>, u32)>, // (roman, word id)
+    by_roman: Vec<u32>, // indices into `spellings`, sorted by roman: neighbours share prefixes
     counts: Counts,
     user: Counts,
     user_dir: Option<PathBuf>,
@@ -183,6 +185,16 @@ pub struct Engine {
     // typed text -> candidates; while typing only the last token changes, so the rest are hits
     cache: RefCell<HashMap<String, Vec<(String, f32)>>>,
     settings: RefCell<(Option<SystemTime>, HashSet<String>)>, // settings.txt mtime, names switched off
+    // beam columns of the last phrase; typing only edits the end, so the start is reused.
+    // Dropped (and `epoch` bumped) whenever anything that ranks paths changes, like `cache`.
+    memo: RefCell<Memo>,
+    epoch: Cell<u32>,
+}
+
+#[derive(Default)]
+struct Memo {
+    toks: Vec<String>,
+    beams: Vec<Vec<Path_>>, // beams[i] = unsorted paths that consumed the first i tokens
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -204,9 +216,15 @@ fn read_counts(path: &Path, counts: &mut Counts) {
     }
 }
 
+/// Words of a path as a shared linked list (newest first), so extending a path copies nothing.
+struct Node {
+    word: String, // Khmer word, or raw latin token
+    prev: Option<Rc<Node>>,
+}
+
 #[derive(Clone)]
 struct Path_ {
-    words: Vec<String>, // Khmer word, or raw latin token
+    last: Rc<Node>,
     score: f32,
     neg: bool, // a negation is waiting for its ទេ
 }
@@ -246,8 +264,11 @@ impl Engine {
             .filter_map(|(w, c)| Some((w.to_string(), c.parse().ok()?)))
             .collect();
         let en_total = english.iter().filter(|(w, _)| !w.contains(' ')).map(|(_, c)| c).sum();
+        let mut by_roman: Vec<u32> = (0..spellings.len() as u32).collect();
+        by_roman.sort_by(|&a, &b| spellings[a as usize].0.cmp(&spellings[b as usize].0));
         Ok(Engine {
             words,
+            by_roman,
             first_generated,
             spellings,
             counts,
@@ -258,6 +279,8 @@ impl Engine {
             en_total,
             cache: RefCell::default(),
             settings: RefCell::default(),
+            memo: RefCell::default(),
+            epoch: Cell::new(0),
         })
     }
 
@@ -268,9 +291,15 @@ impl Engine {
         let mut s = self.settings.borrow_mut();
         if s.0 != mtime {
             *s = (mtime, read_settings(dir));
-            self.cache.borrow_mut().clear(); // candidates depend on "generated"
+            self.invalidate(); // candidates depend on "generated", paths on "english"
         }
         !s.1.contains(name)
+    }
+
+    fn invalidate(&self) {
+        self.cache.borrow_mut().clear();
+        *self.memo.borrow_mut() = Memo::default();
+        self.epoch.set(self.epoch.get().wrapping_add(1));
     }
 
     fn count(&self, key: &str) -> f32 {
@@ -297,7 +326,7 @@ impl Engine {
                 lines += &format!("{n}\t{key}\t1\n");
             }
         }
-        self.cache.borrow_mut().clear(); // pre-ranking uses counts that just changed
+        self.invalidate(); // pre-ranking and path scores use counts that just changed
         let Some(dir) = &self.user_dir else { return Ok(()) };
         fs::create_dir_all(dir)?;
         let append = |name: &str, text: &str| -> std::io::Result<()> {
@@ -345,6 +374,54 @@ impl Engine {
         english.max(self.lm(ctx(u), ctx(v), w))
     }
 
+    /// Word id -> closest spelling distance (<= `max_dist`) to `t`. Walks the spellings in sorted
+    /// order, keeping the edit-distance columns of the shared prefix, and stops extending a spelling
+    /// once its column cannot get back under `max_dist`. Same distances as `dist`.
+    fn scan(&self, t: &str, max_dist: f32, generated_on: bool) -> HashMap<u32, f32> {
+        let (t, h) = (t.as_bytes(), t.len() + 1);
+        let mut best: HashMap<u32, f32> = HashMap::new();
+        // col[j*h + i] = cost of typed t[..i] against spelling prefix s[..j]
+        let mut col: Vec<f32> = (0..h).scan(0.0, |acc, i| {
+            let v = *acc;
+            *acc += if i < t.len() { ins_cost(t[i]) } else { 0.0 };
+            Some(v)
+        }).collect();
+        let mut min = vec![0.0_f32]; // column minimums
+        let (mut prev, mut reached): (&[u8], usize) = (&[], 0); // levels valid for `prev`
+        for &si in &self.by_roman {
+            let (s, id) = &self.spellings[si as usize];
+            if !generated_on && *id as usize >= self.first_generated {
+                continue;
+            }
+            let mut j = prev.iter().zip(s).take_while(|(a, b)| a == b).count().min(reached);
+            col.resize(col.len().max((s.len() + 1) * h), 0.0);
+            min.resize(min.len().max(s.len() + 1), 0.0);
+            while j < s.len() && min[j] <= max_dist {
+                let (before, c) = (if j == 0 { 0 } else { s[j - 1] }, s[j]);
+                let del = del_cost(c, before);
+                col[(j + 1) * h] = col[j * h] + del;
+                let mut m = col[(j + 1) * h];
+                for i in 0..t.len() {
+                    let v = (col[j * h + i] + sub_cost(t[i], c))
+                        .min(col[(j + 1) * h + i] + ins_cost(t[i]))
+                        .min(col[j * h + i + 1] + del);
+                    col[(j + 1) * h + i + 1] = v;
+                    m = m.min(v);
+                }
+                min[j + 1] = m;
+                j += 1;
+            }
+            (prev, reached) = (s, j);
+            let m = s.len();
+            let d = (0..=j).map(|k| col[k * h + t.len()] + TAIL_COST * (m - k) as f32).fold(f32::INFINITY, f32::min);
+            if d <= max_dist {
+                let e = best.entry(*id).or_insert(f32::INFINITY);
+                *e = e.min(d);
+            }
+        }
+        best
+    }
+
     /// Top Khmer words for one typed token, scored without context: (word, -SPELL_WEIGHT*dist).
     /// `max_dist` is MAX_DIST for one typed token, JOIN_MAX_DIST for several tokens typed as one word.
     pub fn candidates(&self, token: &str, max_dist: f32) -> Vec<(String, f32)> {
@@ -357,19 +434,7 @@ impl Engine {
         if let Some(hit) = self.cache.borrow().get(&key) {
             return hit.clone();
         }
-        let mut best: HashMap<u32, f32> = HashMap::new();
-        let spellings = match generated_on {
-            true => &self.spellings[..],
-            false => &self.spellings[..self.spellings.partition_point(|(_, id)| (*id as usize) < self.first_generated)],
-        };
-        // ponytail: linear scan of ~38k spellings (~7ms) per uncached token; index by first consonant if it lags
-        for (s, id) in spellings {
-            let d = dist(t.as_bytes(), s);
-            if d <= max_dist {
-                let e = best.entry(*id).or_insert(f32::INFINITY);
-                *e = e.min(d);
-            }
-        }
+        let best = self.scan(&t, max_dist, generated_on);
         let mut out: Vec<(String, f32)> = best
             .into_iter()
             .map(|(id, d)| (self.words[id as usize].clone(), if d == 0.0 { EXACT_BONUS } else { -SPELL_WEIGHT * d }))
@@ -380,7 +445,7 @@ impl Engine {
         out.sort_by(|a, b| {
             let sa = a.1 + (self.count(&a.0).max(0.5) / self.total).ln();
             let sb = b.1 + (self.count(&b.0).max(0.5) / self.total).ln();
-            (b.1 == EXACT_BONUS).cmp(&(a.1 == EXACT_BONUS)).then(sb.total_cmp(&sa))
+            (b.1 == EXACT_BONUS).cmp(&(a.1 == EXACT_BONUS)).then(sb.total_cmp(&sa)).then_with(|| a.0.cmp(&b.0))
         });
         out.truncate(CANDIDATES_PER_TOKEN);
         let mut cache = self.cache.borrow_mut();
@@ -395,17 +460,31 @@ impl Engine {
     pub fn suggest(&self, input: &str, k: usize) -> Vec<Suggestion> {
         let toks = tokens(input);
         let n = toks.len();
-        let english_on = self.setting("english");
-        // beams[i] = best paths that consumed the first i tokens; a word may consume 1..=MAX_JOIN tokens
-        let mut beams: Vec<Vec<Path_>> = vec![Vec::new(); n + 1];
-        beams[0].push(Path_ { words: vec!["<s>".into(), "<s>".into()], score: 0.0, neg: false });
+        let english_on = self.setting("english"); // before the memo: a change drops it
+        let epoch = self.epoch.get();
+        // beams[i] = paths that consumed the first i tokens; a word may consume 1..=MAX_JOIN tokens.
+        // beams[i] only depends on toks[..i], so those of an unchanged start are kept as they were.
+        let Memo { toks: old, mut beams } = std::mem::take(&mut *self.memo.borrow_mut());
+        let keep = old.iter().zip(&toks).take_while(|(a, b)| a == b).count();
+        beams.truncate(keep + 1);
+        beams.resize(n + 1, Vec::new());
+        if keep == 0 {
+            let node = |w: &str, prev| Rc::new(Node { word: w.into(), prev });
+            beams[0] = vec![Path_ { last: node("<s>", Some(node("<s>", None))), score: 0.0, neg: false }];
+        }
         for i in 0..n {
-            let mut here = std::mem::take(&mut beams[i]);
+            if i + MAX_JOIN <= keep {
+                continue; // everything it feeds is kept
+            }
+            let mut here = beams[i].clone();
             here.sort_by(|a, b| b.score.total_cmp(&a.score));
             here.truncate(BEAM);
             for len in 1..=MAX_JOIN.min(n - i) {
                 if len > 1 && toks[i..i + len].iter().any(|t| is_punct(t)) {
                     break; // a word never spans punctuation
+                }
+                if i + len <= keep {
+                    continue;
                 }
                 let cands = if is_punct(toks[i]) {
                     vec![(toks[i].to_string(), 0.0)] // kept as typed
@@ -420,7 +499,8 @@ impl Engine {
                     c
                 };
                 for p in &here {
-                    let (u, v) = (&p.words[p.words.len() - 2], &p.words[p.words.len() - 1]);
+                    let v = &p.last.word;
+                    let u = &p.last.prev.as_ref().expect("two <s> start").word;
                     for (w, spell) in &cands {
                         let lm = if *spell == RAW_PENALTY || is_punct(w) {
                             0.0
@@ -433,20 +513,30 @@ impl Engine {
                         let closes = p.neg && w == NEG_CLOSE;
                         let neg = (p.neg || NEGATIONS.contains(&w.as_str())) && !closes && !is_punct(w);
                         let bonus = if closes { NEG_BONUS } else { 0.0 };
-                        let mut words = p.words.clone();
-                        words.push(w.clone());
-                        beams[i + len].push(Path_ { words, score: p.score + lm + spell + bonus, neg });
+                        let last = Rc::new(Node { word: w.clone(), prev: Some(p.last.clone()) });
+                        beams[i + len].push(Path_ { last, score: p.score + lm + spell + bonus, neg });
                     }
                 }
             }
         }
-        let mut beam = std::mem::take(&mut beams[n]);
+        let mut beam = beams[n].clone();
+        if self.epoch.get() == epoch {
+            *self.memo.borrow_mut() = Memo { toks: toks.iter().map(|t| t.to_string()).collect(), beams };
+        }
         beam.sort_by(|a, b| b.score.total_cmp(&a.score));
         let mut out: Vec<Suggestion> = Vec::new();
         for p in beam {
-            let text = join(&p.words[2..]);
+            let mut words = Vec::new();
+            let mut node = Some(&p.last);
+            while let Some(nd) = node {
+                words.push(nd.word.clone());
+                node = nd.prev.as_ref();
+            }
+            words.truncate(words.len() - 2); // the two <s>
+            words.reverse();
+            let text = join(&words);
             if !text.is_empty() && !out.iter().any(|s| s.text == text) {
-                out.push(Suggestion { text, words: p.words[2..].to_vec() });
+                out.push(Suggestion { text, words });
             }
             if out.len() == k {
                 break;
@@ -547,5 +637,58 @@ mod tests {
         assert_eq!(reloaded.suggest("ah ach", 1)[0].text, "អាអាចម៍");
         assert!(fs::read_to_string(user.join("picks.tsv")).unwrap().contains("ah ach\tអាអាចម៍"));
         fs::remove_dir_all(&user).unwrap();
+    }
+
+    fn engine() -> Option<Engine> {
+        Engine::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../data/out"), None).ok() // run data/build.py first
+    }
+
+    #[test]
+    fn prefix_scan_matches_brute_force() {
+        let Some(e) = engine() else { return };
+        for t in ["kn", "pinng", "ach", "a", "knhom", "jea", "xyz", "sala", "thank", "pirnng", "ot", "muoy"] {
+            for (max, generated) in [(MAX_DIST, true), (JOIN_MAX_DIST, true), (MAX_DIST, false)] {
+                let mut want: HashMap<u32, f32> = HashMap::new();
+                for (s, id) in &e.spellings {
+                    let d = dist(t.as_bytes(), s);
+                    if d <= max && (generated || (*id as usize) < e.first_generated) {
+                        let x = want.entry(*id).or_insert(f32::INFINITY);
+                        *x = x.min(d);
+                    }
+                }
+                let got = e.scan(t, max, generated);
+                let bad: Vec<_> = want.keys().chain(got.keys()).filter(|k| got.get(k) != want.get(k)).take(4).collect();
+                let show: Vec<_> = bad.iter().map(|k| (got.get(k), want.get(k))).collect();
+                assert!(bad.is_empty(), "{t} {max} {generated}: (got, want) {show:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn reusing_the_beam_gives_the_same_suggestions() {
+        let (Some(e), Some(fresh)) = (engine(), engine()) else { return };
+        let phrases = [
+            "knhom tov sala rean nov phnom penh jea muoy mit",
+            "ot mean luy te, bong?",
+            "thank you bong, pin ng ot loy tt man",
+            "knhom mean te muoy",
+            "hello world fesbuk zin 123",
+            "pin ng ot",
+        ];
+        let mut inputs: Vec<String> = Vec::new();
+        for p in phrases {
+            let ends: Vec<usize> = p.char_indices().map(|(i, c)| i + c.len_utf8()).collect();
+            inputs.extend(ends.iter().map(|&end| p[..end].to_string())); // typing
+            inputs.extend(ends.iter().rev().map(|&end| p[..end].to_string())); // backspacing into earlier tokens
+            inputs.push(p.replace(' ', "  ")); // extra spaces
+            inputs.push(p.split(' ').rev().collect::<Vec<_>>().join(" ")); // completely different
+        }
+        inputs.push(String::new());
+        for input in &inputs {
+            fresh.invalidate(); // from scratch
+            for k in [1, 9] {
+                assert_eq!(e.suggest(input, k), fresh.suggest(input, k), "{input:?}");
+            }
+        }
     }
 }

@@ -1,5 +1,6 @@
 //! typer "knhom tov sala rean"     one phrase
 //! typer                           REPL, one phrase per line; a number after it picks (learns) that suggestion
+//! typer bench                     warm per-keystroke suggest() timings typing a 10-word phrase
 //! typer eval eval/test.tsv        top-1 / top-3 accuracy on "typed<TAB>expected" lines
 use std::io::{self, BufRead, Write};
 use std::path::Path;
@@ -16,6 +17,28 @@ fn main() {
     });
     eprintln!("loaded in {:?}", t0.elapsed());
     let args: Vec<String> = std::env::args().skip(1).collect();
+
+    if args.first().map(String::as_str) == Some("bench") {
+        let phrase = "knhom tov sala rean nov phnom penh jea muoy mit";
+        let mut ms: Vec<f64> = Vec::new();
+        for pass in 0..2 {
+            // pass 0 warms the candidate cache; pass 1 is what the keyboard sees
+            ms.clear();
+            for end in phrase.char_indices().map(|(i, c)| i + c.len_utf8()) {
+                let t = Instant::now();
+                engine.suggest(&phrase[..end], 9);
+                ms.push(t.elapsed().as_secs_f64() * 1e3);
+            }
+            let total: f64 = ms.iter().sum();
+            let mut sorted = ms.clone();
+            sorted.sort_by(f64::total_cmp);
+            println!(
+                "pass {pass}: keys={} max={:.1}ms p50={:.1}ms total={:.0}ms",
+                ms.len(), sorted[sorted.len() - 1], sorted[sorted.len() / 2], total
+            );
+        }
+        return;
+    }
 
     if args.first().map(String::as_str) == Some("eval") {
         let path = args.get(1).map(String::as_str).unwrap_or("eval/test.tsv");
