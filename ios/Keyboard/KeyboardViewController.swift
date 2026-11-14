@@ -26,6 +26,8 @@ final class KeyboardModel: ObservableObject {
     @Published var returnLabel = "return"
     @Published var returnProminent = false
     var autoCap = AutoCap.Kind.sentences
+    /// The user set shift by hand since the last key; auto-cap leaves it alone until a key is typed.
+    var shiftChosen = false
     private var lastShiftTap = Date.distantPast
 
     enum Shift { case off, once, lock }
@@ -34,7 +36,7 @@ final class KeyboardModel: ObservableObject {
     /// Shift once; a quick second tap locks caps; tapping a lock (or a lone shift) turns it off.
     func shiftTapped() {
         let now = Date()
-        defer { lastShiftTap = now }
+        defer { lastShiftTap = now; shiftChosen = true }
         switch shift {
         case .lock: shift = .off
         case .once: shift = now.timeIntervalSince(lastShiftTap) < 0.4 ? .lock : .off
@@ -137,14 +139,15 @@ final class KeyboardViewController: UIInputViewController {
     /// If the Composer declined the key, do the normal thing.
     private func handle(_ consumed: Bool, else fallback: () -> Void = {}) {
         if !consumed { fallback() }
-        refresh()
+        refresh(afterKey: true)
     }
 
-    private func refresh() {
+    private func refresh(afterKey: Bool = false) {
         model.typed = composer.typed
         model.suggestions = composer.suggestions
         model.mode = composer.mode
-        if model.shift != .lock {  // a typed key or a field change re-decides shift, like Apple's
+        if afterKey { model.shiftChosen = false }
+        if model.shift != .lock && !model.shiftChosen {  // a typed key or a field change re-decides shift, like Apple's
             let before = textDocumentProxy.documentContextBeforeInput
             model.shift = AutoCap.shouldShift(before: before, kind: model.autoCap, khmerMode: composer.mode == "ខ") ? .once : .off
         }
