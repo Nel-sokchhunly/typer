@@ -429,6 +429,8 @@ talkback() { # talkback on|off
         "$ADB" shell pm grant com.google.android.marvin.talkback android.permission.POST_NOTIFICATIONS 2>/dev/null || true
         "$ADB" shell settings put secure enabled_accessibility_services $TALKBACK
         "$ADB" shell settings put secure accessibility_enabled 1
+        _t=0  # TalkBack can take a while to start; wait until it really explores by touch
+        until [ "$("$ADB" shell settings get secure touch_exploration_enabled | tr -d '\r')" = 1 ] || [ $_t -ge 20 ]; do sleep 0.5; _t=$((_t + 1)); done
     else
         "$ADB" shell settings put secure enabled_accessibility_services '""'
         "$ADB" shell settings put secure accessibility_enabled 0
@@ -481,6 +483,41 @@ scenario_talkback() {
     else log "FAIL talkback: wanted exactly 'ខ្ញុំ', field holds '$text'"; FAILED=1; fi
 }
 
+scenario_emoji() { # the emoji page: pick, recently used, skin tones (remembered), search, back to the letters
+    "$ADB" shell run-as $PKG rm -f shared_prefs/typer_emoji.xml
+    restart_keyboard
+    open_app || { FAILED=1; return; }
+    tap $(key_at emoji)
+    xy=$(wait_for "grinning face" 20) || { log "FAIL emoji: the emoji page did not open"; FAILED=1; shot emoji; return; }
+    shot emoji-page
+    tap $xy
+    sleep 0.5
+    check "emoji: tap an emoji" "😀" "$(field_text)"
+    check "emoji: recently used appears" "Recently used" "$(ui labels | tr '\n' '|')"
+    tap $(ui bounds "People & Body")
+    xy=$(wait_for "waving hand" 10) || { log "FAIL emoji: no waving hand in People & Body"; FAILED=1; return; }
+    set -- $xy; "$ADB" shell "input motionevent DOWN $1 $2; sleep 0.7; input motionevent UP $1 $2"  # long press: the tone panel stays open
+    xy=$(wait_for "waving hand: medium skin tone" 10) || { log "FAIL emoji: no skin-tone panel"; FAILED=1; shot emoji-tones; return; }
+    shot emoji-tones
+    tap $xy
+    sleep 0.5
+    check "emoji: pick a skin tone" "😀👋🏽" "$(field_text)"
+    check "emoji: the grid remembers the tone" "waving hand: medium skin tone" "$(ui labels | tr '\n' '|')"
+    tap $(ui bounds "search emoji")
+    wait_for "close emoji search" 10 >/dev/null || { log "FAIL emoji: search did not open"; FAILED=1; return; }
+    read_keys
+    type_keys heart
+    xy=$(wait_for "red heart" 10) || { log "FAIL emoji: search found no red heart"; FAILED=1; shot emoji-search; return; }
+    shot emoji-search
+    tap $xy
+    sleep 0.5
+    check "emoji: search and pick" "😀👋🏽❤️" "$(field_text)"
+    tap $(ui bounds "close emoji search")
+    sleep 0.5
+    tap $(ui bounds letters)
+    wait_for "numbers and symbols" 10 >/dev/null && log "PASS emoji: ABC goes back to the letters" || { log "FAIL emoji: still on the emoji page"; FAILED=1; }
+}
+
 # Screenshots of Typer in the same field the Gboard reference used (Contacts, First name; android/docs/reference.md),
 # light and dark, at 411 and 360 dp wide, idle and composing. Not a pass/fail check: for comparing by eye.
 scenario_compare() {
@@ -509,7 +546,7 @@ scenario_compare() {
 }
 
 log "Typer Android e2e $(date)  device: $("$ADB" shell getprop ro.product.model | tr -d '\r') API $("$ADB" shell getprop ro.build.version.sdk | tr -d '\r')"
-for s in ${*:-tracer phrase learn password english keys talkback}; do
+for s in ${*:-tracer phrase learn password english keys emoji talkback}; do
     log "-- $s"
     "scenario_$s"
 done
