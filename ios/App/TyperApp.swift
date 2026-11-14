@@ -29,6 +29,8 @@ private extension Color {
 /// own switch instead of following the phone's language. iOS menu names stay in English, as on the phone.
 private struct Copy {
     let tagline: String
+    let featuresTitle: String
+    let features: [(title: String, detail: String)]
     let setup: String
     let steps: [(title: String, detail: String)]
     let aboutTitle: String
@@ -39,6 +41,14 @@ private struct Copy {
 
     static let khmer = Copy(
         tagline: "វាយខ្មែរ ដូចពេលអ្នកឆាត។",
+        featuresTitle: "មុខងារ",
+        features: [
+            ("វាយដូចពេលឆាត", "វាយអក្សរឡាតាំងទាំងឃ្លា ហើយ Typer ប្តូរវាជាខ្មែរ។"),
+            ("សរសេរតាមរបៀបអ្នក", "គ្មានច្បាប់តឹងរ៉ឹងទេ៖ nh, knh ឬ knhom សុទ្ធតែបាន ខ្ញុំ។"),
+            ("ចាំអ្វីដែលអ្នកជ្រើស", "ពាក្យដែលអ្នកជ្រើសញឹកញាប់ នឹងឡើងមកមុនគេ។"),
+            ("របារពាក្យស្នើ", "ពណ៌លឿង៖ ពាក្យស្នើល្អបំផុត។ abc៖ រក្សាអក្សរឡាតាំង។ លេខ៖ មើលពាក្យស្នើទាំងអស់។"),
+            ("ខ្មែរ ឬ អង់គ្លេស", "ចុចគ្រាប់ ខ ដើម្បីប្តូរទៅវាយអង់គ្លេសធម្មតា។"),
+        ],
         setup: "ការរៀបចំ",
         steps: [
             ("បើក Keyboards", "Settings › General › Keyboard › Keyboards"),
@@ -54,6 +64,14 @@ private struct Copy {
 
     static let english = Copy(
         tagline: "Type Khmer the way you chat.",
+        featuresTitle: "Features",
+        features: [
+            ("Type how you chat", "Type a whole phrase in Latin letters and Typer turns it into Khmer."),
+            ("Spell it your way", "No strict rules: nh, knh or knhom all give ខ្ញុំ."),
+            ("Learns your picks", "Words you pick often come up first."),
+            ("The Suggestion bar", "Yellow: the top Suggestion. abc: keep the Latin. The number: see every Suggestion."),
+            ("Khmer or English", "Tap the ខ key to switch to plain English typing."),
+        ],
         setup: "Setup",
         steps: [
             ("Open Keyboards", "Settings › General › Keyboard › Keyboards"),
@@ -82,6 +100,7 @@ struct SetupView: View {
             VStack(spacing: 0) {
                 hero(copy)
                 VStack(alignment: .leading, spacing: 28) {
+                    features(copy)
                     steps(copy)
                     privacy(copy)
                     openSettings(copy)
@@ -149,6 +168,64 @@ struct SetupView: View {
         .accessibilityLabel(khmer ? "ភាសា ខ្មែរ" : "Language, English")
     }
 
+    private func features(_ copy: Copy) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(copy.featuresTitle.uppercased()).font(.system(size: 13, weight: .semibold)).tracking(1.2)
+                .foregroundColor(.muted)
+            ForEach(Array(copy.features.enumerated()), id: \.offset) { i, feature in
+                VStack(alignment: .leading, spacing: 10) {
+                    featureDemo(i)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(feature.title).font(.system(size: 17, weight: .semibold))
+                        Text(feature.detail).font(.system(size: 15)).foregroundColor(.muted).lineSpacing(lineGap)
+                    }
+                }
+                .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.card))
+            }
+        }
+    }
+
+    /// A small picture of each feature, drawn like the keyboard: yellow for Typer's picks, grey for the other keys.
+    @ViewBuilder private func featureDemo(_ i: Int) -> some View {
+        switch i {
+        case 0: PhraseDemo()
+        case 1:
+            HStack(spacing: 6) {
+                ForEach(["nh", "knh", "knhom"], id: \.self) { chip($0, latin: true) }
+                arrow
+                chip("ខ្ញុំ", yellow: true)
+            }
+        case 2:
+            HStack(spacing: 6) {
+                chip("sok", latin: true)
+                arrow
+                chip("សុខ", yellow: true)
+                Image(systemName: "arrow.up").font(.system(size: 14, weight: .bold)).foregroundColor(.muted)
+            }
+        case 3:
+            HStack(spacing: 6) {
+                chip("ខ្ញុំទៅសាលារៀន", yellow: true).frame(maxWidth: .infinity, alignment: .leading)
+                chip("abc")
+                chip("5 ⌄")
+            }
+        default:
+            HStack(spacing: 6) { chip("ខ", yellow: true); arrow; chip("EN") }
+        }
+    }
+
+    private var arrow: some View {
+        Image(systemName: "arrow.right").font(.system(size: 13, weight: .bold)).foregroundColor(.muted)
+    }
+
+    private func chip(_ text: String, yellow: Bool = false, latin: Bool = false) -> some View {
+        Text(text).font(.system(size: 16, weight: .semibold, design: latin ? .monospaced : .default))
+            .foregroundColor(yellow ? .ink : .primary)
+            .padding(.horizontal, 10).frame(height: 34)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(yellow ? Color.yellow : Color.primary.opacity(0.08)))
+    }
+
     private func steps(_ copy: Copy) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(copy.setup.uppercased()).font(.system(size: 13, weight: .semibold)).tracking(1.2)
@@ -209,6 +286,49 @@ struct SetupView: View {
                 .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.card))
                 .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(typing ? Color.yellow : .clear, lineWidth: 2.5))
+        }
+    }
+}
+
+/// Types the Latin a letter at a time, then swaps it for the Khmer, on a loop. Static when Reduce Motion is on.
+private struct PhraseDemo: View {
+    private let latin = "knhom tov sala rean"
+    private let khmer = "ខ្ញុំទៅសាលារៀន"
+    @State private var typed = ""
+    @State private var done = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Group {
+            if reduceMotion {
+                HStack(spacing: 8) {
+                    Text(latin).font(.system(size: 15, design: .monospaced)).foregroundColor(.muted)
+                    Image(systemName: "arrow.right").font(.system(size: 13, weight: .bold)).foregroundColor(.muted)
+                    Text(khmer).font(.system(size: 18, weight: .bold))
+                }
+            } else if done {
+                Text(khmer).font(.system(size: 20, weight: .bold)).foregroundColor(.ink)
+                    .padding(.horizontal, 10).frame(height: 34)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.yellow))
+                    .transition(.scale(scale: 0.9).combined(with: .opacity))
+            } else {
+                Text(typed + "▏").font(.system(size: 17, design: .monospaced)).frame(height: 34)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+        .lineLimit(1).minimumScaleFactor(0.7)
+        .task {
+            guard !reduceMotion else { return }
+            while !Task.isCancelled {
+                typed = ""; done = false
+                for c in latin {
+                    try? await Task.sleep(for: .milliseconds(85))
+                    typed.append(c)
+                }
+                try? await Task.sleep(for: .milliseconds(600))
+                withAnimation(.snappy) { done = true }
+                try? await Task.sleep(for: .seconds(2.2))
+            }
         }
     }
 }
