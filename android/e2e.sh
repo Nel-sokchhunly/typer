@@ -518,6 +518,62 @@ scenario_emoji() { # the emoji page: pick, recently used, skin tones (remembered
     wait_for "numbers and symbols" 10 >/dev/null && log "PASS emoji: ABC goes back to the letters" || { log "FAIL emoji: still on the emoji page"; FAILED=1; }
 }
 
+
+# set_font <Kantumruy Pro|System>: choose the font on the Companion app's card (scrolling to it)
+set_font() {
+    "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null
+    wait_for try 30 >/dev/null || return 1
+    n=0
+    until xy=$(ui bounds "Kantumruy Pro"); do
+        "$ADB" shell input swipe 540 1700 540 1150 300
+        sleep 0.6
+        n=$((n + 1))
+        [ $n -lt 10 ] || { log "  no font setting on screen"; return 1; }
+    done
+    set -- $xy
+    if [ "$FONT" = System ]; then tap $(( $(screen_width) - $1 )) $2; else tap $1 $2; fi  # the card is centred
+    sleep 0.5
+}
+
+screen_width() { "$ADB" shell wm size | tail -1 | sed -E 's/.* ([0-9]+)x.*/\1/'; }
+
+scenario_font() { # the font setting changes the Keyboard's letters between Kantumruy Pro and the phone's font
+    for FONT in System "Kantumruy Pro"; do
+        set_font || { FAILED=1; return; }
+        "$ADB" shell run-as $PKG cat shared_prefs/typer_keyboard.xml 2>/dev/null | grep -q "SYSTEM" && saved=SYSTEM || saved=TYPER
+        log "  font set to $FONT (saved: $saved)"
+        open_app || { FAILED=1; return; }
+        shot "font-$( [ "$FONT" = System ] && echo system || echo typer)"
+    done
+    python3 - "$OUT/font-system.png" "$OUT/font-typer.png" <<'PY' && log "PASS font: the Keyboard's letters change with the setting" || { log "FAIL font: the Keyboard looks the same in both fonts"; FAILED=1; }
+import struct, sys, zlib
+def rows(path):  # decode the PNG's pixel rows without extra modules (8-bit RGBA or RGB, no interlace)
+    data = open(path, "rb").read(); i = 8; idat = b""
+    while i < len(data):
+        n, kind = struct.unpack(">I4s", data[i:i + 8]); body = data[i + 8:i + 8 + n]
+        if kind == b"IHDR": w, h, depth, ctype = struct.unpack(">IIBB", body[:10])
+        if kind == b"IDAT": idat += body
+        i += 12 + n
+    raw = zlib.decompress(idat); bpp = 4 if ctype == 6 else 3; stride = w * bpp; out = []; prev = bytearray(stride); p = 0
+    for _ in range(h):
+        f = raw[p]; line = bytearray(raw[p + 1:p + 1 + stride]); p += 1 + stride
+        for x in range(stride):
+            a = line[x - bpp] if x >= bpp else 0; b = prev[x]; c = prev[x - bpp] if x >= bpp else 0
+            if f == 1: line[x] = (line[x] + a) & 255
+            elif f == 2: line[x] = (line[x] + b) & 255
+            elif f == 3: line[x] = (line[x] + (a + b) // 2) & 255
+            elif f == 4:
+                pa, pb, pc = abs(b - c), abs(a - c), abs(a + b - 2 * c)
+                line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
+        out.append(bytes(line)); prev = line
+    return out
+a, b = rows(sys.argv[1]), rows(sys.argv[2])
+h = len(a); diff = sum(1 for y in range(int(h * 0.72), int(h * 0.92)) for i in range(0, len(a[y]), 16) if abs(a[y][i] - b[y][i]) > 40)
+print("differing samples in the key rows:", diff)
+sys.exit(0 if diff > 200 else 1)
+PY
+}
+
 # Screenshots of Typer in the same field the Gboard reference used (Contacts, First name; android/docs/reference.md),
 # light and dark, at 411 and 360 dp wide, idle and composing. Not a pass/fail check: for comparing by eye.
 scenario_compare() {
