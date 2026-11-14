@@ -127,9 +127,11 @@ jobs:
       - run: python3 data/emoji.py
       - run: cargo build --release --manifest-path engine/Cargo.toml # host lib the TyperCore tests link against
       - run: swift test --package-path ios/TyperCore # Composer tests run on the macOS host
-      # Later: run the tests on the iOS simulator too. Blocked on #20 (app/extension build).
       - run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim
-      - run: sh ios/build.sh # builds the engine xcframework
+      - run: sh ios/build.sh # builds the engine xcframework and copies the data
+      - run: brew install xcodegen
+      - run: cd ios && xcodegen generate
+      - run: xcodebuild -project ios/Typer.xcodeproj -scheme Typer -destination 'generic/platform=iOS Simulator' ARCHS=arm64 CODE_SIGNING_ALLOWED=NO build
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
