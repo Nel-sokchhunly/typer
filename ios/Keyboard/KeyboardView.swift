@@ -17,13 +17,13 @@ struct KeyboardView: View {
     private let keyHeight = KeyboardView.keyHeight
     private let rowGap = KeyboardView.rowGap
     /// Candidate bar + gap + four rows: the controller sizes the keyboard to exactly this.
-    static let height: CGFloat = 4 + 40 + 6 + 4 * keyHeight + 3 * rowGap + 4
+    static let height: CGFloat = 8 + 40 + 6 + 4 * keyHeight + 3 * rowGap + 4
 
     var body: some View {
         GeometryReader { geo in
             let kw = (geo.size.width - 2 * margin - 9 * gap) / 10
             VStack(spacing: 0) {
-                candidateBar.zIndex(-1)
+                candidateBar.padding(.horizontal, 14).zIndex(-1)  // clear the rounded corners of the iOS 26 keyboard frame
                 Spacer().frame(height: 6)
                 if model.showAll && !model.typed.isEmpty {
                     panel.frame(height: 4 * keyHeight + 3 * rowGap)
@@ -35,7 +35,7 @@ struct KeyboardView: View {
                 }
             }
             .padding(.horizontal, margin)
-            .padding(.top, 4)
+            .padding(.top, 8)
         }
     }
 
