@@ -10,7 +10,7 @@ struct KeyboardView: View {
     let onGlobe: () -> Void
     let onMode: () -> Void
 
-    private let margin: CGFloat = 8  // same side inset for bar and keys; clears the iOS 26 frame's rounded corners
+    private let margin: CGFloat = 6  // same side inset for bar and keys; clears the iOS 26 frame's rounded corners
     private let gap: CGFloat = 6
     private static let keyHeight: CGFloat = 43
     private static let rowGap: CGFloat = 8
