@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Typer / សរសេរ: type Khmer the way you chat</title>
-<meta name="description" content="Typer is a free Sing Khmer input method for macOS, Windows and Linux. Type knhom tov sala rean, get ខ្ញុំទៅសាលារៀន.">
+<meta name="description" content="Typer is a free Sing Khmer input method for macOS, Windows, Linux and iPhone. Type knhom tov sala rean, get ខ្ញុំទៅសាលារៀន.">
 <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
 <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <meta name="theme-color" content="#f5c842">
 <meta property="og:site_name" content="Typer / សរសេរ">
 <meta property="og:title" content="Typer / សរសេរ: type Khmer the way you chat">
-<meta property="og:description" content="Free Sing Khmer input method for macOS, Windows and Linux. Type knhom tov sala rean, get ខ្ញុំទៅសាលារៀន.">
+<meta property="og:description" content="Free Sing Khmer input method for macOS, Windows, Linux and iPhone. Type knhom tov sala rean, get ខ្ញុំទៅសាលារៀន.">
 <meta property="og:image" content="https://nel-sokchhunly.github.io/typer/img/social.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="1200">
@@ -19,7 +19,7 @@
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Typer / សរសេរ: type Khmer the way you chat">
-<meta name="twitter:description" content="Free Sing Khmer input method for macOS, Windows and Linux. Type knhom tov sala rean, get ខ្ញុំទៅសាលារៀន.">
+<meta name="twitter:description" content="Free Sing Khmer input method for macOS, Windows, Linux and iPhone. Type knhom tov sala rean, get ខ្ញុំទៅសាលារៀន.">
 <meta name="twitter:image" content="https://nel-sokchhunly.github.io/typer/img/social.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Khmer:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -40,22 +40,24 @@
 <div class="sheet">
 <main>
 
-<p class="label">Sing Khmer input · macOS · Windows · Linux</p>
-<p class="lead">In Latin letters, spelled however you like. Free for macOS, Windows and Linux.</p>
+<p class="label">Sing Khmer input · macOS · Windows · Linux · iPhone</p>
+<p class="lead">In Latin letters, spelled however you like. Free for macOS, Windows, Linux and iPhone.</p>
 
 <div class="demo-wrap"><div class="demo"><video autoplay muted loop playsinline preload="metadata" poster="img/demo-poster.jpg" aria-label="Demo: type knhom tov sala rean, press Enter to get ខ្ញុំទៅសាលារៀន, then tap Ctrl to switch between ខ and EN"><source src="img/demo.webm" type="video/webm"><source src="img/demo.mp4" type="video/mp4"></video><button type="button" data-pause="Pause demo" data-play="Play demo"></button></div></div>
 
 <p class="btns">
-  <a class="btn" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer.pkg">Download for macOS</a>
-  <a class="btn" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-windows-setup.exe">Download for Windows</a>
-  <a class="btn" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-linux-amd64.deb">Download for Linux</a>
+  <a class="btn" data-os="mac" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer.pkg">Download for macOS</a>
+  <a class="btn" data-os="windows" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-windows-setup.exe">Download for Windows</a>
+  <a class="btn" data-os="linux" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-linux-amd64.deb">Download for Linux</a>
+  <a class="btn" data-os="ios" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-ios-unsigned.ipa">Download for iPhone</a>
 </p>
-<p class="note">macOS 13 Ventura or newer (Apple Silicon and Intel) · Windows 10 or 11, 64-bit · Ubuntu 22.04+ / Debian 12+ · early preview: it will sometimes guess wrong, and it learns from what you pick. iPhone keyboard: coming soon.</p>
+<p class="note">macOS 13 Ventura or newer (Apple Silicon and Intel) · Windows 10 or 11, 64-bit · Ubuntu 22.04+ / Debian 12+ · early preview: it will sometimes guess wrong, and it learns from what you pick. · iPhone: iOS 17 or newer, installed from a computer (<a href="#iphone">how</a>).</p>
 <nav class="toc" aria-label="Jump to">
   <span>Jump to</span>
   <a href="#mac">Install on macOS</a>
   <a href="#windows">Install on Windows</a>
   <a href="#linux">Install on Linux</a>
+  <a href="#iphone">Install on iPhone</a>
   <a href="#use">Use it</a>
   <a href="#settings">Settings</a>
   <a href="#privacy">Privacy</a>
@@ -146,12 +148,33 @@ echo "Typer installed"</code></pre>
 <p class="note">Everything below works the same on Linux, including picking with the mouse. KDE users on Fcitx5 aren't supported yet.</p>
 </div>
 
+<h2 id="iphone">Install on iPhone</h2>
+<p>Typer isn't on the App Store yet, so for now you install it yourself from a computer with a free sideloading tool such as <a href="https://sideloadly.io">Sideloadly</a> (macOS or Windows). Needs iOS 17 or newer. iPhone support is new; please <a href="https://github.com/Nel-sokchhunly/typer/issues/new">report</a> anything that doesn't work.</p>
+
+<div class="card">
+<h3 class="step"><span class="num">1</span> Install the app</h3>
+<p>On your computer, click <b>Download for iPhone</b> above. Plug in your iPhone, open Sideloadly, drop <b>Typer-ios-unsigned.ipa</b> into it, enter your Apple ID and click <b>Start</b>.</p>
+<p class="warn"><b>About your Apple ID:</b> the sideloading tool uses it to ask Apple to sign Typer for your phone. A free Apple ID works. Only use a tool you trust, and only use the file from this page.</p>
+</div>
+
+<div class="card">
+<h3 class="step"><span class="num">2</span> Trust it on the iPhone</h3>
+<p>Open <b>Settings → General → VPN &amp; Device Management</b>, tap your Apple ID and tap <b>Trust</b>. If iOS asks for <b>Developer Mode</b>, turn it on in <b>Settings → Privacy &amp; Security → Developer Mode</b> and restart.</p>
+</div>
+
+<div class="card">
+<h3 class="step"><span class="num">3</span> Add the keyboard</h3>
+<p>Open the <b>សរសេរ</b> app and follow its steps: <b>Settings → General → Keyboard → Keyboards → Add New Keyboard → Typer (សរសេរ)</b>. Allowing <b>Full Access</b> is optional and only adds haptics and key clicks. Then hold <kbd>🌐</kbd> while typing and pick <b>Typer (សរសេរ)</b>.</p>
+<p class="note">With a free Apple ID the install lasts 7 days; run Sideloadly again to renew it. The app shows what the keyboard's buttons do.</p>
+</div>
+
 <h2 id="use">Use it</h2>
 <p>Switch to Typer with <kbd>Ctrl</kbd> <kbd>Space</kbd> or the <kbd>🌐</kbd> Globe key, or pick it from the input menu in the menu bar. On Windows, press <kbd>Windows</kbd> <kbd>Space</kbd>; on Linux, <kbd>Super</kbd> <kbd>Space</kbd>.</p>
+<p>On iPhone, hold <kbd>🌐</kbd> and pick <b>Typer (សរសេរ)</b>. The top suggestion shows in yellow above the keys: tap it, tap <b>abc</b> to keep the Latin, or tap the number to see them all. The <kbd>ខ</kbd> / <kbd>EN</kbd> key switches to English, which suggests English words as you type.</p>
 
 <p>Type Khmer in Latin letters with spaces between words. Suggestions appear under what you type:</p>
 <figure>
-  <img src="img/typing.png" alt="Typing in Notes: Latin text underlined, Khmer suggestions listed below" loading="lazy" style="max-width:520px">
+  <img src="img/typing.png" alt="Typing in Notes: Latin text underlined, Khmer suggestions listed below" loading="lazy" style="max-width:min(520px, 100%)">
   <figcaption>Typing in Notes. What you type stays underlined until you pick a suggestion.</figcaption>
 </figure>
 
@@ -197,23 +220,26 @@ echo "Typer installed"</code></pre>
 <section class="privacy">
 <svg class="lock" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V11a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm-3 8V6a3 3 0 0 1 6 0v3H9z"/></svg>
 <h2 id="privacy">Privacy</h2>
-<p>Everything stays on your computer. Typer has no network access and sends nothing anywhere. What you pick is saved locally so Typer can learn: in <code>~/Library/Application Support/Typer/</code> on a Mac, <code>%APPDATA%\Typer</code> on Windows, <code>~/.local/share/typer/</code> on Linux. Delete that folder at any time to reset it. To stop saving picks, switch off <b>Learn from my picks</b> in <a href="#settings">Typer Settings</a>.</p>
+<p>Everything stays on your computer or phone. Typer has no network access and sends nothing anywhere. What you pick is saved locally so Typer can learn: in <code>~/Library/Application Support/Typer/</code> on a Mac, <code>%APPDATA%\Typer</code> on Windows, <code>~/.local/share/typer/</code> on Linux, inside the keyboard on iPhone. Delete that folder (on iPhone, the <b>សរសេរ</b> app) at any time to reset it. To stop saving picks, switch off <b>Learn from my picks</b> in <a href="#settings">Typer Settings</a>.</p>
 </section>
 
 <h2 id="update">Update</h2>
-<p>Download and run the installer again (on a Mac you can also use the Terminal command). What Typer has learned is kept. On Windows, apps that were open during the update switch to the new version after a restart. If it still behaves like the old version, switch to another input source and back, or log out and back in.</p>
+<p>Download and run the installer again (on a Mac you can also use the Terminal command). What Typer has learned is kept. On Windows, apps that were open during the update switch to the new version after a restart. If it still behaves like the old version, switch to another input source and back, or log out and back in. On iPhone, install the new <b>Download for iPhone</b> file the same way.</p>
 
 <h2 id="uninstall">Uninstall</h2>
 <p>Remove Typer in <b>System Settings → Keyboard → Input Sources → Edit…</b> (select it, click <b>−</b>), then run:</p>
 <pre><code>rm -rf ~/Library/Input\ Methods/Typer.app ~/Library/Application\ Support/Typer</code></pre>
 <p>On Windows: <b>Settings → Apps → Installed apps → Typer → Uninstall</b>.</p>
 <p>On Linux: <code>sudo apt remove typer</code>, and remove Typer from <i>Input Sources</i>.</p>
+<p>On iPhone: delete the <b>សរសេរ</b> app; its keyboard goes with it.</p>
 
 <h2 id="problems">Problems?</h2>
 <ul>
   <li><b>No suggestions appear:</b> check Typer is selected in the menu bar. You may be in English mode; tap <kbd>Ctrl</kbd> once.</li>
   <li><b>Typer isn't in the Add list:</b> log out and back in, then try step 3 again.</li>
   <li><b>Old icon or old behaviour after updating:</b> run <code>killall -9 TextInputSwitcher TextInputMenuAgent</code> in Terminal (macOS restarts them), or remove Typer from Input Sources and add it again, or log out and back in.</li>
+  <li><b>iPhone: Typer isn't under Add New Keyboard:</b> open the <b>សរសេរ</b> app once, and check you tapped <b>Trust</b> in step 2.</li>
+  <li><b>iPhone: the app or keyboard stopped opening after a week:</b> a free Apple ID install lasts 7 days. Run Sideloadly again with the same file to renew it.</li>
   <li><b>Wrong suggestion:</b> please <a href="https://github.com/Nel-sokchhunly/typer/issues/new">report it</a> with what you typed and what you expected. These reports are how Typer gets better.</li>
 </ul>
 
@@ -234,6 +260,16 @@ echo "Typer installed"</code></pre>
       .then(() => { b.textContent = "Copied"; setTimeout(() => b.textContent = "Copy", 1500); });
     pre.appendChild(b);
   });
+  // Put the download for the visitor's OS first, in yellow; the rest go quiet. Unknown OS (Android, ChromeOS): all stay yellow.
+  (() => {
+    const ua = navigator.userAgent, touchMac = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;  // iPadOS reports a Mac
+    const os = /iPhone|iPad|iPod/.test(ua) || touchMac ? "ios" : /Android|CrOS/.test(ua) ? null
+      : /Mac/.test(ua) ? "mac" : /Win/.test(ua) ? "windows" : /Linux|X11/.test(ua) ? "linux" : null;
+    const mine = os && document.querySelector(`.btns .btn[data-os="${os}"]`);
+    if (!mine) return;
+    document.querySelectorAll(".btns .btn").forEach(b => b.classList.toggle("muted", b !== mine));
+    mine.parentElement.prepend(mine);
+  })();
 </script>
 </body>
 </html>
