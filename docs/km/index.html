@@ -39,7 +39,7 @@
 <h1>សរសេរ <span class="h1-sep">/</span> <span class="h1-km" lang="en">Typer</span></h1>
 <p class="lead">វាយអក្សរខ្មែរ ដូចដែលអ្នកធ្លាប់ឆាតរួចហើយ៖ ប្រើអក្សរឡាតាំង ហើយប្រកបតាមចិត្ត។ ឥតគិតថ្លៃ សម្រាប់ macOS, Windows និង Linux។</p>
 
-<div class="hero"><img src="../img/hero.png" alt="វាយ nh jg tv sala rean ក្នុង Notes ហើយ Typer ណែនាំ ខ្ញុំចង់ទៅសាលារៀន មុនគេ"></div>
+<div class="hero"><div class="demo"><video autoplay muted loop playsinline preload="metadata" poster="../img/demo-poster.jpg" aria-label="ឧទាហរណ៍៖ វាយ knhom tov sala rean ចុច Enter បានជា ខ្ញុំទៅសាលារៀន រួចចុច Ctrl ដើម្បីប្តូររវាង ខ និង EN"><source src="../img/demo.webm" type="video/webm"><source src="../img/demo.mp4" type="video/mp4"></video><button type="button" data-pause="ផ្អាកវីដេអូ" data-play="ចាក់វីដេអូ"></button></div></div>
 
 <p class="btns">
   <a class="btn" href="https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer.pkg">ទាញយកសម្រាប់ macOS</a>
@@ -194,6 +194,13 @@ echo "Typer installed"</code></pre>
 
 </main>
 <script>
+  document.querySelectorAll(".demo").forEach(d => {
+    const v = d.querySelector("video"), b = d.querySelector("button");
+    const sync = () => { b.textContent = v.paused ? "▶" : "⏸"; b.setAttribute("aria-label", v.paused ? b.dataset.play : b.dataset.pause); };
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { v.removeAttribute("autoplay"); v.pause(); }
+    b.onclick = () => v.paused ? v.play().catch(() => {}) : v.pause();
+    v.onplay = v.onpause = sync; sync();
+  });
   document.querySelectorAll("pre").forEach(pre => {
     const b = document.createElement("button");
     b.textContent = "ចម្លង";

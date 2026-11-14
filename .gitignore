@@ -7,3 +7,7 @@ build/
 .build/
 ios/*.xcodeproj
 ios/Keyboard/Info.plist
+settings/gen/
+settings/ui/demo.webm
+settings/ui/demo.mp4
+settings/ui/demo-poster.jpg

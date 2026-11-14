@@ -145,18 +145,26 @@ class TyperInputController: IMKInputController {
         insert(buffer, client)
     }
 
-    /// Typer's entry in the input menu (menu bar): opens the bundled Typer Settings app.
+    /// Typer's entries in the input menu (menu bar): open the bundled Typer Settings app.
     override func menu() -> NSMenu! {
         let m = NSMenu()
-        let item = NSMenuItem(title: "Typer Settings…", action: #selector(openSettings(_:)), keyEquivalent: "")
-        item.target = self
-        m.addItem(item)
+        for (title, action) in [("Typer Settings…", #selector(openSettings(_:))), ("Typer Tutorial…", #selector(openTutorial(_:)))] {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            m.addItem(item)
+        }
         return m
     }
 
-    @objc private func openSettings(_ sender: Any?) {
+    @objc private func openSettings(_ sender: Any?) { openSettingsApp([]) }
+    // ponytail: if Settings is already open this just brings it forward; its Tutorial tab is one click away.
+    @objc private func openTutorial(_ sender: Any?) { openSettingsApp(["--tutorial"]) }
+
+    private func openSettingsApp(_ args: [String]) {
         let app = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/Typer Settings.app")
-        NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration())
+        let config = NSWorkspace.OpenConfiguration()
+        config.arguments = args
+        NSWorkspace.shared.openApplication(at: app, configuration: config)
     }
 
     override func activateServer(_ sender: Any!) {
