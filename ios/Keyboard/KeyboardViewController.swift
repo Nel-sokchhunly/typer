@@ -19,6 +19,8 @@ final class ProxyAdapter: TextProxy {
 final class KeyboardModel: ObservableObject {
     @Published var typed = ""
     @Published var suggestions: [String] = []
+    /// The all-Suggestions panel is open in place of the keys.
+    @Published var showAll = false
     @Published var needsGlobe = false
     @Published var shift = Shift.off
     @Published var page = Page.letters
@@ -171,6 +173,7 @@ final class KeyboardViewController: UIInputViewController {
     private func refresh(afterKey: Bool = false) {
         model.typed = composer.typed
         model.suggestions = composer.suggestions
+        if composer.typed.isEmpty { model.showAll = false }
         model.mode = composer.mode
         model.canToggle = composer.canToggle
         if afterKey { model.shiftChosen = false }
