@@ -109,8 +109,10 @@ struct KeyboardView: View {
                     .cornerRadius(8)
                     .onTouchUp { onCandidate(0) }
                 barButton(Text("abc").font(.system(size: 16, weight: .semibold))) { onLatin() }  // keep the Latin
-                barButton(Image(systemName: model.showAll ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 17, weight: .bold))) { model.showAll.toggle() }
+                barButton(HStack(spacing: 3) {  // how many Suggestions the panel holds
+                    Text("\(model.suggestions.count)").font(.system(size: 16, weight: .semibold))
+                    Image(systemName: model.showAll ? "chevron.up" : "chevron.down").font(.system(size: 13, weight: .bold))
+                }) { model.showAll.toggle() }
             }
         }
         .frame(height: 40)
