@@ -20,6 +20,29 @@ final class KeyboardModel: ObservableObject {
     @Published var typed = ""
     @Published var suggestions: [String] = []
     @Published var needsGlobe = false
+    @Published var shift = Shift.off
+    @Published var page = Page.letters
+    @Published var mode = "ខ"  // the Composer's mode label
+    @Published var returnLabel = "return"
+    @Published var returnProminent = false
+    var autoCap = AutoCap.Kind.sentences
+    /// The user set shift by hand since the last key; auto-cap leaves it alone until a key is typed.
+    var shiftChosen = false
+    private var lastShiftTap = Date.distantPast
+
+    enum Shift { case off, once, lock }
+    enum Page: Int { case letters, numbers, symbols }
+
+    /// Shift once; a quick second tap locks caps; tapping a lock (or a lone shift) turns it off.
+    func shiftTapped() {
+        let now = Date()
+        defer { lastShiftTap = now; shiftChosen = true }
+        switch shift {
+        case .lock: shift = .off
+        case .once: shift = now.timeIntervalSince(lastShiftTap) < 0.4 ? .lock : .off
+        case .off: shift = .once
+        }
+    }
 }
 
 final class KeyboardViewController: UIInputViewController {
@@ -44,7 +67,8 @@ final class KeyboardViewController: UIInputViewController {
                 onReturn: { [unowned self] in handle(composer.returnKey(), else: { textDocumentProxy.insertText("\n") }) },
                 onCandidate: { [unowned self] in handle(composer.candidateTapped($0)) },
                 onLatin: { [unowned self] in handle(composer.rawLatin()) },
-                onGlobe: { [unowned self] in advanceToNextInputMode() }))
+                onGlobe: { [unowned self] in advanceToNextInputMode() },
+                onMode: { [unowned self] in _ = composer.toggleMode(); refresh() }))
         hosting.view.translatesAutoresizingMaskIntoConstraints = false
         hosting.view.backgroundColor = .clear
         addChild(hosting)
@@ -56,7 +80,7 @@ final class KeyboardViewController: UIInputViewController {
             hosting.view.topAnchor.constraint(equalTo: view.topAnchor),
             hosting.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
-        let height = view.heightAnchor.constraint(equalToConstant: 300)
+        let height = view.heightAnchor.constraint(equalToConstant: 275)
         height.priority = UILayoutPriority(999)
         height.isActive = true
     }
@@ -65,6 +89,7 @@ final class KeyboardViewController: UIInputViewController {
         super.viewWillAppear(animated)
         model.needsGlobe = needsInputModeSwitchKey
         traitsChanged()
+        refresh()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -88,18 +113,44 @@ final class KeyboardViewController: UIInputViewController {
         case .numberPad, .decimalPad, .phonePad, .numbersAndPunctuation, .asciiCapableNumberPad: type = .number
         default: type = .text
         }
+        model.autoCap = switch t.autocapitalizationType ?? .sentences {
+        case .none: .none
+        case .words: .words
+        case .allCharacters: .allCharacters
+        default: .sentences
+        }
+        let rt = t.returnKeyType ?? .default
+        model.returnProminent = rt != .default
+        model.returnLabel = switch rt {
+        case .go: "go"
+        case .google, .search, .yahoo: "search"
+        case .join: "join"
+        case .next: "next"
+        case .route: "route"
+        case .send: "send"
+        case .done: "done"
+        case .emergencyCall: "emergency"
+        case .continue: "continue"
+        default: "return"
+        }
         _ = composer.fieldTraitsChanged(secure: t.isSecureTextEntry ?? false, type: type)
     }
 
     /// If the Composer declined the key, do the normal thing.
     private func handle(_ consumed: Bool, else fallback: () -> Void = {}) {
         if !consumed { fallback() }
-        refresh()
+        refresh(afterKey: true)
     }
 
-    private func refresh() {
+    private func refresh(afterKey: Bool = false) {
         model.typed = composer.typed
         model.suggestions = composer.suggestions
+        model.mode = composer.mode
+        if afterKey { model.shiftChosen = false }
+        if model.shift != .lock && !model.shiftChosen {  // a typed key or a field change re-decides shift, like Apple's
+            let before = textDocumentProxy.documentContextBeforeInput
+            model.shift = AutoCap.shouldShift(before: before, kind: model.autoCap, khmerMode: composer.mode == "ខ") ? .once : .off
+        }
     }
 }
 
