@@ -1,5 +1,6 @@
 #!/bin/sh
-# ios/build.sh   build build/ios/Typer.xcframework (the Rust engine for device + simulator)
+# ios/build.sh          build build/ios/Typer.xcframework (the Rust engine for device + simulator)
+# ios/build.sh device   ...then generate the Xcode project, build, and install on the connected iPhone
 set -eu
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.cargo/bin:$PATH"
@@ -26,7 +27,17 @@ xcodebuild -create-xcframework \
     -library engine/target/aarch64-apple-ios/release/libtyper.a -headers "$H" \
     -library engine/target/aarch64-apple-ios-sim/release/libtyper.a -headers "$H" \
     -output "$OUT/Typer.xcframework"
+rm -rf "$OUT/data"
+mkdir -p "$OUT/data"
+for f in lexicon ngrams english generated; do cp "data/out/$f.tsv" "$OUT/data/"; done
 echo "built: $OUT/Typer.xcframework"
 
-# TODO(app build): build the host app + keyboard extension and bundle data/out/*.tsv here.
-# Blocked by issue #20: Xcode 16.2 can't compile iOS asset catalogs on this macOS.
+[ "${1:-}" = device ] || exit 0
+
+# One command onto the plugged-in iPhone: sh ios/build.sh device
+(cd ios && xcodegen generate --quiet)
+ID=$(xcrun devicectl list devices 2>/dev/null | awk '/connected/ && /physical/ { for (i = 1; i <= NF; i++) if ($i ~ /^[0-9A-F]{8}-[0-9A-F]{16}$/) { print $i; exit } }')
+[ -n "$ID" ] || { echo "no connected iPhone (plug in, unlock, trust this Mac)" >&2; exit 1; }
+xcodebuild -project ios/Typer.xcodeproj -scheme Typer -configuration Debug -destination "id=$ID" \
+    -derivedDataPath "$OUT/derived" -allowProvisioningUpdates -allowProvisioningDeviceRegistration build -quiet
+xcrun devicectl device install app --device "$ID" "$OUT/derived/Build/Products/Debug-iphoneos/Typer.app"

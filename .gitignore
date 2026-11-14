@@ -5,3 +5,5 @@ __pycache__/
 data/user/
 build/
 .build/
+ios/*.xcodeproj
+ios/Keyboard/Info.plist
