@@ -392,7 +392,7 @@ final class ComposerTests: XCTestCase {
         XCTAssertFalse(composer.canToggle, "mid-phrase")
         _ = composer.rawLatin()
         XCTAssertTrue(composer.canToggle)
-        for (s, t) in [(true, FieldType.text), (false, .email), (false, .url), (false, .number)] {
+        for (s, t) in [(true, FieldType.text), (false, .email), (false, .number)] {
             _ = composer.fieldTraitsChanged(secure: s, type: t)
             XCTAssertFalse(composer.canToggle)
             XCTAssertEqual(composer.mode, "EN")
@@ -400,6 +400,21 @@ final class ComposerTests: XCTestCase {
         _ = composer.fieldTraitsChanged(secure: false, type: .text)
         XCTAssertTrue(composer.canToggle)
         XCTAssertEqual(composer.mode, "ខ")
+    }
+
+    func testURLFieldStartsEnglishButCanSwitchToKhmer() {
+        _ = composer.fieldTraitsChanged(secure: false, type: .url)
+        XCTAssertEqual(composer.mode, "EN", "URLs are Latin, so EN first")
+        XCTAssertTrue(composer.canToggle)
+        XCTAssertTrue(composer.toggleMode())
+        XCTAssertEqual(composer.mode, "ខ", "searching in Khmer from the address bar")
+        type("knhom")
+        XCTAssertEqual(composer.typed, "knhom")
+        _ = composer.rawLatin()
+        _ = composer.fieldTraitsChanged(secure: false, type: .text)
+        XCTAssertEqual(composer.mode, "ខ", "the global mode was not touched")
+        _ = composer.fieldTraitsChanged(secure: false, type: .url)
+        XCTAssertEqual(composer.mode, "EN", "a new URL field starts EN again")
     }
 
     func testEnglishChoiceSurvivesForcedField() {

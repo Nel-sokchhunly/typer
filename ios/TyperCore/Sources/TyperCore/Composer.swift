@@ -49,7 +49,7 @@ public final class Composer {
     /// The phrase as typed, for the candidate bar's Latin chip.
     public private(set) var typed = ""
     public var isComposing: Bool { !typed.isEmpty }
-    /// "ខ" or "EN"; a secure, email, URL or number field shows EN.
+    /// "ខ" or "EN"; a secure, email or number field shows EN, and a URL field starts EN.
     public var mode: String { passthrough ? "EN" : "ខ" }
 
     /// Called on the main thread when new suggestions arrive after a key (they are computed off-thread).
@@ -64,6 +64,7 @@ public final class Composer {
     private let usesMarkedText: Bool
     private var secure = false
     private var field = FieldType.text
+    private var urlKhmer = false  // ខ tapped in this URL field (a search in Khmer); the global mode stays as it was
     private var anchor: String?  // marked text: the context before the caret when the phrase began
     private var shown = ""  // without marked text: the phrase as plain text in the document (ASCII)
 
@@ -77,9 +78,15 @@ public final class Composer {
         self.usesMarkedText = usesMarkedText
     }
 
-    private var passthrough: Bool { Self.english || secure || field != .text }
+    private var passthrough: Bool {
+        switch field {
+        case .text: Self.english || secure
+        case .url: !urlKhmer || secure
+        case .email, .number: true
+        }
+    }
 
-    /// Passthrough is on (EN, or a secure/email/URL/number field). If it came on mid-phrase
+    /// Passthrough is on (EN, a secure/email/number field, or a URL field left in EN). If it came on mid-phrase
     /// (EN toggled in another keyboard instance), keep the phrase as typed.
     private func passingThrough() -> Bool {
         guard passthrough else { return false }
@@ -139,12 +146,13 @@ public final class Composer {
     }
 
     /// Whether the ខ/EN key does anything right now; the keyboard dims it otherwise.
-    public var canToggle: Bool { !isComposing && !secure && field == .text }
+    public var canToggle: Bool { !isComposing && !secure && (field == .text || field == .url) }
 
     /// Khmer <-> English. Ignored mid-phrase (a stray tap) and in fields that are English anyway.
+    /// In a URL field it switches only that field, so typing a search in Khmer leaves the global mode alone.
     public func toggleMode() -> Bool {
         guard canToggle else { return false }
-        Self.english.toggle()
+        if field == .url { urlKhmer.toggle() } else { Self.english.toggle() }
         return true
     }
 
@@ -172,6 +180,7 @@ public final class Composer {
         let kept = keepLatin()
         self.secure = secure
         field = type
+        urlKhmer = false
         return kept
     }
 
