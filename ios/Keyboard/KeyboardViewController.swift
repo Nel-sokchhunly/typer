@@ -33,8 +33,17 @@ final class KeyboardModel: ObservableObject {
     var shiftChosen = false
     private var lastShiftTap = Date.distantPast
 
+    /// Keys currently held down, for the highlight and pop-up preview.
+    @Published var pressed: [Key] = []
+
     enum Shift { case off, once, lock }
-    enum Page: Int { case letters, numbers, symbols }
+    typealias Page = KeyPage
+
+    /// The one layout both the drawn keys and the touch layer use; empty while the all-Suggestions panel replaces the keys.
+    func keys(width: CGFloat) -> [Key] {
+        if showAll && !typed.isEmpty { return [] }
+        return KeyLayout.keys(width: width, page: page, upper: shift != .off, globe: needsGlobe, bar: typed.isEmpty)
+    }
 
     /// Shift once; a quick second tap locks caps; tapping a lock (or a lone shift) turns it off.
     func shiftTapped() {
@@ -87,14 +96,8 @@ final class KeyboardViewController: UIInputViewController {
         let hosting = UIHostingController(
             rootView: KeyboardView(
                 model: model,
-                onKey: { [unowned self] c in handle(composer.key(c), else: { textDocumentProxy.insertText(c) }) },
-                onBackspace: { [unowned self] in handle(composer.backspace(), else: { textDocumentProxy.deleteBackward() }) },
-                onReturn: { [unowned self] in handle(composer.returnKey(), else: { textDocumentProxy.insertText("\n") }) },
                 onCandidate: { [unowned self] in handle(composer.candidateTapped($0)) },
-                onLatin: { [unowned self] in handle(composer.rawLatin()) },
-                onGlobe: { [unowned self] in advanceToNextInputMode() },
-                onMode: { [unowned self] in modeTapped() })
-                .environment(\.keyPress, { [unowned self] in keyFeedback() }))
+                onLatin: { [unowned self] in handle(composer.rawLatin()) }))
         hosting.view.translatesAutoresizingMaskIntoConstraints = false
         hosting.view.backgroundColor = .clear
         hosting.view.isMultipleTouchEnabled = true
@@ -106,6 +109,19 @@ final class KeyboardViewController: UIInputViewController {
             hosting.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             hosting.view.topAnchor.constraint(equalTo: view.topAnchor),
             hosting.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        let layer = TouchLayer()
+        layer.translatesAutoresizingMaskIntoConstraints = false
+        layer.keys = { [unowned self] in model.keys(width: $0) }
+        layer.press = { [unowned self] in keyFeedback() }
+        layer.fire = { [unowned self] in fire($0) }
+        layer.pressedChanged = { [unowned self] in if model.pressed != $0 { model.pressed = $0 } }
+        view.addSubview(layer)
+        NSLayoutConstraint.activate([
+            layer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            layer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            layer.topAnchor.constraint(equalTo: view.topAnchor),
+            layer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
         let height = view.heightAnchor.constraint(equalToConstant: KeyboardView.height)
         height.priority = UILayoutPriority(999)
@@ -162,6 +178,22 @@ final class KeyboardViewController: UIInputViewController {
         default: "return"
         }
         _ = composer.fieldTraitsChanged(secure: t.isSecureTextEntry ?? false, type: type)
+    }
+
+    /// A key fired by the touch layer.
+    private func fire(_ action: KeyAction) {
+        func type(_ c: String) { handle(composer.key(c), else: { textDocumentProxy.insertText(c) }) }
+        switch action {
+        case .char(let c), .punct(let c): type(c)
+        case .space: type(" ")
+        case .backspace: handle(composer.backspace(), else: { textDocumentProxy.deleteBackward() })
+        case .returnKey: handle(composer.returnKey(), else: { textDocumentProxy.insertText("\n") })
+        case .shift: model.shiftTapped()
+        case .symbols: model.page = model.page == .numbers ? .symbols : .numbers
+        case .page: model.page = model.page == .letters ? .numbers : .letters
+        case .globe: advanceToNextInputMode()
+        case .mode: modeTapped()
+        }
     }
 
     /// Switching mode never turns shift on: the keys stay as they are until the next letter.

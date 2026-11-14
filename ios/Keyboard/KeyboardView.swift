@@ -2,102 +2,102 @@ import SwiftUI
 
 struct KeyboardView: View {
     @ObservedObject var model: KeyboardModel
-    let onKey: (String) -> Void
-    let onBackspace: () -> Void
-    let onReturn: () -> Void
     let onCandidate: (Int) -> Void
     let onLatin: () -> Void
-    let onGlobe: () -> Void
-    let onMode: () -> Void
 
-    private let margin: CGFloat = 6  // same side inset for bar and keys; clears the iOS 26 frame's rounded corners
-    private let gap: CGFloat = 6
-    private static let keyHeight: CGFloat = 43
-    private static let rowGap: CGFloat = 8
-    private let keyHeight = KeyboardView.keyHeight
-    private let rowGap = KeyboardView.rowGap
-    /// Candidate bar + gap + four rows: the controller sizes the keyboard to exactly this.
-    static let height: CGFloat = 10 + 40 + 6 + 4 * keyHeight + 3 * rowGap + 4
+    private let margin = KeyLayout.margin
+    private let keyHeight = KeyLayout.keyHeight
+    private let rowGap = KeyLayout.rowGap
+    static let height = KeyLayout.height
 
+    /// Keys are drawn only; the UIKit TouchLayer above this view takes every touch on them (see TouchLayer).
     var body: some View {
         GeometryReader { geo in
-            let kw = (geo.size.width - 2 * margin - 9 * gap) / 10
-            VStack(spacing: 0) {
-                candidateBar.zIndex(-1)
-                Spacer().frame(height: 6)
+            ZStack(alignment: .topLeading) {
                 if model.showAll && !model.typed.isEmpty {
-                    panel.frame(height: 4 * keyHeight + 3 * rowGap)
-                } else {
-                    VStack(spacing: rowGap) {
-                        ForEach(0..<3, id: \.self) { i in row(i, kw: kw, width: geo.size.width).zIndex(Double(i)) }
-                        bottomRow(kw: kw).zIndex(3)
+                    VStack(spacing: 0) {
+                        candidateBar
+                        Spacer().frame(height: 6)
+                        panel.frame(height: 4 * keyHeight + 3 * rowGap)
                     }
+                    .padding(.horizontal, margin)
+                    .padding(.top, KeyLayout.barTop)
+                } else {
+                    if !model.typed.isEmpty {
+                        candidateBar.padding(.horizontal, margin).padding(.top, KeyLayout.barTop)
+                    }
+                    let keys = model.keys(width: geo.size.width)
+                    ZStack(alignment: .topLeading) {
+                        ForEach(keys, id: \.action) { key in
+                            keyView(key).frame(width: key.rect.width, height: key.rect.height)
+                                .offset(x: key.rect.minX, y: key.rect.minY)
+                        }
+                        ForEach(keys.filter(isPreviewed), id: \.action) { key in preview(key) }
+                    }
+                    .allowsHitTesting(false)
                 }
             }
-            .padding(.horizontal, margin)
-            .padding(.top, 10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .ignoresSafeArea()
+    }
+
+    // MARK: keys
+
+    private struct Look { var text: String? = nil; var image: String? = nil; var style = KeyStyle.function; var fontSize: CGFloat = 22 }
+
+    private func look(_ a: KeyAction) -> Look {
+        switch a {
+        case .char(let c): return Look(text: c, style: .letter)
+        case .punct(let p): return Look(text: p, fontSize: 20)
+        case .shift:
+            return Look(image: model.shift == .lock ? "capslock.fill" : model.shift == .once ? "shift.fill" : "shift",
+                        style: model.shift == .off ? .function : .letter)
+        case .symbols: return Look(text: model.page == .numbers ? "#+=" : "123", fontSize: 16)
+        case .page: return Look(text: model.page == .letters ? "123" : "ABC", fontSize: 16)
+        case .backspace: return Look(image: "delete.left")
+        case .globe: return Look(image: "globe")
+        case .mode: return Look(text: model.mode, style: .mode, fontSize: 16)
+        case .space: return Look(text: "space", style: .letter, fontSize: 16)
+        case .returnKey: return Look(text: model.returnLabel, style: model.returnProminent ? .prominent : .function, fontSize: 16)
         }
     }
 
-    // MARK: rows
-
-    private static let letters = ["qwertyuiop", "asdfghjkl", "zxcvbnm"]
-    private static let numbers = ["1234567890", "-/:;()$&@\"", ".,?!'"]
-    private static let symbols = ["[]{}#%^*+=", "_\\|~<>€£¥•", ".,?!'"]
-
-    @ViewBuilder private func row(_ i: Int, kw: CGFloat, width: CGFloat) -> some View {
-        let chars = Array([Self.letters, Self.numbers, Self.symbols][model.page.rawValue][i])
-        let fw = (width - 2 * margin - 7 * kw - 8 * gap) / 2  // function key beside the letters of row 3
-        HStack(spacing: gap) {
-            if i == 2 {
-                if model.page == .letters {
-                    KeyView(image: model.shift == .lock ? "capslock.fill" : model.shift == .once ? "shift.fill" : "shift",
-                            style: model.shift == .off ? .function : .letter, width: fw, height: keyHeight,
-                            action: model.shiftTapped)
-                } else {
-                    KeyView(text: model.page == .numbers ? "#+=" : "123", style: .function, width: fw, height: keyHeight, fontSize: 16) {
-                        model.page = model.page == .numbers ? .symbols : .numbers
-                    }
-                }
-            }
-            if i == 1 && model.page == .letters { Color.clear.frame(width: (kw + gap) / 2 - gap) }
-            ForEach(chars.indices, id: \.self) { j in
-                let c = String(chars[j])
-                let shown = model.page == .letters && model.shift != .off ? c.uppercased() : c
-                KeyView(text: shown, style: .letter, width: i == 2 && model.page != .letters ? nil : kw, height: keyHeight,
-                        popup: true) { onKey(shown) }
-            }
-            if i == 1 && model.page == .letters { Color.clear.frame(width: (kw + gap) / 2 - gap) }
-            if i == 2 {
-                KeyView(image: "delete.left", style: .function, width: fw, height: keyHeight, repeats: true, action: onBackspace)
-            }
-        }
+    private func isPressed(_ key: Key) -> Bool { model.pressed.contains { $0.action == key.action } }
+    private func isPreviewed(_ key: Key) -> Bool {
+        if case .char = key.action { return isPressed(key) }
+        return false
     }
 
-    private func bottomRow(kw: CGFloat) -> some View {
-        HStack(spacing: gap) {
-            KeyView(text: model.page == .letters ? "123" : "ABC", style: .function, width: kw * 1.35, height: keyHeight, fontSize: 16) {
-                model.page = model.page == .letters ? .numbers : .letters
-            }
-            if model.needsGlobe {
-                KeyView(image: "globe", style: .function, width: kw * 1.1, height: keyHeight, action: onGlobe)
-            }
-            // dimmed when the mode is forced (password, email, URL, number) or a Phrase is open
-            KeyView(text: model.mode, style: .mode, width: kw * 1.1, height: keyHeight, fontSize: 16, action: onMode)
-                .opacity(model.canToggle ? 1 : 0.4)
-            KeyView(text: "space", style: .letter, width: nil, height: keyHeight, fontSize: 16) { onKey(" ") }
-            KeyView(text: model.returnLabel, style: model.returnProminent ? .prominent : .function, width: kw * 2.1,
-                    height: keyHeight, fontSize: 16, action: onReturn)
+    private func keyView(_ key: Key) -> some View {
+        let l = look(key.action)
+        let previewed = isPreviewed(key)
+        let pressedBackground = l.style == .letter ? KeyStyle.function.background : KeyStyle.letter.background
+        return Group {
+            if let text = l.text { Text(text).font(.system(size: l.fontSize)).foregroundColor(l.style.foreground) }
+            else if let image = l.image { Image(systemName: image).font(.system(size: 18)).foregroundColor(l.style.foreground) }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(isPressed(key) && !previewed ? pressedBackground : l.style.background)
+        .cornerRadius(5)
+        .shadow(color: .black.opacity(0.3), radius: 0, x: 0, y: 1)
+        .opacity(key.action == .mode && !model.canToggle ? 0.4 : 1)  // dimmed when the mode is forced (password, email, URL, number) or a Phrase is open
+    }
+
+    /// The character above the finger.
+    private func preview(_ key: Key) -> some View {
+        Text(look(key.action).text ?? "").font(.system(size: 36)).foregroundColor(.primary)
+            .frame(width: key.rect.width + 6, height: 52)
+            .background(RoundedRectangle(cornerRadius: 8).fill(KeyStyle.letter.background))
+            .shadow(color: .black.opacity(0.35), radius: 2, x: 0, y: 1)
+            .offset(x: key.rect.minX - 3, y: key.rect.minY - 46)
     }
 
     // MARK: candidate bar
 
-    private static let punctuation = ["។", "៕", "ៗ", "៛", "?", "!"]
-
     private var candidateBar: some View {
         HStack(spacing: 6) {
-            if !model.typed.isEmpty {
+            if !model.typed.isEmpty {  // idle: the Khmer punctuation keys are drawn with the rest (KeyLayout)
                 // only the first Suggestion; head-truncated so the end, where the user types, stays visible
                 Text(model.suggestions.first ?? model.typed)
                     .font(.system(size: 18, weight: .bold))
@@ -111,11 +111,6 @@ struct KeyboardView: View {
                 barButton(Text("abc").font(.system(size: 16, weight: .semibold))) { onLatin() }  // keep the Latin
                 barButton(Image(systemName: model.showAll ? "chevron.up" : "chevron.down")
                     .font(.system(size: 17, weight: .bold))) { model.showAll.toggle() }
-            } else {
-                // Khmer punctuation QWERTY lacks; next-word Suggestions will take this spot later
-                ForEach(Self.punctuation, id: \.self) { p in
-                    KeyView(text: p, style: .function, width: nil, height: 36, fontSize: 20) { onKey(p) }
-                }
             }
         }
         .frame(height: 40)
@@ -175,15 +170,6 @@ struct KeyboardView: View {
     }
 }
 
-/// Called on every key touch-down; the controller plays haptic and click when Full Access allows.
-private struct KeyPressKey: EnvironmentKey { static let defaultValue: () -> Void = {} }
-extension EnvironmentValues {
-    var keyPress: () -> Void {
-        get { self[KeyPressKey.self] }
-        set { self[KeyPressKey.self] = newValue }
-    }
-}
-
 enum KeyStyle { case letter, function, prominent, mode }
 
 private func dynamic(light: UIColor, dark: UIColor) -> Color {
@@ -204,114 +190,6 @@ extension KeyStyle {
         case .prominent: return .white
         case .mode: return Color(white: 0.1)  // dark on yellow in light and dark mode
         default: return .primary
-        }
-    }
-}
-
-/// Rollover, like Apple's keyboard: when a new key goes down while another is still held, the held key
-/// commits at that moment; the new one fires on its own touch-up.
-final class KeyTracker {
-    static let shared = KeyTracker()
-    private var held: (id: UUID, commit: () -> Void)?
-
-    func down(_ id: UUID, commit: @escaping () -> Void) {
-        let previous = held
-        held = (id, commit)
-        previous?.commit()
-    }
-
-    func up(_ id: UUID) { if held?.id == id { held = nil } }
-}
-
-/// One key. Fires on touch-up inside the key (a plain Button drops fast taps), previews the character above the finger,
-/// and with `repeats` fires on touch-down, then again after 0.4 s and every 0.08 s while held.
-struct KeyView: View {
-    var text: String? = nil
-    var image: String? = nil
-    let style: KeyStyle
-    let width: CGFloat?
-    let height: CGFloat
-    var fontSize: CGFloat = 22
-    var popup = false
-    var repeats = false
-    let action: () -> Void
-
-    @Environment(\.keyPress) private var keyPress
-    @State private var pressed = false
-    @State private var repeater: Task<Void, Never>?
-    @State private var touch: UUID?  // set while this key is down and not yet committed
-
-    var body: some View {
-        GeometryReader { geo in
-            content
-                .frame(width: geo.size.width, height: geo.size.height)
-                .background(pressed && !popup ? pressedBackground : style.background)
-                .cornerRadius(5)
-                .shadow(color: .black.opacity(0.3), radius: 0, x: 0, y: 1)
-                .overlay(alignment: .top) { if pressed && popup, let text { preview(text, width: geo.size.width) } }
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { _ in
-                            guard !pressed else { return }
-                            pressed = true
-                            let id = UUID()
-                            touch = id
-                            KeyTracker.shared.down(id) { commitHeld() }  // commits the previous key first
-                            keyPress()
-                            if repeats { startRepeating() }
-                        }
-                        .onEnded { v in
-                            guard let id = touch else { return }  // already committed by the next key
-                            touch = nil
-                            KeyTracker.shared.up(id)
-                            pressed = false
-                            repeater?.cancel()
-                            if repeats { return }
-                            if CGRect(origin: .zero, size: geo.size).insetBy(dx: -10, dy: -10).contains(v.location) { action() }
-                        })
-        }
-        .frame(width: width, height: height)
-        .zIndex(pressed ? 1 : 0)
-        .onDisappear { repeater?.cancel() }
-    }
-
-    @ViewBuilder private var content: some View {
-        if let text { Text(text).font(.system(size: fontSize)).foregroundColor(style.foreground) }
-        else if let image { Image(systemName: image).font(.system(size: 18)).foregroundColor(style.foreground) }
-    }
-
-    private var pressedBackground: Color {
-        style == .letter ? dynamic(light: UIColor(red: 0.68, green: 0.71, blue: 0.75, alpha: 1), dark: UIColor(white: 0.27, alpha: 1))
-            : dynamic(light: .white, dark: UIColor(white: 0.42, alpha: 1))
-    }
-
-    private func preview(_ text: String, width: CGFloat) -> some View {
-        Text(text).font(.system(size: 36)).foregroundColor(.primary)
-            .frame(width: width + 6, height: 52)
-            .background(RoundedRectangle(cornerRadius: 8).fill(KeyStyle.letter.background))
-            .shadow(color: .black.opacity(0.35), radius: 2, x: 0, y: 1)
-            .offset(y: -46)
-            .allowsHitTesting(false)
-    }
-
-    /// The next key went down while this one was held: fire now, so keys land in touch order.
-    private func commitHeld() {
-        guard touch != nil else { return }
-        touch = nil
-        pressed = false
-        repeater?.cancel()
-        if !repeats { action() }
-    }
-
-    private func startRepeating() {
-        action()
-        repeater = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 400_000_000)
-            while !Task.isCancelled {
-                action()
-                try? await Task.sleep(nanoseconds: 80_000_000)
-            }
         }
     }
 }
