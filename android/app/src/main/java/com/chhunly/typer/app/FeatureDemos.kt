@@ -2,15 +2,17 @@ package com.chhunly.typer.app
 
 import android.content.Context
 import android.provider.Settings
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,12 +26,11 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 /**
- * A small picture of each feature, drawn like the Keyboard's bar: the top Suggestion in bold on a tinted
- * chip, everything else on a plain one. Decorative, so hidden from screen readers (the text below says it).
+ * A small picture of each feature, drawn like the Keyboard's bar: the top Suggestion in ink on a yellow
+ * chip, everything else on a translucent grey one. Decorative, so hidden from screen readers (the text below says it).
  */
 @Composable
 fun FeatureDemo(index: Int) {
@@ -49,7 +50,7 @@ fun FeatureDemo(index: Int) {
                 DemoChip("sok", latin = true)
                 Arrow()
                 DemoChip("សុខ", top = true)
-                Arrow("↑")
+                Arrow("\u2191")
             }
             3 -> {
                 DemoChip("ខ្ញុំទៅសាលារៀន", Modifier.weight(1f), top = true)
@@ -68,26 +69,28 @@ fun FeatureDemo(index: Int) {
 @Composable
 private fun DemoChip(text: String, modifier: Modifier = Modifier, top: Boolean = false, latin: Boolean = false) {
     val colors = MaterialTheme.colorScheme
-    Surface(
-        modifier,
-        shape = RoundedCornerShape(8.dp),
-        color = if (top) colors.primaryContainer else colors.surfaceVariant,
-        contentColor = if (top) colors.onPrimaryContainer else colors.onSurfaceVariant,
+    Box(
+        modifier
+            .heightIn(min = 34.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (top) TyperYellow else colors.surfaceVariant)
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.CenterStart,
     ) {
-        Text(
+        Txt(
             text,
-            Modifier.heightIn(min = 34.dp).padding(horizontal = 10.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = if (top) FontWeight.Bold else FontWeight.Normal,
-            fontFamily = if (latin) FontFamily.Monospace else null,
+            16,
+            weight = FontWeight.SemiBold,
+            color = if (top) TyperInk else colors.onSurface,
+            family = if (latin) FontFamily.Monospace else KantumruyPro,
             maxLines = 1,
         )
     }
 }
 
 @Composable
-private fun Arrow(glyph: String = "→") {
-    Text(glyph, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun Arrow(glyph: String = "\u2192") {
+    Txt(glyph, 15, weight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 private const val LATIN = "knhom tov sala rean"
@@ -121,11 +124,11 @@ private fun PhraseDemo() {
             DemoChip(KHMER, top = true)
         }
         done -> DemoChip(KHMER, top = true)
-        else -> Text(
-            typed + "▏",
-            Modifier.heightIn(min = 34.dp).padding(vertical = 4.dp),
-            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp),
-            fontFamily = FontFamily.Monospace,
+        else -> Txt(
+            typed + "\u258F",
+            17,
+            Modifier.heightIn(min = 34.dp).wrapContentHeight(Alignment.CenterVertically),
+            family = FontFamily.Monospace,
             maxLines = 1,
         )
     }

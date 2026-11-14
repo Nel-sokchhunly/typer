@@ -1,121 +1,130 @@
 package com.chhunly.typer.app
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.ExperimentalTextApi
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.unit.sp
+import com.chhunly.typer.R
 
-// Fallback schemes for Android 11 and below, which have no dynamic colour. Generated from Typer
-// yellow #f5c842 with @material/material-color-utilities 0.3.0 (tonal spot).
+// Typer's palette, the same as the iOS Companion app: the app icon's ink and cream, and the yellow of the
+// mode key. Page, card and muted follow light and dark.
+val TyperYellow = Color(0xFFF5C842)
+val TyperInk = Color(0xFF1A1A1A)
+val TyperCream = Color(0xFFEDEAE3)
+
+private val PageLight = Color(0xFFF7F5F0)
+private val PageDark = Color(0xFF1D1C1A)
+private val CardLight = Color(0xFFFFFFFF)
+private val CardDark = Color(0xFF2A2926)
+private val MutedLight = Color(0xFF5F5B53)
+private val MutedDark = Color(0xFFA8A294)
+
+/** Kantumruy Pro, one variable font (axis wght 100-700) with the four weights the app uses. */
+@OptIn(ExperimentalTextApi::class)
+val KantumruyPro = FontFamily(
+    listOf(
+        FontWeight.Normal to 400,
+        FontWeight.Medium to 500,
+        FontWeight.SemiBold to 600,
+        FontWeight.Bold to 700,
+    ).map { (weight, value) ->
+        Font(R.font.kantumruy_pro, weight = weight, variationSettings = FontVariation.Settings(FontVariation.weight(value)))
+    },
+)
+
+// Material 3 mapped onto the Typer palette (no dynamic colour in the app itself): page = background,
+// card = surface, muted = onSurfaceVariant, ink and cream = inverse colours (the privacy card).
 private val LightScheme = lightColorScheme(
-    primary = Color(0xFF745B0C),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFFFE08F),
-    onPrimaryContainer = Color(0xFF584400),
-    secondary = Color(0xFF695D3F),
-    onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFF2E1BB),
-    onSecondaryContainer = Color(0xFF51462A),
-    tertiary = Color(0xFF47664A),
-    onTertiary = Color(0xFFFFFFFF),
-    tertiaryContainer = Color(0xFFC9ECC8),
-    onTertiaryContainer = Color(0xFF304D33),
-    error = Color(0xFFBA1A1A),
-    onError = Color(0xFFFFFFFF),
-    errorContainer = Color(0xFFFFDAD6),
-    onErrorContainer = Color(0xFF93000A),
-    background = Color(0xFFFFF8F1),
-    onBackground = Color(0xFF1F1B13),
-    surface = Color(0xFFFFF8F1),
-    onSurface = Color(0xFF1F1B13),
-    surfaceVariant = Color(0xFFECE1CF),
-    onSurfaceVariant = Color(0xFF4C4639),
-    outline = Color(0xFF7E7667),
-    outlineVariant = Color(0xFFCFC5B4),
-    inverseSurface = Color(0xFF343027),
-    inverseOnSurface = Color(0xFFF8F0E2),
-    inversePrimary = Color(0xFFE4C36C),
-    surfaceDim = Color(0xFFE1D9CC),
-    surfaceBright = Color(0xFFFFF8F1),
-    surfaceContainerLowest = Color(0xFFFFFFFF),
-    surfaceContainerLow = Color(0xFFFBF2E5),
-    surfaceContainer = Color(0xFFF6EDDF),
-    surfaceContainerHigh = Color(0xFFF0E7D9),
-    surfaceContainerHighest = Color(0xFFEAE1D4),
-    scrim = Color(0xFF000000),
-    surfaceTint = Color(0xFF745B0C),
+    primary = TyperYellow,
+    onPrimary = TyperInk,
+    primaryContainer = TyperYellow,
+    onPrimaryContainer = TyperInk,
+    secondary = TyperInk,
+    onSecondary = TyperCream,
+    background = PageLight,
+    onBackground = TyperInk,
+    surface = CardLight,
+    onSurface = TyperInk,
+    surfaceVariant = Color(0x14000000),
+    onSurfaceVariant = MutedLight,
+    outline = MutedLight,
+    outlineVariant = Color(0x1F000000),
+    inverseSurface = TyperInk,
+    inverseOnSurface = TyperCream,
+    inversePrimary = TyperYellow,
 )
 
 private val DarkScheme = darkColorScheme(
-    primary = Color(0xFFE4C36C),
-    onPrimary = Color(0xFF3D2E00),
-    primaryContainer = Color(0xFF584400),
-    onPrimaryContainer = Color(0xFFFFE08F),
-    secondary = Color(0xFFD5C5A0),
-    onSecondary = Color(0xFF392F15),
-    secondaryContainer = Color(0xFF51462A),
-    onSecondaryContainer = Color(0xFFF2E1BB),
-    tertiary = Color(0xFFADCFAD),
-    onTertiary = Color(0xFF1A361E),
-    tertiaryContainer = Color(0xFF304D33),
-    onTertiaryContainer = Color(0xFFC9ECC8),
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005),
-    errorContainer = Color(0xFF93000A),
-    onErrorContainer = Color(0xFFFFDAD6),
-    background = Color(0xFF16130B),
-    onBackground = Color(0xFFEAE1D4),
-    surface = Color(0xFF16130B),
-    onSurface = Color(0xFFEAE1D4),
-    surfaceVariant = Color(0xFF4C4639),
-    onSurfaceVariant = Color(0xFFCFC5B4),
-    outline = Color(0xFF989080),
-    outlineVariant = Color(0xFF4C4639),
-    inverseSurface = Color(0xFFEAE1D4),
-    inverseOnSurface = Color(0xFF343027),
-    inversePrimary = Color(0xFF745B0C),
-    surfaceDim = Color(0xFF16130B),
-    surfaceBright = Color(0xFF3D392F),
-    surfaceContainerLowest = Color(0xFF110E07),
-    surfaceContainerLow = Color(0xFF1F1B13),
-    surfaceContainer = Color(0xFF231F17),
-    surfaceContainerHigh = Color(0xFF2E2A21),
-    surfaceContainerHighest = Color(0xFF39342B),
-    scrim = Color(0xFF000000),
-    surfaceTint = Color(0xFFE4C36C),
+    primary = TyperYellow,
+    onPrimary = TyperInk,
+    primaryContainer = TyperYellow,
+    onPrimaryContainer = TyperInk,
+    secondary = TyperYellow,
+    onSecondary = TyperInk,
+    background = PageDark,
+    onBackground = TyperCream,
+    surface = CardDark,
+    onSurface = TyperCream,
+    surfaceVariant = Color(0x14FFFFFF),
+    onSurfaceVariant = MutedDark,
+    outline = MutedDark,
+    outlineVariant = Color(0x1FFFFFFF),
+    inverseSurface = TyperInk,
+    inverseOnSurface = TyperCream,
+    inversePrimary = TyperYellow,
 )
 
+/** Whether the app is showing Khmer, which stacks vowels and subscripts above and below the line. */
+val LocalKhmer = compositionLocalOf { true }
+
 /**
- * Material 3 with dynamic colour on Android 12+, following the system dark setting. [khmer] loosens every
- * text style to 1.6x line height, because Khmer stacks vowels and subscripts above and below the line.
+ * The Typer palette (light and dark, following the system) and Kantumruy Pro for all text. [khmer] loosens
+ * every text style to 1.6x line height.
  */
 @Composable
 fun TyperTheme(khmer: Boolean, content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
-    val context = LocalContext.current
-    val colors = when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-            if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        dark -> DarkScheme
-        else -> LightScheme
+    val colors = if (isSystemInDarkTheme()) DarkScheme else LightScheme
+    val base = Typography().withFont()
+    MaterialTheme(colorScheme = colors, typography = if (khmer) base.forKhmer() else base) {
+        CompositionLocalProvider(LocalKhmer provides khmer, LocalContentColor provides colors.onSurface, content = content)
     }
-    val base = Typography()
-    MaterialTheme(colorScheme = colors, typography = if (khmer) base.forKhmer() else base, content = content)
 }
+
+private fun TextStyle.font() = copy(fontFamily = KantumruyPro)
 
 private fun TextStyle.airy(): TextStyle {
     val target = fontSize * 1.6f
     return if (lineHeight.isSpecified && lineHeight > target) this else copy(lineHeight = target)
 }
+
+private fun Typography.withFont() = copy(
+    displayLarge = displayLarge.font(), displayMedium = displayMedium.font(), displaySmall = displaySmall.font(),
+    headlineLarge = headlineLarge.font(), headlineMedium = headlineMedium.font(), headlineSmall = headlineSmall.font(),
+    titleLarge = titleLarge.font(), titleMedium = titleMedium.font(), titleSmall = titleSmall.font(),
+    bodyLarge = bodyLarge.font(), bodyMedium = bodyMedium.font(), bodySmall = bodySmall.font(),
+    labelLarge = labelLarge.font(), labelMedium = labelMedium.font(), labelSmall = labelSmall.font(),
+)
 
 private fun Typography.forKhmer() = copy(
     displayLarge = displayLarge.airy(), displayMedium = displayMedium.airy(), displaySmall = displaySmall.airy(),
@@ -124,3 +133,41 @@ private fun Typography.forKhmer() = copy(
     bodyLarge = bodyLarge.airy(), bodyMedium = bodyMedium.airy(), bodySmall = bodySmall.airy(),
     labelLarge = labelLarge.airy(), labelMedium = labelMedium.airy(), labelSmall = labelSmall.airy(),
 )
+
+/**
+ * The app's text: Kantumruy Pro at an exact size, with Khmer's generous line height (1.6x, or [khmerLine] for
+ * big type) and the Latin's tighter one. [tracking] only applies to Latin: letter spacing pulls Khmer's
+ * combining marks off their base letters.
+ */
+@Composable
+fun Txt(
+    text: String,
+    size: Int,
+    modifier: Modifier = Modifier,
+    weight: FontWeight = FontWeight.Normal,
+    color: Color = Color.Unspecified,
+    khmerLine: Float = 1.6f,
+    tracking: TextUnit = TextUnit.Unspecified,
+    family: FontFamily = KantumruyPro,
+    textAlign: TextAlign? = null,
+    maxLines: Int = Int.MAX_VALUE,
+) {
+    val khmer = LocalKhmer.current
+    Text(
+        text,
+        modifier,
+        color = color,
+        fontSize = size.sp,
+        fontWeight = weight,
+        fontFamily = family,
+        letterSpacing = if (khmer) TextUnit.Unspecified else tracking,
+        textAlign = textAlign,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+        style = TextStyle(
+            lineHeight = (size * if (khmer) khmerLine else 1.3f).sp,
+            lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
+            platformStyle = PlatformTextStyle(includeFontPadding = false),
+        ),
+    )
+}

@@ -12,6 +12,7 @@ data class Feature(val title: String, val detail: String)
 data class Copy(
     val tagline: String,
     val setupTitle: String,
+    val keyboardTitle: String,
     val steps: List<Step>,
     val done: String,
     val tryTitle: String,
@@ -22,11 +23,18 @@ data class Copy(
     val about: String,
     val languageKhmer: String,
     val languageEnglish: String,
+    val wallpaperTitle: String,
+    val wallpaperDetail: String,
+    val vibrationTitle: String,
+    /** Labels for System, Off, Light and Strong, in that order. */
+    val vibrationOptions: List<String>,
+    val vibrationDetail: String,
 ) {
     companion object {
         val khmer = Copy(
             tagline = "វាយខ្មែរ ដូចពេលអ្នកឆាត។",
             setupTitle = "ការរៀបចំ",
+            keyboardTitle = "ក្តារចុច",
             steps = listOf(
                 Step("បើក Typer", "Settings › System › Keyboard › On-screen keyboard ហើយបើក Typer (សរសេរ)", "បើក Settings"),
                 Step("ជ្រើស Typer", "ចុចប៊ូតុង ហើយជ្រើស Typer (សរសេរ)", "ជ្រើសក្តារចុច"),
@@ -40,7 +48,7 @@ data class Copy(
                 Feature("វាយដូចពេលឆាត", "វាយអក្សរឡាតាំងទាំងឃ្លា ហើយ Typer ប្តូរវាជាខ្មែរ។"),
                 Feature("សរសេរតាមរបៀបអ្នក", "គ្មានច្បាប់តឹងរ៉ឹងទេ៖ nh, knh ឬ knhom សុទ្ធតែបាន ខ្ញុំ។"),
                 Feature("ចាំអ្វីដែលអ្នកជ្រើស", "ពាក្យដែលអ្នកជ្រើសញឹកញាប់ នឹងឡើងមកមុនគេ។"),
-                Feature("របារពាក្យស្នើ", "អក្សរដិត៖ ពាក្យស្នើល្អបំផុត។ abc៖ រក្សាអក្សរឡាតាំង។ លេខ៖ មើលពាក្យស្នើទាំងអស់។"),
+                Feature("របារពាក្យស្នើ", "ពណ៌លឿង៖ ពាក្យស្នើល្អបំផុត។ abc៖ រក្សាអក្សរឡាតាំង។ លេខ៖ មើលពាក្យស្នើទាំងអស់។"),
                 Feature("ខ្មែរ ឬ អង់គ្លេស", "ចុចគ្រាប់ ខ ដើម្បីប្តូរទៅវាយអង់គ្លេសធម្មតា។"),
             ),
             aboutTitle = "ទូរស័ព្ទរបស់អ្នក ទិន្នន័យរបស់អ្នក",
@@ -48,11 +56,17 @@ data class Copy(
                 "Android នឹងព្រមានថា ក្តារចុចណាមួយអាចប្រមូលអ្វីដែលអ្នកវាយ។ Typer រក្សាទុកអ្វីៗទាំងអស់នៅលើទូរស័ព្ទនេះ។",
             languageKhmer = "ភាសា៖ ខ្មែរ",
             languageEnglish = "ភាសា៖ អង់គ្លេស",
+            wallpaperTitle = "ពណ៌តាមផ្ទាំងរូបភាព",
+            wallpaperDetail = "ប្រើពណ៌ Material You របស់ទូរស័ព្ទ សម្រាប់ក្តារចុច ជំនួសពណ៌លឿងរបស់ Typer។",
+            vibrationTitle = "ការញ័រពេលចុច",
+            vibrationOptions = listOf("តាមប្រព័ន្ធ", "បិទ", "ស្រាល", "ខ្លាំង"),
+            vibrationDetail = "តាមប្រព័ន្ធ៖ ធ្វើតាមការកំណត់ការញ័ររបស់ទូរស័ព្ទ។",
         )
 
         val english = Copy(
             tagline = "Type Khmer the way you chat.",
             setupTitle = "Setup",
+            keyboardTitle = "Keyboard",
             steps = listOf(
                 Step("Turn on Typer", "Settings › System › Keyboard › On-screen keyboard, then turn on Typer (សរសេរ)", "Open Settings"),
                 Step("Choose Typer", "Tap the button and pick Typer (សរសេរ)", "Choose keyboard"),
@@ -66,7 +80,7 @@ data class Copy(
                 Feature("Type how you chat", "Type a whole phrase in Latin letters and Typer turns it into Khmer."),
                 Feature("Spell it your way", "No strict rules: nh, knh or knhom all give ខ្ញុំ."),
                 Feature("Learns your picks", "Words you pick often come up first."),
-                Feature("The Suggestion bar", "Bold: the top Suggestion. abc: keep the Latin. The number: see every Suggestion."),
+                Feature("The Suggestion bar", "Yellow: the top Suggestion. abc: keep the Latin. The number: see every Suggestion."),
                 Feature("Khmer or English", "Tap the ខ key to switch to plain English typing."),
             ),
             aboutTitle = "Your phone, your words",
@@ -74,6 +88,11 @@ data class Copy(
                 "Android warns that any keyboard could collect what you type; Typer keeps everything on this phone.",
             languageKhmer = "Language: Khmer",
             languageEnglish = "Language: English",
+            wallpaperTitle = "Match my wallpaper",
+            wallpaperDetail = "Use your phone's Material You colours for the keyboard instead of Typer yellow.",
+            vibrationTitle = "Key vibration",
+            vibrationOptions = listOf("System", "Off", "Light", "Strong"),
+            vibrationDetail = "System follows your phone's touch vibration setting.",
         )
     }
 }
