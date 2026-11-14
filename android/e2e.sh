@@ -329,6 +329,33 @@ scenario_keys() { # long-press digit, key preview, pages, shift and caps lock, s
     check "keys: email types Latin" "knhom" "$(ui desctext email)"
 }
 
+scenario_companion() { # the Companion app: setup steps report Done, Open Settings works, light/dark, Khmer/English
+    "$ADB" shell ime set "$IME" >/dev/null
+    for night in no yes; do
+        "$ADB" shell cmd uimode night $night >/dev/null
+        sleep 1.5
+        "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null
+        wait_for try 30 >/dev/null || { log "FAIL companion: no screen"; FAILED=1; return; }
+        tap $(ui bounds "ភាសា ខ្មែរ" 2>/dev/null || ui bounds "ខ្មែរ") 2>/dev/null || true
+        sleep 0.5
+        shot "companion-khmer-$night"
+        [ $night = no ] && check "companion: steps 1 and 2 done (Khmer)" "1, រួចរាល់|2, រួចរាល់" "$(ui labels | tr '\n' '|')"
+        tap $(ui bounds EN)
+        sleep 0.5
+        shot "companion-english-$night"
+        [ $night = no ] && check "companion: steps 1 and 2 done (English)" "1, Done|2, Done" "$(ui labels | tr '\n' '|')"
+        "$ADB" shell input swipe 540 1800 540 500 300
+        sleep 0.5
+        shot "companion-english-$night-scrolled"
+    done
+    "$ADB" shell cmd uimode night no >/dev/null
+    "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null
+    tap $(wait_for "Open Settings" 20)
+    sleep 1.5
+    check "companion: Open Settings opens the keyboard settings" "com.android.settings" "$("$ADB" shell dumpsys window | grep -m1 mCurrentFocus)"
+    "$ADB" shell input keyevent KEYCODE_BACK
+}
+
 # Screenshots of Typer in the same field the Gboard reference used (Contacts, First name; android/docs/reference.md),
 # light and dark, at 411 and 360 dp wide, idle and composing. Not a pass/fail check: for comparing by eye.
 scenario_compare() {
