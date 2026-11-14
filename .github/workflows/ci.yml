@@ -96,6 +96,41 @@ jobs:
             settings -> target
       - run: macos/build.sh
 
+  ios-changes: # path gate for ios-check; a workflow-wide `paths:` would gate every job
+    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    outputs:
+      ios: ${{ steps.filter.outputs.ios }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v3.0.2 # handles push and pull_request diffs; plain git diff needs per-event base logic
+        id: filter
+        with:
+          filters: |
+            ios:
+              - 'ios/**'
+              - 'engine/**'
+              - 'data/**'
+              - '.github/workflows/ci.yml'
+
+  ios-check: # macOS runners are scarce, so this only runs when iOS, engine or data change
+    needs: ios-changes
+    if: ${{ needs.ios-changes.outputs.ios == 'true' }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: Swatinem/rust-cache@v2 # reuse compiled crates; tags read main's cache
+        with:
+          workspaces: |
+            engine -> target
+      - run: python3 data/build.py
+      - run: python3 data/emoji.py
+      - run: cargo build --release --manifest-path engine/Cargo.toml # host lib the TyperCore tests link against
+      - run: swift test --package-path ios/TyperCore # Composer tests run on the macOS host
+      # Later: run the tests on the iOS simulator too. Blocked on #20 (app/extension build).
+      - run: rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+      - run: sh ios/build.sh # builds the engine xcframework
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [test, windows-check, linux-check]
