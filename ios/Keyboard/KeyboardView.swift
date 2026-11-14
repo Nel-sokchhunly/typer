@@ -102,9 +102,6 @@ struct KeyboardView: View {
                 }
             }
             .noScrollEdgeBlur()
-            #if DEBUG
-            Text(Memory.label).font(.system(size: 9)).foregroundColor(.secondary)
-            #endif
         }
         .frame(height: 40)
     }
