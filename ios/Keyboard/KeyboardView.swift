@@ -186,7 +186,7 @@ extension KeyStyle {
         case .letter: return dynamic(light: .white, dark: UIColor(white: 0.42, alpha: 1))
         case .function: return dynamic(light: UIColor(red: 0.68, green: 0.71, blue: 0.75, alpha: 1), dark: UIColor(white: 0.27, alpha: 1))
         case .prominent: return .accentColor
-        case .mode: return Color(red: 0.96, green: 0.78, blue: 0.26)  // #f5c842, Typer's yellow (macOS mode badge)
+        case .mode: return Color(red: 0xf5 / 255, green: 0xc8 / 255, blue: 0x42 / 255)  // #f5c842, Typer's yellow (macOS mode badge)
         }
     }
     var foreground: Color {
