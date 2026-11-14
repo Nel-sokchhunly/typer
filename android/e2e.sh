@@ -138,10 +138,10 @@ type_keys() {
 
 # wait_for <label> [tries]: until a node with that label exists; prints its centre
 wait_for() {
-    i=0
-    while [ $i -lt "${2:-20}" ]; do
-        if xy=$(ui bounds "$1"); then echo "$xy"; return 0; fi
-        i=$((i + 1))
+    _wi=0
+    while [ $_wi -lt "${2:-20}" ]; do
+        if _found=$(ui bounds "$1"); then echo "$_found"; return 0; fi  # not $xy or $i: callers keep theirs
+        _wi=$((_wi + 1))
         sleep 0.3
     done
     return 1
@@ -173,7 +173,20 @@ picks() { "$ADB" shell run-as $PKG cat files/user/picks.tsv 2>/dev/null || true;
 # Kill the Keyboard's process and select it again: a fresh engine that reloads Learning from disk.
 restart_keyboard() {
     "$ADB" shell am force-stop $PKG
-    "$ADB" shell ime set "$IME" >/dev/null
+    select_keyboard
+}
+
+# Android falls back to another keyboard when ours is stopped; select Typer until it sticks.
+select_keyboard() {
+    i=0
+    while [ $i -lt 10 ]; do
+        "$ADB" shell ime set "$IME" >/dev/null
+        sleep 0.5
+        [ "$("$ADB" shell settings get secure default_input_method | tr -d '\r')" = "$IME" ] && return 0
+        i=$((i + 1))
+    done
+    log "  could not select the Typer Keyboard"
+    return 1
 }
 
 open_fields() { # the debug fields screen; tap the field with this label
@@ -290,9 +303,11 @@ scenario_keys() { # long-press digit, key preview, pages, shift and caps lock, s
     open_fields search || { FAILED=1; return; }
     check "keys: return shows the field's action" "search" "$(ui labels | tr '\n' '|')"
     shot keys-search
-    set -- $(key_at e); hold $1 $2 0 keys-preview  # the screenshot outlasts 300 ms: it ends as a long press, 3
+    set -- $(key_at e); hold $1 $2 0 keys-preview  # a tap ("e", a Phrase) or, if the screenshot is slow, a long press ("3")
+    xy=$(ui bounds "abc, keep Latin") && tap $xy
+    tap $(key_at delete)  # either way, the field is empty again
     set -- $(key_at w); hold $1 $2 0.7 keys-longpress  # long press: the hint digit 2
-    check "keys: long press types the hint digit" "32" "$(ui desctext search)"
+    check "keys: long press types the hint digit" "2" "$(ui desctext search)"
     tap $(key_at "numbers and symbols"); sleep 0.4; read_keys
     shot keys-numbers
     tap $(key_at 5)
@@ -300,7 +315,7 @@ scenario_keys() { # long-press digit, key preview, pages, shift and caps lock, s
     shot keys-symbols
     tap $(key_at "€")
     tap $(key_at letters); sleep 0.4; read_keys
-    check "keys: numbers and symbols pages" "325€" "$(ui desctext search)"
+    check "keys: numbers and symbols pages" "25€" "$(ui desctext search)"
 
     open_fields url || { FAILED=1; return; }
     check "keys: URL field starts English" "English mode" "$(ui labels | tr '\n' '|')"
@@ -354,6 +369,57 @@ scenario_companion() { # the Companion app: setup steps report Done, Open Settin
     sleep 1.5
     check "companion: Open Settings opens the keyboard settings" "com.android.settings" "$("$ADB" shell dumpsys window | grep -m1 mCurrentFocus)"
     "$ADB" shell input keyevent KEYCODE_BACK
+}
+
+# ImeTracker (Android's own IME logging): ms from the app's first "onRequestShow" (the field took focus and asked for
+# the keyboard) to the last "onShown" (the Keyboard's window is on screen with its first frame). The show itself is
+# tracked under a system_server token, so the two are matched by time, after a logcat -c.
+show_ms() {
+    "$ADB" logcat -d -v epoch -s ImeTracker | python3 -c '
+import re, sys
+pkg = sys.argv[1]; start = shown = None
+for line in sys.stdin:
+    m = re.match(r"\s*([\d.]+)\s.*ImeTracker: (\S+?):\w+: (onRequestShow|onShown)", line)
+    if not m: continue
+    t, who, what = float(m.group(1)), m.group(2), m.group(3)
+    if what == "onRequestShow" and who == pkg and start is None: start = t
+    elif what == "onShown" and start is not None: shown = t
+print(round((shown - start) * 1000) if start and shown else "?")' "$1"
+}
+
+scenario_measure() { # memory after typing a 6-word Phrase, focus-to-first-frame (cold and warm), outside our own app
+    phrase="knhom tov sala rean nov phnom"
+    "$ADB" shell am force-stop $PKG  # the Companion app must not share the Keyboard's process for this
+    sleep 1
+    select_keyboard
+    "$ADB" logcat -c
+    "$ADB" shell am start -W -f 0x10008000 -a android.intent.action.INSERT -t vnd.android.cursor.dir/contact >/dev/null
+    xy=$(wait_for "First name" 30) || { log "FAIL measure: no Contacts form"; FAILED=1; return; }
+    n=0
+    until tap $xy && wait_for space 10 >/dev/null; do
+        n=$((n + 1))
+        [ $n -lt 4 ] || { log "FAIL measure: Keyboard did not open"; FAILED=1; return; }
+    done
+    log "  focus to first frame, cold (Keyboard process not running): $(show_ms com.google.android.contacts) ms"
+    read_keys
+    type_keys "$phrase"
+    sleep 2
+    shot measure-typed
+    "$ADB" shell dumpsys meminfo $PKG >"$OUT/meminfo.txt"
+    log "  memory after typing '$phrase': $(grep -E "TOTAL PSS|TOTAL RSS" "$OUT/meminfo.txt" | head -1 | tr -s ' ')"
+    log "  $(grep -E "^ +Native Heap|^ +Java Heap|^ +Code" "$OUT/meminfo.txt" | tr -s ' ' | tr '\n' ';')"
+    xy=$(ui bounds "abc, keep Latin") && tap $xy
+    for i in 1 2 3; do
+        "$ADB" shell input keyevent KEYCODE_BACK  # hide the Keyboard, the process stays
+        sleep 1
+        "$ADB" logcat -c
+        set -- $(ui bounds "First name" 2>/dev/null || ui bounds "$phrase")
+        tap "$@"
+        wait_for space 20 >/dev/null
+        log "  focus to first frame, warm ($i): $(show_ms com.google.android.contacts) ms"
+    done
+    "$ADB" shell input keyevent KEYCODE_BACK
+    log "PASS measure: numbers recorded"
 }
 
 # Screenshots of Typer in the same field the Gboard reference used (Contacts, First name; android/docs/reference.md),
