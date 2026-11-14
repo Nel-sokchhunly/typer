@@ -16,7 +16,9 @@ final class TouchLayer: UIView {
         super.init(frame: frame)
         isMultipleTouchEnabled = true
         isExclusiveTouch = false
-        backgroundColor = .clear
+        // Not .clear: since iOS 26 the host app decides where keyboard touches go from our layer tree, and a fully
+        // clear view counts as see-through, so no touch reached the keyboard at all. An invisible tint makes it solid.
+        backgroundColor = UIColor(white: 0.5, alpha: 0.015)
     }
     required init?(coder: NSCoder) { fatalError() }
     deinit { repeater?.cancel() }
