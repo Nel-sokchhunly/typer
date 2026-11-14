@@ -9,6 +9,7 @@
 //! - Negation frame: after អត់/មិន/... the closing ទេ gets a bonus, however far back the negation is.
 //! - Punctuation typed in the phrase stays as typed: "knhom, tov te?" -> ខ្ញុំ, ទៅទេ?
 //! - Settings: on/off switches in `user_dir/settings.txt` (SETTINGS), re-read when the file changes.
+//!   user.tsv too: deleting it (or the folder) resets learning without a restart.
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -188,7 +189,8 @@ pub struct Engine {
     spellings: Vec<(Vec<u8>, u32)>, // (roman, word id)
     by_roman: Vec<u32>, // indices into `spellings`, sorted by roman: neighbours share prefixes
     counts: Counts,
-    user: Counts,
+    user: RefCell<Counts>,
+    user_seen: Cell<Option<(SystemTime, u64)>>, // user.tsv mtime + length that `user` matches
     user_dir: Option<PathBuf>,
     total: f32,
     english: HashMap<String, f32>, // normalized English word or "w1 w2" -> count
@@ -225,6 +227,12 @@ fn read_counts(path: &Path, counts: &mut Counts) {
             *counts[n - 1].entry(ws.to_string()).or_default() += c;
         }
     }
+}
+
+/// mtime + length of `dir/user.tsv`, None if missing. Length catches appends within one mtime tick.
+fn user_stamp(dir: &Path) -> Option<(SystemTime, u64)> {
+    let m = fs::metadata(dir.join("user.tsv")).ok()?;
+    Some((m.modified().ok()?, m.len()))
 }
 
 /// Words of a path as a shared linked list (newest first), so extending a path copies nothing.
@@ -264,6 +272,7 @@ impl Engine {
         fs::metadata(&ngrams)?; // fail loudly if data is missing; user.tsv may not exist yet
         let (mut counts, mut user) = (Counts::default(), Counts::default());
         read_counts(&ngrams, &mut counts);
+        let user_seen = user_dir.and_then(user_stamp); // before reading: a write in between re-reads
         if let Some(u) = user_dir {
             read_counts(&u.join("user.tsv"), &mut user);
         }
@@ -283,7 +292,8 @@ impl Engine {
             first_generated,
             spellings,
             counts,
-            user,
+            user: RefCell::new(user),
+            user_seen: Cell::new(user_seen),
             user_dir: user_dir.map(Path::to_path_buf),
             total,
             english,
@@ -307,6 +317,19 @@ impl Engine {
         !s.1.contains(name)
     }
 
+    /// Re-reads user.tsv when it changed on disk: deleted to reset learning, or another process picked.
+    fn sync_user(&self) {
+        let Some(dir) = &self.user_dir else { return };
+        let seen = user_stamp(dir);
+        if self.user_seen.get() != seen {
+            let mut user = Counts::default();
+            read_counts(&dir.join("user.tsv"), &mut user);
+            *self.user.borrow_mut() = user;
+            self.user_seen.set(seen);
+            self.invalidate(); // pre-ranking and path scores use the counts
+        }
+    }
+
     fn invalidate(&self) {
         self.cache.borrow_mut().clear();
         *self.memo.borrow_mut() = Memo::default();
@@ -316,7 +339,7 @@ impl Engine {
     fn count(&self, key: &str) -> f32 {
         let n = key.split(' ').count();
         let get = |c: &Counts| c[n - 1].get(key).copied().unwrap_or(0) as f32;
-        get(&self.counts) + USER_BOOST * get(&self.user)
+        get(&self.counts) + USER_BOOST * get(&self.user.borrow())
     }
 
     /// Remember that `typed` produced suggestion `s`: its 1-3 grams get user counts,
@@ -325,6 +348,7 @@ impl Engine {
         if !self.setting("learn") {
             return Ok(());
         }
+        self.sync_user(); // add to what is on disk now, not to the counts of a deleted file
         let mut padded = vec!["<s>".to_string(), "<s>".to_string()];
         padded.extend(s.words.iter().cloned());
         let mut lines = String::new();
@@ -333,7 +357,7 @@ impl Engine {
                 let mut key: Vec<&str> = padded[i + 1 - n..i].iter().map(|w| ctx(w)).collect();
                 key.push(&padded[i]); // context as the LM sees it, the word itself as picked
                 let key = key.join(" ");
-                *self.user[n - 1].entry(key.clone()).or_default() += 1;
+                *self.user.get_mut()[n - 1].entry(key.clone()).or_default() += 1;
                 lines += &format!("{n}\t{key}\t1\n");
             }
         }
@@ -343,7 +367,12 @@ impl Engine {
         let append = |name: &str, text: &str| -> std::io::Result<()> {
             OpenOptions::new().create(true).append(true).open(dir.join(name))?.write_all(text.as_bytes())
         };
-        append("user.tsv", &lines)?;
+        let wrote = append("user.tsv", &lines);
+        // only our lines were added: `user` already matches, no re-read. Anything else (another
+        // process appended in between, a failed write) leaves the stamp stale so the next sync re-reads.
+        let want = self.user_seen.get().map_or(0, |s| s.1) + lines.len() as u64;
+        self.user_seen.set(user_stamp(dir).filter(|s| s.1 == want));
+        wrote?;
         append("picks.tsv", &format!("{}\t{}\n", typed.trim(), s.text))
     }
 
@@ -441,6 +470,7 @@ impl Engine {
             return vec![];
         }
         let generated_on = self.setting("generated"); // before the cache: a change clears it
+        self.sync_user(); // same
         let key = format!("{max_dist}\t{t}");
         if let Some(hit) = self.cache.borrow().get(&key) {
             return hit.clone();
@@ -472,6 +502,7 @@ impl Engine {
         let toks = tokens(input);
         let n = toks.len();
         let english_on = self.setting("english"); // before the memo: a change drops it
+        self.sync_user(); // same
         let epoch = self.epoch.get();
         // beams[i] = paths that consumed the first i tokens; a word may consume 1..=MAX_JOIN tokens.
         // beams[i] only depends on toks[..i], so those of an unchanged start are kept as they were.
@@ -650,6 +681,55 @@ mod tests {
         let reloaded = Engine::load(&dir, Some(&user)).unwrap();
         assert_eq!(reloaded.suggest("ah ach", 1)[0].text, "អាអាចម៍");
         assert!(fs::read_to_string(user.join("picks.tsv")).unwrap().contains("ah ach\tអាអាចម៍"));
+        fs::remove_dir_all(&user).unwrap();
+    }
+
+    fn learned(e: &Engine) -> Counts {
+        e.user.borrow().clone()
+    }
+
+    #[test]
+    fn learning_follows_user_tsv_live() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../data/out");
+        let user = std::env::temp_dir().join(format!("typer-live-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&user);
+        let Ok(mut e) = Engine::load(&dir, Some(&user)) else { return };
+        let fresh = || Engine::load(&dir, Some(&user)).unwrap();
+        let before = e.suggest("ah ach", 9);
+        let want = before.iter().find(|s| s.text == "អាអាចម៍").expect("in top 9").clone();
+        // own pick, then suggest: counts match the file, not doubled by re-reading our own append
+        e.learn("ah ach", &want).unwrap();
+        assert_eq!(e.user_seen.get(), user_stamp(&user), "own append needs no re-read");
+        assert_eq!(e.suggest("ah ach", 1)[0].text, "អាអាចម៍");
+        assert_eq!(learned(&e), learned(&fresh()));
+
+        // folder deleted (the README's reset): same engine forgets, no restart
+        fs::remove_dir_all(&user).unwrap();
+        assert_eq!(e.suggest("ah ach", 9), before);
+        assert!(learned(&e).iter().all(HashMap::is_empty));
+
+        // a pick after the reset counts once and persists, without the forgotten one
+        e.learn("ah ach", &want).unwrap();
+        assert_eq!(e.suggest("ah ach", 1)[0].text, "អាអាចម៍");
+        assert_eq!(learned(&e), learned(&fresh()));
+        assert_eq!(fresh().suggest("ah ach", 1)[0].text, "អាអាចម៍");
+
+        // another process picks: seen on the next suggest, and our next pick keeps it
+        let mut other = fresh();
+        let s = other.suggest("knhom tov", 9)[1].clone();
+        other.learn("knhom tov", &s).unwrap();
+        e.suggest("knhom tov", 1);
+        assert_eq!(learned(&e), learned(&fresh()));
+        assert!(learned(&e)[1].keys().any(|k| k.ends_with(&s.words[1])));
+        e.learn("ah ach", &want).unwrap(); // `other` is now behind, then appends again
+        other.learn("knhom tov", &s).unwrap();
+        e.suggest("ah ach", 1);
+        assert_eq!(learned(&e), learned(&fresh()));
+
+        // user.tsv replaced (emptied) by another process
+        fs::write(user.join("user.tsv"), "").unwrap();
+        assert_eq!(e.suggest("ah ach", 9), before);
+        assert!(learned(&e).iter().all(HashMap::is_empty));
         fs::remove_dir_all(&user).unwrap();
     }
 
