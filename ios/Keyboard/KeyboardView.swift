@@ -12,8 +12,12 @@ struct KeyboardView: View {
 
     private let margin: CGFloat = 3
     private let gap: CGFloat = 6
-    private let keyHeight: CGFloat = 43
-    private let rowGap: CGFloat = 11
+    private static let keyHeight: CGFloat = 43
+    private static let rowGap: CGFloat = 8
+    private let keyHeight = KeyboardView.keyHeight
+    private let rowGap = KeyboardView.rowGap
+    /// Candidate bar + gap + four rows: the controller sizes the keyboard to exactly this.
+    static let height: CGFloat = 4 + 40 + 6 + 4 * keyHeight + 3 * rowGap + 4
 
     var body: some View {
         GeometryReader { geo in
