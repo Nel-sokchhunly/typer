@@ -4,6 +4,7 @@ struct KeyboardView: View {
     @ObservedObject var model: KeyboardModel
     let onCandidate: (Int) -> Void
     let onLatin: () -> Void
+    let onEnglishWord: (Int) -> Void
 
     private let margin = KeyLayout.margin
     private let keyHeight = KeyLayout.keyHeight
@@ -25,6 +26,8 @@ struct KeyboardView: View {
                 } else {
                     if !model.typed.isEmpty {
                         candidateBar.padding(.horizontal, margin).padding(.top, KeyLayout.barTop)
+                    } else if !model.englishWords.isEmpty {
+                        englishBar.padding(.horizontal, margin).padding(.top, KeyLayout.barTop)
                     }
                     let keys = model.keys(width: geo.size.width)
                     ZStack(alignment: .topLeading) {
@@ -113,6 +116,25 @@ struct KeyboardView: View {
                     Text("\(model.suggestions.count)").font(.system(size: 16, weight: .semibold))
                     Image(systemName: model.showAll ? "chevron.up" : "chevron.down").font(.system(size: 13, weight: .bold))
                 }) { model.showAll.toggle() }
+            }
+        }
+        .frame(height: 40)
+    }
+
+    /// English mode, same order as the Khmer bar: the best word in yellow, the next, then what you typed (in quotes).
+    private var englishBar: some View {
+        let w = model.englishWords
+        let order = Array(w.indices.dropFirst()) + [0]
+        return HStack(spacing: 6) {
+            ForEach(order, id: \.self) { i in
+                Text(i == 0 ? "\u{201C}\(w[0])\u{201D}" : w[i])
+                    .font(.system(size: 17, weight: i == 1 ? .bold : .regular))
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                    .foregroundColor(i == 1 ? KeyStyle.mode.foreground : .primary)
+                    .frame(maxWidth: .infinity, minHeight: 36)
+                    .background(i == 1 ? KeyStyle.mode.background : KeyStyle.function.background)
+                    .cornerRadius(8)
+                    .onTouchUp { onEnglishWord(i) }
             }
         }
         .frame(height: 40)
