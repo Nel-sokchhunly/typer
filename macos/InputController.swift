@@ -10,6 +10,9 @@ import InputMethodKit
 class TyperInputController: IMKInputController {
     private static var english = false  // shared by all apps, like the system Caps Lock
     private var ctrlAlone = false  // Ctrl pressed with no other key since
+    private var ctrlDown: TimeInterval = 0  // when that Ctrl went down (event.timestamp)
+    /// A longer Ctrl press (Ctrl-click, Ctrl+scroll) is not a tap. Like CTRL_TAP_MS in windows/src/lib.rs and linux/ibus-typer.c.
+    private static let ctrlTapLimit: TimeInterval = 0.4
     private var buffer = ""
     private var suggestions: [String] = []
     private var selected = 0  // highlighted row; Enter inserts it
@@ -27,10 +30,14 @@ class TyperInputController: IMKInputController {
             if !ctrlKey || others {
                 ctrlAlone = false
             } else if event.modifierFlags.contains(.control) {
+                if !ctrlAlone { ctrlDown = event.timestamp }  // a repeat while held keeps the first press
                 ctrlAlone = true
             } else if ctrlAlone {
                 ctrlAlone = false
-                toggleEnglish(client)
+                // no toggle after a long hold, or with a mouse button down (Ctrl-click is a right-click)
+                if event.timestamp - ctrlDown < Self.ctrlTapLimit && NSEvent.pressedMouseButtons == 0 {
+                    toggleEnglish(client)
+                }
             }
             return false
         }

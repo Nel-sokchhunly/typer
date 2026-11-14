@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering::Relaxed};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use typer::Engine;
 use windows::core::*;
@@ -34,6 +35,9 @@ const US_LAYOUT: usize = 0x0409_0409; // keys the app sees (punctuation, English
 
 static DLL: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
 static ENGLISH: AtomicBool = AtomicBool::new(false); // shared by all apps, like Caps Lock
+// A longer Ctrl press (Ctrl-click, Ctrl+scroll) is not a tap. Like ctrlTapLimit in macos/InputController.swift
+// and CTRL_TAP_MS in linux/ibus-typer.c.
+const CTRL_TAP_MS: u64 = 400;
 
 fn mode() -> &'static str {
     if ENGLISH.load(Relaxed) { "EN" } else { "ខ" }
@@ -214,7 +218,7 @@ struct State {
     buffer: String,
     suggestions: Vec<String>,
     selected: usize,
-    ctrl_alone: bool, // Ctrl pressed with no other key since
+    ctrl_alone: Option<Instant>, // when Ctrl went down, if no other key since
 }
 
 #[implement(ITfTextInputProcessorEx, ITfKeyEventSink, ITfCompositionSink, ITfFnConfigure)]
@@ -280,6 +284,7 @@ impl ITfFnConfigure_Impl for TextService_Impl {
 
 impl ITfKeyEventSink_Impl for TextService_Impl {
     fn OnSetFocus(&self, foreground: BOOL) -> Result<()> {
+        self.s.borrow_mut().ctrl_alone = None; // Ctrl held across a focus change: key-up went elsewhere
         if foreground.as_bool() {
             popup::follow(mode(), None);
         } else {
@@ -303,7 +308,8 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
 
     fn OnTestKeyUp(&self, ctx: Option<&ITfContext>, w: WPARAM, _: LPARAM) -> Result<BOOL> {
         let mut s = self.s.borrow_mut();
-        let tap = VIRTUAL_KEY(w.0 as u16) == VK_CONTROL && std::mem::take(&mut s.ctrl_alone);
+        let tap = VIRTUAL_KEY(w.0 as u16) == VK_CONTROL
+            && s.ctrl_alone.take().is_some_and(|t| t.elapsed() < Duration::from_millis(CTRL_TAP_MS));
         let idle = s.buffer.is_empty(); // composing: the suggestion list has the badge's spot
         drop(s);
         if tap && idle {
@@ -373,7 +379,10 @@ impl TextService_Impl {
     /// Decide what `w` does; with `ctx` (OnKeyDown) also do it. Mirrors macos/InputController.swift.
     fn key(&self, ctx: Option<&ITfContext>, w: WPARAM) -> Act {
         let vk = VIRTUAL_KEY(w.0 as u16);
-        self.s.borrow_mut().ctrl_alone = vk == VK_CONTROL; // any other key: Ctrl was a modifier
+        let mut s = self.s.borrow_mut();
+        let first = s.ctrl_alone.unwrap_or_else(Instant::now); // auto-repeat keeps the first press
+        s.ctrl_alone = (vk == VK_CONTROL).then_some(first); // any other key: Ctrl was a modifier
+        drop(s);
         if matches!(vk, VK_SHIFT | VK_CONTROL) || ENGLISH.load(Relaxed) {
             return Act::Pass;
         }
