@@ -9,7 +9,7 @@ public protocol Suggester: AnyObject {
 
 /// Thin wrapper over the Rust C ABI (engine/typer.h), like macos/Engine.swift.
 /// If the data can't load, it suggests nothing and learns nothing, so the keyboard still types Latin.
-/// Main thread only: the C engine isn't thread-safe.
+/// Not thread-safe: the keyboard reaches it only through the Composer's serial Scheduler queue.
 public final class Engine: Suggester {
     private var engine: OpaquePointer?
     private let dataDir: String

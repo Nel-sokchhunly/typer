@@ -1,3 +1,5 @@
+import Foundation
+
 /// The keyboard's link to the host app. The real one wraps UITextDocumentProxy.
 public protocol TextProxy: AnyObject {
     /// Text before the caret, as the host reports it (may or may not include marked text; may be nil).
@@ -8,6 +10,29 @@ public protocol TextProxy: AnyObject {
     func unmarkText()
     func insertText(_ text: String)
     func deleteBackward()
+}
+
+/// Where engine work runs. The Rust engine is not thread-safe: every engine call goes through `async`/`sync`,
+/// which must be one serial queue. `main` hops back to the main thread. Tests inject `.immediate`.
+public struct Scheduler {
+    public var async: (@escaping () -> Void) -> Void
+    public var sync: (() -> Void) -> Void
+    public var main: (@escaping () -> Void) -> Void
+
+    public init(async: @escaping (@escaping () -> Void) -> Void, sync: @escaping (() -> Void) -> Void,
+                main: @escaping (@escaping () -> Void) -> Void) {
+        self.async = async
+        self.sync = sync
+        self.main = main
+    }
+
+    public static let immediate = Scheduler(async: { $0() }, sync: { $0() }, main: { $0() })
+
+    public static func background() -> Scheduler {
+        let q = DispatchQueue(label: "typer.engine", qos: .userInteractive)
+        return Scheduler(async: { q.async(execute: $0) }, sync: { q.sync(execute: $0) },
+                         main: { DispatchQueue.main.async(execute: $0) })
+    }
 }
 
 /// How a field wants its keys. Everything but `.text` passes straight through, like English mode.
@@ -27,7 +52,14 @@ public final class Composer {
     /// "ខ" or "EN"; a secure, email, URL or number field shows EN.
     public var mode: String { passthrough ? "EN" : "ខ" }
 
+    /// Called on the main thread when new suggestions arrive after a key (they are computed off-thread).
+    public var onSuggestions: (() -> Void)?
+
     private let engine: Suggester
+    private let scheduler: Scheduler
+    private var suggestionsFor = ""  // the Phrase `suggestions` were computed for
+    private var requestSeq = 0  // main thread: bumped on every Phrase change
+    private let latest = LockedInt()  // same value, readable from the engine queue to skip stale work
     private let proxy: TextProxy
     private let usesMarkedText: Bool
     private var secure = false
@@ -37,8 +69,10 @@ public final class Composer {
 
     /// `usesMarkedText: false` is the fallback for hosts that mishandle marked text: the phrase is
     /// typed as plain text, and a commit deletes its length and inserts the choice.
-    public init(engine: Suggester, proxy: TextProxy, usesMarkedText: Bool = true) {
+    public init(engine: Suggester, proxy: TextProxy, usesMarkedText: Bool = true,
+                scheduler: Scheduler = .background()) {
         self.engine = engine
+        self.scheduler = scheduler
         self.proxy = proxy
         self.usesMarkedText = usesMarkedText
     }
@@ -141,18 +175,46 @@ public final class Composer {
         return kept
     }
 
+    /// Marked text updates now; suggestions follow from the engine queue, the latest request wins.
+    /// Until they land, the previous ones stay on the bar.
     private func update() {
-        suggestions = typed.isEmpty ? [] : engine.suggest(typed, 9)
+        invalidate()
+        if !typed.isEmpty {
+            let input = typed, seq = requestSeq, latest = latest, engine = engine, scheduler = scheduler
+            scheduler.async { [weak self] in
+                guard latest.value == seq else { return }  // a newer key already superseded this one
+                let result = engine.suggest(input, 9)
+                scheduler.main {
+                    guard let self, self.requestSeq == seq else { return }
+                    self.suggestions = result
+                    self.suggestionsFor = input
+                    self.onSuggestions?()
+                }
+            }
+        }
         _ = write(typed, final: typed.isEmpty)
     }
 
+    private func invalidate() {
+        requestSeq += 1
+        latest.value = requestSeq
+    }
+
+    /// A Pick must come from the current Phrase: if its result hasn't landed, compute it now.
     private func commit(_ index: Int) {
         let input = typed
+        if suggestionsFor != input {
+            scheduler.sync { suggestions = engine.suggest(input, 9) }
+            suggestionsFor = input
+        }
         guard suggestions.indices.contains(index) else {
             _ = write(input, final: true)
             return
         }
-        if write(suggestions[index], final: true) { engine.pick(input, index) }
+        if write(suggestions[index], final: true) {
+            let engine = engine
+            scheduler.async { engine.pick(input, index) }
+        }
     }
 
     /// Leave the phrase in the document as it stands (Latin), no learning.
@@ -192,5 +254,16 @@ public final class Composer {
         shown = ""
         anchor = nil
         suggestions = []
+        suggestionsFor = ""
+        invalidate()
+    }
+}
+
+private final class LockedInt {
+    private let lock = NSLock()
+    private var v = 0
+    var value: Int {
+        get { lock.lock(); defer { lock.unlock() }; return v }
+        set { lock.lock(); v = newValue; lock.unlock() }
     }
 }

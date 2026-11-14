@@ -51,6 +51,11 @@ final class KeyboardModel: ObservableObject {
 /// The keyboard's root view; UIInputViewAudioFeedback is what lets playInputClick() make a sound.
 private final class ClickInputView: UIInputView, UIInputViewAudioFeedback {
     var enableInputClicksWhenVisible: Bool { true }
+    override init(frame: CGRect, inputViewStyle: UIInputView.Style) {
+        super.init(frame: frame, inputViewStyle: inputViewStyle)
+        isMultipleTouchEnabled = true  // a second finger may land before the first lifts
+    }
+    required init?(coder: NSCoder) { fatalError() }
 }
 
 final class KeyboardViewController: UIInputViewController {
@@ -63,7 +68,9 @@ final class KeyboardViewController: UIInputViewController {
         let engine = Engine(dataDir: Bundle.main.resourcePath! + "/data", userDir: userDir)
         // load failure: an empty Suggester, the keyboard still types Latin
         let suggester: Suggester = engine.loaded ? engine : NoSuggestions()
-        return Composer(engine: suggester, proxy: ProxyAdapter { [unowned self] in textDocumentProxy })
+        let c = Composer(engine: suggester, proxy: ProxyAdapter { [unowned self] in textDocumentProxy })
+        c.onSuggestions = { [unowned self] in model.suggestions = composer.suggestions }  // results arrive after the key
+        return c
     }()
 
     override func loadView() { view = ClickInputView(frame: .zero, inputViewStyle: .keyboard) }
@@ -90,6 +97,7 @@ final class KeyboardViewController: UIInputViewController {
                 .environment(\.keyPress, { [unowned self] in keyFeedback() }))
         hosting.view.translatesAutoresizingMaskIntoConstraints = false
         hosting.view.backgroundColor = .clear
+        hosting.view.isMultipleTouchEnabled = true
         addChild(hosting)
         view.addSubview(hosting.view)
         hosting.didMove(toParent: self)
@@ -178,8 +186,9 @@ final class KeyboardViewController: UIInputViewController {
         model.canToggle = composer.canToggle
         if afterKey { model.shiftChosen = false }
         if model.shift != .lock && !model.shiftChosen {  // a typed key or a field change re-decides shift, like Apple's
-            let before = textDocumentProxy.documentContextBeforeInput
-            model.shift = AutoCap.shouldShift(before: before, kind: model.autoCap, khmerMode: composer.mode == "ខ") ? .once : .off
+            let khmer = composer.mode == "ខ"
+            let before = khmer ? nil : textDocumentProxy.documentContextBeforeInput  // Khmer never auto-caps: skip the IPC read
+            model.shift = AutoCap.shouldShift(before: before, kind: model.autoCap, khmerMode: khmer) ? .once : .off
         }
     }
 }

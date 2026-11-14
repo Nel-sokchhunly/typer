@@ -56,6 +56,19 @@ final class Spy: Suggester {
     }
 }
 
+/// Holds engine jobs and main hops until the test runs them, to play out any ordering.
+final class ManualScheduler {
+    var engine: [() -> Void] = []
+    var main: [() -> Void] = []
+    lazy var scheduler = Scheduler(
+        async: { [unowned self] in engine.append($0) },
+        sync: { $0() },
+        main: { [unowned self] in main.append($0) })
+    func runEngine(_ i: Int) { engine[i]() }
+    func runMain() { let m = main; main = []; m.forEach { $0() } }
+    func runAll() { engine.forEach { $0() }; runMain() }
+}
+
 final class ComposerTests: XCTestCase {
     static let dataDir = URL(fileURLWithPath: #filePath)
         .appendingPathComponent("../../../../../data/out").standardized.path
@@ -79,7 +92,7 @@ final class ComposerTests: XCTestCase {
     func make(dataDir: String = dataDir, usesMarkedText: Bool = true) {
         spy = Spy(Engine(dataDir: dataDir, userDir: userDir.path))
         proxy = proxy ?? FakeProxy()
-        composer = Composer(engine: spy, proxy: proxy, usesMarkedText: usesMarkedText)
+        composer = Composer(engine: spy, proxy: proxy, usesMarkedText: usesMarkedText, scheduler: .immediate)
     }
 
     /// Type each character; what the Composer doesn't consume, the keyboard inserts as usual.
@@ -489,5 +502,50 @@ final class ComposerTests: XCTestCase {
         proxy.moveCaretLeft(1)
         XCTAssertTrue(composer.textChanged())
         XCTAssertEqual(proxy.doc, "hi ខ្ញុំtovx")
+    }
+
+    // MARK: suggestions off the main thread
+
+    func manualComposer() -> ManualScheduler {
+        let m = ManualScheduler()
+        composer = Composer(engine: spy, proxy: proxy, scheduler: m.scheduler)
+        return m
+    }
+
+    func testStaleSuggestionsAreDropped() {
+        let m = manualComposer()
+        type("k")
+        m.runEngine(0)  // "k" computed, its hop to main not run yet
+        type("n")
+        m.runMain()  // the stale result arrives
+        XCTAssertEqual(composer.suggestions, [], "stale result for a Phrase that moved on")
+        m.runEngine(1)
+        m.runMain()
+        XCTAssertEqual(composer.suggestions, spy.engine.suggest("kn", 9))
+    }
+
+    func testReturnBeforeResultsCommitsCurrentPhrase() {
+        let m = manualComposer()
+        type("knhom")
+        returnKey()
+        XCTAssertEqual(proxy.doc, spy.engine.suggest("knhom", 9)[0])
+        XCTAssertEqual(proxy.marked, 0)
+        m.runAll()  // late jobs must not resurrect anything
+        XCTAssertEqual(composer.suggestions, [])
+        XCTAssertFalse(composer.isComposing)
+        XCTAssertEqual(spy.picks, ["knhom"])
+    }
+
+    func testMarkedTextUpdatesBeforeSuggestions() {
+        let m = manualComposer()
+        var published = 0
+        composer.onSuggestions = { published += 1 }
+        type("knh")
+        XCTAssertEqual(proxy.markedText, "knh")
+        XCTAssertEqual(composer.suggestions, [])
+        XCTAssertEqual(spy.suggests, 0)
+        m.runAll()
+        XCTAssertEqual(composer.suggestions, spy.engine.suggest("knh", 9))
+        XCTAssertEqual(published, 1, "only the latest request publishes")
     }
 }
