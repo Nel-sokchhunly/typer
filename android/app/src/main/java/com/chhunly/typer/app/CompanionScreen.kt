@@ -37,7 +37,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -76,6 +78,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.chhunly.typer.R
 import com.chhunly.typer.ime.FontChoice
+import com.chhunly.typer.ime.EngineData
 import com.chhunly.typer.ime.HapticsChoice
 import com.chhunly.typer.ime.ThemeChoice
 import kotlinx.coroutines.delay
@@ -131,6 +134,7 @@ fun CompanionScreen(khmer: Boolean, onKhmerChange: (Boolean) -> Unit) {
                     if (ThemeChoice.available) WallpaperCard(copy)
                     VibrationCard(copy)
                     FontCard(copy)
+                    ResetLearningCard(copy)
                 }
                 Section(copy.featuresTitle) {
                     copy.features.forEachIndexed { i, feature -> FeatureCard(i, feature) }
@@ -423,6 +427,39 @@ private fun ChoiceCard(title: String, detail: String, options: List<String>, sel
                 }
             }
         }
+    }
+}
+
+/** "Reset what Typer learned": asks first, then deletes the learned files; the Keyboard notices on its next keystroke. */
+@Composable
+private fun ResetLearningCard(copy: Copy) {
+    val context = LocalContext.current
+    var asking by remember { mutableStateOf(false) }
+    var done by remember { mutableStateOf(false) }
+    val colors = MaterialTheme.colorScheme
+    Card {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Txt(copy.resetTitle, 17, weight = FontWeight.SemiBold)
+            Txt(copy.resetDetail, 15, color = colors.onSurfaceVariant)
+            if (done) Txt(copy.resetDone, 14, weight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+            else PillButton(copy.resetButton, { asking = true }, Modifier.padding(top = 8.dp))
+        }
+    }
+    if (asking) {
+        AlertDialog(
+            onDismissRequest = { asking = false },
+            text = { Txt(copy.resetConfirm, 17) },
+            confirmButton = {
+                TextButton(onClick = {
+                    EngineData.resetLearning(context)
+                    asking = false
+                    done = true
+                }) { Txt(copy.resetButton, 16, weight = FontWeight.Bold, color = colors.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { asking = false }) { Txt(copy.resetCancel, 16, weight = FontWeight.SemiBold, color = colors.onSurface) }
+            },
+        )
     }
 }
 

@@ -32,6 +32,12 @@ data class Copy(
     val fontTitle: String,
     val fontOptions: List<String>,
     val fontDetail: String,
+    val resetTitle: String,
+    val resetDetail: String,
+    val resetButton: String,
+    val resetConfirm: String,
+    val resetCancel: String,
+    val resetDone: String,
 ) {
     companion object {
         val khmer = Copy(
@@ -67,6 +73,12 @@ data class Copy(
             fontTitle = "ពុម្ពអក្សរ",
             fontOptions = listOf("Kantumruy Pro", "តាមប្រព័ន្ធ"),
             fontDetail = "Kantumruy Pro ជាពុម្ពអក្សររបស់ Typer។ តាមប្រព័ន្ធ៖ ប្រើពុម្ពអក្សររបស់ទូរស័ព្ទ ទាំងក្តារចុច និងកម្មវិធីនេះ។",
+            resetTitle = "លុបអ្វីដែល Typer បានរៀន",
+            resetDetail = "Typer នឹងភ្លេចពាក្យដែលអ្នកបានជ្រើស ហើយពាក្យស្នើនឹងត្រឡប់ទៅដូចពេលទើបដំឡើង។",
+            resetButton = "លុប",
+            resetConfirm = "លុបអ្វីដែល Typer បានរៀន? មិនអាចត្រឡប់វិញបានទេ។",
+            resetCancel = "បោះបង់",
+            resetDone = "បានលុបរួចរាល់",
         )
 
         val english = Copy(
@@ -102,6 +114,12 @@ data class Copy(
             fontTitle = "Font",
             fontOptions = listOf("Kantumruy Pro", "System"),
             fontDetail = "Kantumruy Pro is Typer's font. System uses your phone's font, on the keyboard and in this app.",
+            resetTitle = "Reset what Typer learned",
+            resetDetail = "Typer forgets the words you picked, and Suggestions go back to how they were at install.",
+            resetButton = "Reset",
+            resetConfirm = "Reset what Typer learned? This can't be undone.",
+            resetCancel = "Cancel",
+            resetDone = "Reset done",
         )
     }
 }
