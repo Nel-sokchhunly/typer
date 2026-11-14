@@ -11,3 +11,7 @@ settings/gen/
 settings/ui/demo.webm
 settings/ui/demo.mp4
 settings/ui/demo-poster.jpg
+android/.gradle/
+android/local.properties
+*.keystore
+*.jks

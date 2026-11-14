@@ -1,0 +1,17 @@
+[package]
+name = "typer-android"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "typer_jni"
+crate-type = ["cdylib"]
+
+[dependencies]
+typer = { path = "../../engine" }
+jni = { version = "0.21", default-features = false }
+
+[profile.release]
+opt-level = 3
+strip = true
