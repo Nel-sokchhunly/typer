@@ -46,6 +46,8 @@ android {
             it.systemProperty("java.library.path", File(repo, "android/jni/target/release").path)
             it.systemProperty("typer.data", File(repo, "data/out").path)
             it.systemProperty("typer.fixtures", File(repo, "fixtures").path)
+            it.inputs.dir(File(repo, "fixtures"))  // a fixture edit reruns the tests
+            it.inputs.dir(File(repo, "data/out")).optional()
             it.testLogging { events("failed"); exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
         }
     }

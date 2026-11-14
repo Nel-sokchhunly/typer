@@ -1,0 +1,430 @@
+{
+  "about": [
+    "Composer behaviour shared by every platform's Composer (docs/adr/0001). Each case runs against a fake text field",
+    "and the real engine (data/out), with a fresh temporary user dir and the Composer in Khmer mode.",
+    "Runners: ios/TyperCore/Tests/TyperCoreTests/ComposerTests.swift and",
+    "android/app/src/test/java/com/chhunly/typer/core/ComposerFixtureTest.kt.",
+    "",
+    "Fake text field: `before` + `after` with the caret between; the last `marked` characters of `before` are the",
+    "Marked text. setMarkedText replaces the marked text (or inserts at the caret); insertText replaces it too;",
+    "deleteBackward removes one character. The engine is wrapped in a spy that counts suggest calls and records picks.",
+    "",
+    "Ops (each may carry \"expect\"; \"consumed\" checks the event's return value):",
+    "  type {text}             each character to key(); what isn't consumed is inserted as the keyboard would",
+    "  key {text}              key() alone",
+    "  backspace / return      the keyboard's backspace / return: the Composer first, else delete / insert \\n",
+    "  composerBackspace, returnKey, rawLatin, toggle, textChanged, fieldEnded   the Composer event alone",
+    "  tap {index | text | saved}   candidateTapped(index); `text` taps that Suggestion's index",
+    "  traits {secure, field}  fieldTraitsChanged; field is text | email | url | number",
+    "  moveCaretLeft {n}       the user moves the caret n characters left; the host keeps marked text as plain text",
+    "  setBefore {text}        the text before the caret is replaced (nothing marked)",
+    "  proxy {contextHasMarked, contextNil}   whether the host counts marked text as before the caret / reports no context",
+    "  remake {missingData, usesMarkedText}   a new engine and Composer on the same user dir and field (a reload)",
+    "  manual                  a new Composer whose engine jobs and main-thread hops wait for runEngine / runMain / runAll",
+    "  otherToggle, otherMode {expect}        another Keyboard instance (its own field) toggles / reports the mode",
+    "  setting {name, on}      Settings.set in the user dir;  writeUserFile {name, content};  resetLearning",
+    "  engineSuggest {input, k, expect}, enginePick {input, index}   the engine directly",
+    "  saveFirst / saveSuggestions / saveIndex {of} / saveEngine {input} / saveSuggests  {as}   remember a value",
+    "  check                   only expectations",
+    "Expectations: doc, markedText, marked, typed, mode, canToggle, isComposing, engineLoaded, suggestions,",
+    "  notSuggestions, suggestionsContain, suggestionsNotContain, firstSuggestion, picks (inputs the spy saw),",
+    "  picksFile (picks.tsv, \"\" if missing), picksFileContains, suggests (spy count), published (onSuggestions calls),",
+    "  fileExists {name: bool}, file {name, content}, settingsOn {name: bool}, engineSetting {name: bool},",
+    "  indexOf {text, lt | eq | gt}. A string \"@name\" stands for a saved value; \"{name}\" inside a string is",
+    "  replaced by a saved string (or the first item of a saved list)."
+  ],
+  "cases": [
+    {
+      "name": "knhom, tap ខ្ញុំ: Khmer in, picked and learned",
+      "steps": [
+        {"op": "type", "text": "knhom", "expect": {"doc": "knhom", "markedText": "knhom", "isComposing": true}},
+        {"op": "tap", "text": "ខ្ញុំ", "consumed": true, "expect": {
+          "doc": "ខ្ញុំ", "marked": 0, "picks": ["knhom"], "picksFileContains": "knhom\tខ្ញុំ", "suggestions": [], "isComposing": false}}
+      ]
+    },
+    {
+      "name": "a whole Phrase",
+      "steps": [
+        {"op": "type", "text": "knhom tov sala rean", "expect": {"markedText": "knhom tov sala rean"}},
+        {"op": "tap", "index": 0, "consumed": true, "expect": {"doc": "ខ្ញុំទៅសាលារៀន", "marked": 0}}
+      ]
+    },
+    {
+      "name": "space separates words and never commits; double space collapses",
+      "steps": [
+        {"op": "key", "text": " ", "consumed": false},
+        {"op": "type", "text": "knhom  tov ", "expect": {"doc": "knhom tov ", "markedText": "knhom tov "}}
+      ]
+    },
+    {
+      "name": "punctuation joins the Phrase",
+      "steps": [
+        {"op": "key", "text": "?", "consumed": false},
+        {"op": "type", "text": "knhom, tov te?", "expect": {"markedText": "knhom, tov te?", "firstSuggestion": "ខ្ញុំ, ទៅទេ?"}},
+        {"op": "return", "expect": {"doc": "ខ្ញុំ, ទៅទេ?"}}
+      ]
+    },
+    {
+      "name": "return commits the first Suggestion; idle return passes through",
+      "steps": [
+        {"op": "type", "text": "knhom"},
+        {"op": "saveFirst", "as": "top"},
+        {"op": "returnKey", "consumed": true, "expect": {"doc": "{top}", "marked": 0}},
+        {"op": "returnKey", "consumed": false}
+      ]
+    },
+    {
+      "name": "backspace edits the Phrase; idle backspace passes through",
+      "steps": [
+        {"op": "type", "text": "knhomx"},
+        {"op": "backspace", "expect": {"markedText": "knhom", "suggestionsContain": "ខ្ញុំ"}},
+        {"op": "backspace"}, {"op": "backspace"}, {"op": "backspace"}, {"op": "backspace"},
+        {"op": "backspace", "expect": {"doc": "", "marked": 0, "suggestions": [], "isComposing": false}},
+        {"op": "setBefore", "text": "ab"},
+        {"op": "composerBackspace", "consumed": false}
+      ]
+    },
+    {
+      "name": "a digit commits the top Suggestion, then passes through",
+      "steps": [
+        {"op": "type", "text": "knhom"},
+        {"op": "saveFirst", "as": "top"},
+        {"op": "type", "text": "2", "expect": {"doc": "{top}2", "marked": 0}},
+        {"op": "type", "text": "😀", "expect": {"doc": "{top}2😀"}}
+      ]
+    },
+    {
+      "name": "abc keeps the Latin and learns nothing",
+      "steps": [
+        {"op": "type", "text": "knhom tov "},
+        {"op": "rawLatin", "consumed": true, "expect": {"doc": "knhom tov ", "marked": 0, "picks": [], "picksFile": ""}},
+        {"op": "rawLatin", "consumed": false}
+      ]
+    },
+    {
+      "name": "a Pick persists across a reload and ranks higher",
+      "steps": [
+        {"op": "type", "text": "ah ach"},
+        {"op": "saveIndex", "of": "អាអាចម៍", "as": "i", "expect": {"indexOf": {"text": "អាអាចម៍", "gt": 0}}},
+        {"op": "tap", "saved": "i"},
+        {"op": "remake"},
+        {"op": "type", "text": "ah ach", "expect": {"indexOf": {"text": "អាអាចម៍", "lt": "@i"}}}
+      ]
+    },
+    {
+      "name": "learn=off: the Pick commits but nothing is written",
+      "steps": [
+        {"op": "writeUserFile", "name": "settings.txt", "content": "learn=off\n"},
+        {"op": "type", "text": "knhom"},
+        {"op": "tap", "index": 0, "expect": {"doc": "ខ្ញុំ", "fileExists": {"picks.tsv": false}}}
+      ]
+    },
+    {
+      "name": "settings.txt format, shared with the engine",
+      "steps": [
+        {"op": "check", "expect": {"settingsOn": {"generated": true, "english": true, "learn": true}}},
+        {"op": "writeUserFile", "name": "settings.txt", "content": "# note\nlearn = off\nbadge=off\nfoo=bar"},
+        {"op": "check", "expect": {"settingsOn": {"learn": false, "badge": false, "english": true}}},
+        {"op": "setting", "name": "learn", "on": true},
+        {"op": "setting", "name": "english", "on": false, "expect": {
+          "file": {"name": "settings.txt", "content": "# note\nlearn=on\nbadge=off\nfoo=bar\nenglish=off\n"},
+          "engineSetting": {"learn": true, "english": false, "badge": false}}}
+      ]
+    },
+    {
+      "name": "the English switch applies on the next keystroke",
+      "steps": [
+        {"op": "type", "text": "thank you bong", "expect": {"suggestionsContain": "thank you បង"}},
+        {"op": "setting", "name": "english", "on": false},
+        {"op": "backspace"}, {"op": "type", "text": "g", "expect": {"suggestionsNotContain": "thank you បង"}},
+        {"op": "setting", "name": "english", "on": true},
+        {"op": "backspace"}, {"op": "type", "text": "g", "expect": {"suggestionsContain": "thank you បង"}},
+        {"op": "setting", "name": "english", "on": false},
+        {"op": "backspace"}, {"op": "type", "text": "g", "expect": {"suggestionsNotContain": "thank you បង"}}
+      ]
+    },
+    {
+      "name": "learn off: the Composer still calls pick, the engine ignores it",
+      "steps": [
+        {"op": "setting", "name": "learn", "on": false},
+        {"op": "type", "text": "ah ach"},
+        {"op": "saveIndex", "of": "អាអាចម៍", "as": "i", "expect": {"indexOf": {"text": "អាអាចម៍", "gt": 0}}},
+        {"op": "tap", "saved": "i", "expect": {"picks": ["ah ach"]}},
+        {"op": "type", "text": "ah ach", "expect": {"indexOf": {"text": "អាអាចម៍", "eq": "@i"}, "picksFile": "", "fileExists": {"user.tsv": false}}}
+      ]
+    },
+    {
+      "name": "reset learning: same ranking as before any Pick, settings kept",
+      "steps": [
+        {"op": "setting", "name": "generated", "on": false},
+        {"op": "type", "text": "ah ach"},
+        {"op": "saveSuggestions", "as": "fresh"},
+        {"op": "tap", "text": "អាអាចម៍"},
+        {"op": "type", "text": "ah ach", "expect": {"notSuggestions": "@fresh"}},
+        {"op": "rawLatin"},
+        {"op": "resetLearning"},
+        {"op": "type", "text": "ah ach", "expect": {
+          "suggestions": "@fresh", "fileExists": {"user.tsv": false, "picks.tsv": false}, "settingsOn": {"generated": false}}},
+        {"op": "resetLearning"}
+      ]
+    },
+    {
+      "name": "the caret moved mid-Phrase: keep the Latin",
+      "steps": [
+        {"op": "type", "text": "knhom"},
+        {"op": "moveCaretLeft", "n": 2},
+        {"op": "textChanged", "consumed": true, "expect": {"doc": "knhom", "marked": 0, "isComposing": false, "picks": []}}
+      ]
+    },
+    {
+      "name": "echoes of the Composer's own writes are ignored (host counts marked text)",
+      "steps": [
+        {"op": "proxy", "contextHasMarked": true},
+        {"op": "type", "text": "knhom"},
+        {"op": "textChanged", "consumed": false},
+        {"op": "textChanged", "consumed": false, "expect": {"markedText": "knhom"}},
+        {"op": "tap", "index": 0},
+        {"op": "textChanged", "consumed": false},
+        {"op": "proxy", "contextHasMarked": false},
+        {"op": "type", "text": "knhom"},
+        {"op": "textChanged", "consumed": false},
+        {"op": "textChanged", "consumed": false, "expect": {"markedText": "knhom"}},
+        {"op": "tap", "index": 0},
+        {"op": "textChanged", "consumed": false, "expect": {"picks": ["knhom", "knhom"]}}
+      ]
+    },
+    {
+      "name": "no echo after a commit, then a real caret move",
+      "steps": [
+        {"op": "type", "text": "knhom"},
+        {"op": "tap", "index": 0},
+        {"op": "type", "text": "tov"},
+        {"op": "moveCaretLeft", "n": 1},
+        {"op": "textChanged", "consumed": true, "expect": {"doc": "ខ្ញុំtov", "isComposing": false}}
+      ]
+    },
+    {
+      "name": "a host that never reports context never ends the Phrase",
+      "steps": [
+        {"op": "proxy", "contextNil": true},
+        {"op": "type", "text": "knhom"},
+        {"op": "textChanged", "consumed": false, "expect": {"markedText": "knhom"}}
+      ]
+    },
+    {
+      "name": "without Marked text: double echo is ignored",
+      "steps": [
+        {"op": "remake", "usesMarkedText": false},
+        {"op": "type", "text": "kn"},
+        {"op": "textChanged", "consumed": false},
+        {"op": "textChanged", "consumed": false},
+        {"op": "type", "text": "hom", "expect": {"doc": "knhom", "isComposing": true}}
+      ]
+    },
+    {
+      "name": "without Marked text: caret moved before a commit, nothing deleted blind",
+      "steps": [
+        {"op": "remake", "usesMarkedText": false},
+        {"op": "setBefore", "text": "hi "},
+        {"op": "type", "text": "knhom"},
+        {"op": "saveIndex", "of": "ខ្ញុំ", "as": "i"},
+        {"op": "moveCaretLeft", "n": 2},
+        {"op": "tap", "saved": "i", "consumed": true, "expect": {"doc": "hi knhom", "isComposing": false, "picks": []}}
+      ]
+    },
+    {
+      "name": "the same traits reported again change nothing",
+      "steps": [
+        {"op": "type", "text": "knhom"},
+        {"op": "traits", "secure": false, "field": "text", "consumed": false, "expect": {"isComposing": true, "markedText": "knhom"}}
+      ]
+    },
+    {
+      "name": "the mode flips mid-Phrase in another Keyboard instance",
+      "steps": [
+        {"op": "type", "text": "knhom"},
+        {"op": "otherToggle", "consumed": true},
+        {"op": "returnKey", "consumed": false, "expect": {"doc": "knhom", "marked": 0, "isComposing": false}},
+        {"op": "composerBackspace", "consumed": false},
+        {"op": "tap", "index": 0, "consumed": false},
+        {"op": "rawLatin", "consumed": false},
+        {"op": "otherToggle", "consumed": true}
+      ]
+    },
+    {
+      "name": "out-of-range indexes",
+      "steps": [
+        {"op": "type", "text": "knhom"},
+        {"op": "tap", "index": -1, "consumed": true, "expect": {"doc": "knhom", "picks": []}},
+        {"op": "engineSuggest", "input": "knhom", "k": -1, "expect": []},
+        {"op": "enginePick", "input": "knhom", "index": -1}
+      ]
+    },
+    {
+      "name": "the field ends mid-Phrase: keep the Latin",
+      "steps": [
+        {"op": "type", "text": "knhom"},
+        {"op": "fieldEnded", "consumed": true, "expect": {"doc": "knhom", "marked": 0}},
+        {"op": "fieldEnded", "consumed": false}
+      ]
+    },
+    {
+      "name": "the mode key toggles when idle, shared across instances",
+      "steps": [
+        {"op": "type", "text": "knhom"},
+        {"op": "toggle", "consumed": false, "expect": {"mode": "ខ"}},
+        {"op": "rawLatin"},
+        {"op": "toggle", "consumed": true, "expect": {"mode": "EN"}},
+        {"op": "otherMode", "expect": "EN"},
+        {"op": "saveSuggests", "as": "calls"},
+        {"op": "key", "text": "k", "consumed": false},
+        {"op": "key", "text": " ", "consumed": false},
+        {"op": "key", "text": ",", "consumed": false},
+        {"op": "key", "text": "1", "consumed": false},
+        {"op": "composerBackspace", "consumed": false},
+        {"op": "returnKey", "consumed": false, "expect": {"suggests": "@calls"}},
+        {"op": "toggle", "consumed": true, "expect": {"mode": "ខ"}}
+      ]
+    },
+    {
+      "name": "the mode key works only idle in a Khmer-capable field",
+      "steps": [
+        {"op": "check", "expect": {"canToggle": true}},
+        {"op": "type", "text": "k", "expect": {"canToggle": false}},
+        {"op": "rawLatin", "expect": {"canToggle": true}},
+        {"op": "traits", "secure": true, "field": "text", "expect": {"canToggle": false, "mode": "EN"}},
+        {"op": "traits", "secure": false, "field": "email", "expect": {"canToggle": false, "mode": "EN"}},
+        {"op": "traits", "secure": false, "field": "number", "expect": {"canToggle": false, "mode": "EN"}},
+        {"op": "traits", "secure": false, "field": "text", "expect": {"canToggle": true, "mode": "ខ"}}
+      ]
+    },
+    {
+      "name": "a URL field starts in English but can switch to Khmer, for that field only",
+      "steps": [
+        {"op": "traits", "secure": false, "field": "url", "expect": {"mode": "EN", "canToggle": true}},
+        {"op": "toggle", "consumed": true, "expect": {"mode": "ខ"}},
+        {"op": "type", "text": "knhom", "expect": {"typed": "knhom"}},
+        {"op": "rawLatin"},
+        {"op": "traits", "secure": false, "field": "text", "expect": {"mode": "ខ"}},
+        {"op": "traits", "secure": false, "field": "url", "expect": {"mode": "EN"}}
+      ]
+    },
+    {
+      "name": "the English choice survives a forced field",
+      "steps": [
+        {"op": "toggle", "consumed": true},
+        {"op": "traits", "secure": true, "field": "text", "expect": {"mode": "EN"}},
+        {"op": "traits", "secure": false, "field": "text", "expect": {"mode": "EN"}},
+        {"op": "toggle", "consumed": true, "expect": {"mode": "ខ"}}
+      ]
+    },
+    {
+      "name": "English mode types plain Latin and never asks the engine",
+      "steps": [
+        {"op": "toggle", "consumed": true},
+        {"op": "type", "text": "hello world", "expect": {"doc": "hello world", "marked": 0, "typed": "", "suggestions": [], "suggests": 0}}
+      ]
+    },
+    {
+      "name": "a caret move and a field end learn nothing",
+      "steps": [
+        {"op": "type", "text": "knhom"},
+        {"op": "moveCaretLeft", "n": 2},
+        {"op": "textChanged", "consumed": true, "expect": {"picks": []}},
+        {"op": "type", "text": "tov"},
+        {"op": "fieldEnded", "consumed": true, "expect": {"picks": [], "picksFile": "", "marked": 0}}
+      ]
+    },
+    {
+      "name": "a password field never reaches the engine",
+      "steps": [
+        {"op": "traits", "secure": true, "field": "text", "expect": {"mode": "EN"}},
+        {"op": "type", "text": "knhom tov"},
+        {"op": "returnKey", "consumed": false},
+        {"op": "tap", "index": 0, "consumed": false, "expect": {"doc": "knhom tov", "marked": 0, "suggests": 0, "picks": []}},
+        {"op": "toggle", "consumed": false},
+        {"op": "traits", "secure": false, "field": "text", "expect": {"mode": "ខ"}}
+      ]
+    },
+    {
+      "name": "email, URL and number fields pass keys through",
+      "steps": [
+        {"op": "traits", "secure": false, "field": "email"},
+        {"op": "key", "text": "a", "consumed": false},
+        {"op": "traits", "secure": false, "field": "url"},
+        {"op": "key", "text": "a", "consumed": false},
+        {"op": "traits", "secure": false, "field": "number"},
+        {"op": "key", "text": "a", "consumed": false, "expect": {"suggests": 0}}
+      ]
+    },
+    {
+      "name": "traits change mid-Phrase: keep the Latin",
+      "steps": [
+        {"op": "type", "text": "knhom"},
+        {"op": "traits", "secure": true, "field": "text", "consumed": true, "expect": {"doc": "knhom", "marked": 0}}
+      ]
+    },
+    {
+      "name": "the engine failed to load: the Keyboard still types Latin",
+      "steps": [
+        {"op": "remake", "missingData": true, "expect": {"engineLoaded": false, "engineSetting": {"learn": true}}},
+        {"op": "type", "text": "knhom tov", "expect": {"markedText": "knhom tov", "suggestions": []}},
+        {"op": "return", "expect": {"doc": "knhom tov", "marked": 0}},
+        {"op": "type", "text": "ab"},
+        {"op": "tap", "index": 3, "consumed": true, "expect": {"doc": "knhom tovab"}}
+      ]
+    },
+    {
+      "name": "without Marked text: the Phrase is typed as plain text",
+      "steps": [
+        {"op": "remake", "usesMarkedText": false},
+        {"op": "setBefore", "text": "hi "},
+        {"op": "type", "text": "knhomx", "expect": {"doc": "hi knhomx", "marked": 0}},
+        {"op": "backspace", "expect": {"doc": "hi knhom"}},
+        {"op": "tap", "text": "ខ្ញុំ", "expect": {"doc": "hi ខ្ញុំ"}},
+        {"op": "type", "text": "tov"},
+        {"op": "rawLatin", "consumed": true, "expect": {"doc": "hi ខ្ញុំtov"}},
+        {"op": "type", "text": "ab"},
+        {"op": "backspace"},
+        {"op": "backspace", "expect": {"doc": "hi ខ្ញុំtov", "isComposing": false}},
+        {"op": "type", "text": "x"},
+        {"op": "textChanged", "consumed": false},
+        {"op": "moveCaretLeft", "n": 1},
+        {"op": "textChanged", "consumed": true, "expect": {"doc": "hi ខ្ញុំtovx"}}
+      ]
+    },
+    {
+      "name": "stale Suggestions are dropped",
+      "steps": [
+        {"op": "manual"},
+        {"op": "type", "text": "k"},
+        {"op": "runEngine", "index": 0},
+        {"op": "type", "text": "n"},
+        {"op": "runMain", "expect": {"suggestions": []}},
+        {"op": "runEngine", "index": 1},
+        {"op": "runMain"},
+        {"op": "saveEngine", "input": "kn", "as": "kn", "expect": {"suggestions": "@kn"}}
+      ]
+    },
+    {
+      "name": "return before the results arrive commits the current Phrase",
+      "steps": [
+        {"op": "manual"},
+        {"op": "type", "text": "knhom"},
+        {"op": "return"},
+        {"op": "saveEngine", "input": "knhom", "as": "knhom"},
+        {"op": "check", "expect": {"doc": "{knhom}", "marked": 0}},
+        {"op": "runAll", "expect": {"suggestions": [], "isComposing": false, "picks": ["knhom"]}}
+      ]
+    },
+    {
+      "name": "Marked text updates before the Suggestions arrive",
+      "steps": [
+        {"op": "manual"},
+        {"op": "type", "text": "knh", "expect": {"markedText": "knh", "suggestions": [], "suggests": 0}},
+        {"op": "runAll"},
+        {"op": "saveEngine", "input": "knh", "as": "knh", "expect": {"suggestions": "@knh", "published": 1}}
+      ]
+    }
+  ]
+}

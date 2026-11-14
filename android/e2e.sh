@@ -155,6 +155,17 @@ scenario_tracer() { # type knhom with real taps, tap the Suggestion, the field h
     shot tracer
 }
 
+scenario_phrase() { # a whole Phrase, committed by return: knhom tov sala rean -> ខ្ញុំទៅសាលារៀន
+    open_app || { FAILED=1; return; }
+    type_keys "knhom tov sala rean"
+    wait_for "ខ្ញុំទៅសាលារៀន" 30 >/dev/null || log "  (Suggestion not shown yet; return computes it)"
+    shot phrase-strip
+    tap $(key_at return)
+    sleep 0.5
+    check phrase "ខ្ញុំទៅសាលារៀន" "$(field_text)"
+    shot phrase
+}
+
 log "Typer Android e2e $(date)  device: $("$ADB" shell getprop ro.product.model | tr -d '\r') API $("$ADB" shell getprop ro.build.version.sdk | tr -d '\r')"
 for s in ${*:-tracer}; do
     log "-- $s"

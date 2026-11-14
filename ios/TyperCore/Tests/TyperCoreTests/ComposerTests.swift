@@ -69,498 +69,199 @@ final class ManualScheduler {
     func runAll() { engine.forEach { $0() }; runMain() }
 }
 
+/// Runs every case of fixtures/composer.json, the Composer behaviour shared with Android (docs/adr/0001).
+/// The Kotlin runner (android/app/src/test/.../ComposerFixtureTest.kt) reads the same file.
 final class ComposerTests: XCTestCase {
-    static let dataDir = URL(fileURLWithPath: #filePath)
-        .appendingPathComponent("../../../../../data/out").standardized.path
-    var userDir: URL!
+    static let root = URL(fileURLWithPath: #filePath).appendingPathComponent("../../../../..").standardized
+    static let dataDir = root.appendingPathComponent("data/out").path
+
+    func testFixtures() throws {
+        let file = Self.root.appendingPathComponent("fixtures/composer.json")
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        let cases = try XCTUnwrap(json["cases"] as? [[String: Any]])
+        XCTAssertGreaterThan(cases.count, 30)
+        for c in cases {
+            let name = c["name"] as? String ?? "?"
+            try XCTContext.runActivity(named: name) { _ in try FixtureRun(c, name: name).run() }
+        }
+    }
+}
+
+/// One fixture case: a fresh user dir, a fake field, the real engine behind a spy, the Composer in Khmer mode.
+private final class FixtureRun {
+    let steps: [[String: Any]]
+    let name: String
+    let userDir = FileManager.default.temporaryDirectory.appendingPathComponent("typer-ios-\(UUID())")
+    var proxy = FakeProxy()
     var spy: Spy!
-    var proxy: FakeProxy!
     var composer: Composer!
+    var manual: ManualScheduler?
+    var published = 0
+    var saved: [String: Any] = [:]
+    var where_ = ""
 
-    override func setUpWithError() throws {
-        userDir = FileManager.default.temporaryDirectory.appendingPathComponent("typer-ios-\(UUID())")
-        make()
-        XCTAssertTrue(spy.engine.loaded, "no engine data: run python3 data/build.py")
-        if composer.mode == "EN" { _ = composer.toggleMode() }  // mode is static: undo other tests
+    init(_ c: [String: Any], name: String) {
+        steps = c["steps"] as? [[String: Any]] ?? []
+        self.name = name
     }
 
-    override func tearDown() {
-        try? FileManager.default.removeItem(at: userDir)
-    }
-
-    /// A fresh engine + composer on the same user dir (keeps the document unless asked).
-    func make(dataDir: String = dataDir, usesMarkedText: Bool = true) {
+    func make(dataDir: String = ComposerTests.dataDir, usesMarkedText: Bool = true) {
         spy = Spy(Engine(dataDir: dataDir, userDir: userDir.path))
-        proxy = proxy ?? FakeProxy()
+        manual = nil
         composer = Composer(engine: spy, proxy: proxy, usesMarkedText: usesMarkedText, scheduler: .immediate)
     }
 
-    /// Type each character; what the Composer doesn't consume, the keyboard inserts as usual.
+    func run() throws {
+        make()
+        defer { try? FileManager.default.removeItem(at: userDir) }
+        XCTAssertTrue(spy.engine.loaded, "no engine data: run python3 data/build.py")
+        if composer.mode == "EN" { _ = composer.toggleMode() }  // mode is static: undo other cases
+        for (i, s) in steps.enumerated() {
+            where_ = "\(name), step \(i + 1) \(s["op"] ?? "")"
+            try step(s)
+        }
+    }
+
     func type(_ s: String) {
         for c in s where !composer.key(String(c)) { proxy.insertText(String(c)) }
     }
 
-    func backspace() { if !composer.backspace() { proxy.deleteBackward() } }
-    func returnKey() { if !composer.returnKey() { proxy.insertText("\n") } }
-    var picks: String { (try? String(contentsOf: userDir.appendingPathComponent("picks.tsv"))) ?? "" }
-
-    func testKnhomTapKhmer() throws {
-        type("knhom")
-        XCTAssertEqual(proxy.doc, "knhom")
-        XCTAssertEqual(proxy.markedText, "knhom")
-        XCTAssertTrue(composer.isComposing)
-        let i = try XCTUnwrap(composer.suggestions.firstIndex(of: "ខ្ញុំ"))
-        XCTAssertTrue(composer.candidateTapped(i))
-        XCTAssertEqual(proxy.doc, "ខ្ញុំ")
-        XCTAssertEqual(proxy.marked, 0)
-        XCTAssertEqual(spy.picks, ["knhom"])
-        XCTAssertTrue(picks.contains("knhom\tខ្ញុំ"))
-        XCTAssertEqual(composer.suggestions, [])
-        XCTAssertFalse(composer.isComposing)
-    }
-
-    func testPhrase() {
-        type("knhom tov sala rean")
-        XCTAssertEqual(proxy.markedText, "knhom tov sala rean")
-        XCTAssertTrue(composer.candidateTapped(0))
-        XCTAssertEqual(proxy.doc, "ខ្ញុំទៅសាលារៀន")
-        XCTAssertEqual(proxy.marked, 0)
-    }
-
-    func testSpace() {
-        XCTAssertFalse(composer.key(" "), "idle space passes through")
-        type("knhom  tov ")
-        XCTAssertEqual(proxy.doc, "knhom tov ", "double space collapses, space never commits")
-        XCTAssertEqual(proxy.markedText, "knhom tov ")
-    }
-
-    func testPunctuationJoinsPhrase() {
-        XCTAssertFalse(composer.key("?"), "idle punctuation passes through")
-        type("knhom, tov te?")
-        XCTAssertEqual(proxy.markedText, "knhom, tov te?")
-        XCTAssertEqual(composer.suggestions.first, "ខ្ញុំ, ទៅទេ?")
-        returnKey()
-        XCTAssertEqual(proxy.doc, "ខ្ញុំ, ទៅទេ?")
-    }
-
-    func testReturn() {
-        type("knhom")
-        let top = composer.suggestions[0]
-        XCTAssertTrue(composer.returnKey())
-        XCTAssertEqual(proxy.doc, top)
-        XCTAssertEqual(proxy.marked, 0)
-        XCTAssertFalse(composer.returnKey(), "idle return passes through")
-    }
-
-    func testBackspace() {
-        type("knhomx")
-        backspace()
-        XCTAssertEqual(proxy.markedText, "knhom")
-        XCTAssertTrue(composer.suggestions.contains("ខ្ញុំ"))
-        for _ in 0..<5 { backspace() }
-        XCTAssertEqual(proxy.doc, "")
-        XCTAssertEqual(proxy.marked, 0)
-        XCTAssertEqual(composer.suggestions, [])
-        XCTAssertFalse(composer.isComposing)
-        proxy.before = "ab"
-        XCTAssertFalse(composer.backspace(), "idle backspace passes through")
-    }
-
-    func testDigitCommitsTopThenPassesThrough() {
-        type("knhom")
-        let top = composer.suggestions[0]
-        type("2")
-        XCTAssertEqual(proxy.doc, top + "2")
-        XCTAssertEqual(proxy.marked, 0)
-        type("😀")
-        XCTAssertEqual(proxy.doc, top + "2😀", "idle: other keys pass through")
-    }
-
-    func testRawLatinLearnsNothing() {
-        type("knhom tov ")
-        XCTAssertTrue(composer.rawLatin())
-        XCTAssertEqual(proxy.doc, "knhom tov ")
-        XCTAssertEqual(proxy.marked, 0)
-        XCTAssertEqual(spy.picks, [])
-        XCTAssertEqual(picks, "")
-        XCTAssertFalse(composer.rawLatin())
-    }
-
-    func testPickPersists() throws {
-        type("ah ach")
-        let before = composer.suggestions
-        let i = try XCTUnwrap(before.firstIndex(of: "អាអាចម៍"))
-        XCTAssertGreaterThan(i, 0)
-        _ = composer.candidateTapped(i)
-        make()  // as if the keyboard reloaded
-        type("ah ach")
-        let after = try XCTUnwrap(composer.suggestions.firstIndex(of: "អាអាចម៍"))
-        XCTAssertLessThan(after, i)
-    }
-
-    func testLearnSwitchOff() throws {
-        try FileManager.default.createDirectory(at: userDir, withIntermediateDirectories: true)
-        try "learn=off\n".write(to: userDir.appendingPathComponent("settings.txt"), atomically: true, encoding: .utf8)
-        type("knhom")
-        _ = composer.candidateTapped(0)
-        XCTAssertEqual(proxy.doc, "ខ្ញុំ")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: userDir.appendingPathComponent("picks.tsv").path))
-    }
-
+    var picksFile: String { (try? String(contentsOf: userDir.appendingPathComponent("picks.tsv"), encoding: .utf8)) ?? "" }
     var settings: Settings { Settings(userDir: userDir.path) }
-    var settingsFile: URL { userDir.appendingPathComponent("settings.txt") }
 
-    func testSettingsFormat() throws {
-        XCTAssertTrue(Settings.names.allSatisfy(settings.isOn), "no settings.txt: all on, like the engine")
-        try FileManager.default.createDirectory(at: userDir, withIntermediateDirectories: true)
-        try "# note\nlearn = off\nbadge=off\nfoo=bar".write(to: settingsFile, atomically: true, encoding: .utf8)
-        XCTAssertFalse(settings.isOn("learn"))
-        XCTAssertFalse(settings.isOn("badge"))
-        XCTAssertTrue(settings.isOn("english"))
-        try settings.set("learn", true)
-        try settings.set("english", false)
-        XCTAssertEqual(try String(contentsOf: settingsFile), "# note\nlearn=on\nbadge=off\nfoo=bar\nenglish=off\n")
-        XCTAssertTrue(spy.engine.setting("learn"))
-        XCTAssertFalse(spy.engine.setting("english"))
-        XCTAssertFalse(spy.engine.setting("badge"))
-    }
-
-    func testEnglishSwitchAppliesNextKeystroke() throws {
-        let want = "thank you បង"
-        type("thank you bong")
-        XCTAssertTrue(composer.suggestions.contains(want))
-        for on in [false, true, false] {
-            try settings.set("english", on)
-            backspace()
-            type("g")
-            XCTAssertEqual(composer.suggestions.contains(want), on, "english=\(on)")
+    func field(_ s: String) -> FieldType {
+        switch s {
+        case "email": .email
+        case "url": .url
+        case "number": .number
+        default: .text
         }
     }
 
-    func testLearnOffPickDoesNotRank() throws {
-        try settings.set("learn", false)
-        type("ah ach")
-        let i = try XCTUnwrap(composer.suggestions.firstIndex(of: "អាអាចម៍"))
-        XCTAssertGreaterThan(i, 0)
-        _ = composer.candidateTapped(i)
-        XCTAssertEqual(spy.picks, ["ah ach"], "the Composer still calls pick; the engine ignores it")
-        type("ah ach")
-        XCTAssertEqual(composer.suggestions.firstIndex(of: "អាអាចម៍"), i)
-        XCTAssertEqual(picks, "")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: userDir.appendingPathComponent("user.tsv").path))
-    }
-
-    func testResetLearning() throws {
-        try settings.set("generated", false)
-        type("ah ach")
-        let fresh = composer.suggestions
-        _ = composer.candidateTapped(try XCTUnwrap(fresh.firstIndex(of: "អាអាចម៍")))
-        type("ah ach")
-        XCTAssertNotEqual(composer.suggestions, fresh)
-        _ = composer.rawLatin()
-        try spy.engine.resetLearning()
-        type("ah ach")
-        XCTAssertEqual(composer.suggestions, fresh, "same as before any pick, with no new Composer")
-        for f in ["user.tsv", "picks.tsv"] {
-            XCTAssertFalse(FileManager.default.fileExists(atPath: userDir.appendingPathComponent(f).path))
+    func step(_ s: [String: Any]) throws {
+        let op = s["op"] as! String
+        func str(_ k: String) -> String { s[k] as! String }
+        func int(_ k: String) -> Int { (s[k] as! NSNumber).intValue }
+        func bool(_ k: String) -> Bool { (s[k] as! NSNumber).boolValue }
+        var consumed: Bool?
+        switch op {
+        case "type": type(str("text"))
+        case "key": consumed = composer.key(str("text"))
+        case "backspace": if !composer.backspace() { proxy.deleteBackward() }
+        case "return": if !composer.returnKey() { proxy.insertText("\n") }
+        case "composerBackspace": consumed = composer.backspace()
+        case "returnKey": consumed = composer.returnKey()
+        case "rawLatin": consumed = composer.rawLatin()
+        case "toggle": consumed = composer.toggleMode()
+        case "textChanged": consumed = composer.textChanged()
+        case "fieldEnded": consumed = composer.fieldEnded()
+        case "tap":
+            let index: Int
+            if s["index"] != nil { index = int("index") }
+            else if let k = s["saved"] as? String { index = saved[k] as! Int }
+            else { index = try XCTUnwrap(composer.suggestions.firstIndex(of: str("text")), where_) }
+            consumed = composer.candidateTapped(index)
+        case "traits": consumed = composer.fieldTraitsChanged(secure: bool("secure"), type: field(str("field")))
+        case "moveCaretLeft": proxy.moveCaretLeft(int("n"))
+        case "setBefore": proxy.before = str("text"); proxy.marked = 0
+        case "proxy":
+            if s["contextHasMarked"] != nil { proxy.contextHasMarked = bool("contextHasMarked") }
+            if s["contextNil"] != nil { proxy.contextNil = bool("contextNil") }
+        case "remake":
+            make(dataDir: (s["missingData"] as? Bool) == true ? "/nonexistent" : ComposerTests.dataDir,
+                 usesMarkedText: (s["usesMarkedText"] as? Bool) ?? true)
+        case "manual":
+            let m = ManualScheduler()
+            manual = m
+            composer = Composer(engine: spy, proxy: proxy, scheduler: m.scheduler)
+            composer.onSuggestions = { [unowned self] in published += 1 }
+        case "runEngine": manual!.runEngine(int("index"))
+        case "runMain": manual!.runMain()
+        case "runAll": manual!.runAll()
+        case "otherToggle": consumed = Composer(engine: spy, proxy: FakeProxy(), scheduler: .immediate).toggleMode()
+        case "otherMode": XCTAssertEqual(Composer(engine: spy, proxy: proxy, scheduler: .immediate).mode, str("expect"), where_)
+        case "setting": try settings.set(str("name"), bool("on"))
+        case "writeUserFile":
+            try FileManager.default.createDirectory(at: userDir, withIntermediateDirectories: true)
+            try str("content").write(to: userDir.appendingPathComponent(str("name")), atomically: true, encoding: .utf8)
+        case "resetLearning": try spy.engine.resetLearning()
+        case "engineSuggest": XCTAssertEqual(spy.engine.suggest(str("input"), int("k")), s["expect"] as! [String], where_)
+        case "enginePick": spy.engine.pick(str("input"), int("index"))
+        case "saveFirst": saved[str("as")] = composer.suggestions[0]
+        case "saveSuggestions": saved[str("as")] = composer.suggestions
+        case "saveIndex": saved[str("as")] = try XCTUnwrap(composer.suggestions.firstIndex(of: str("of")), where_)
+        case "saveEngine": saved[str("as")] = spy.engine.suggest(str("input"), 9)
+        case "saveSuggests": saved[str("as")] = spy.suggests
+        case "check": break
+        default: XCTFail("unknown op \(op)")
         }
-        XCTAssertFalse(settings.isOn("generated"), "settings survive a reset")
-        try spy.engine.resetLearning()  // nothing to delete
+        if let want = s["consumed"] as? NSNumber { XCTAssertEqual(consumed, want.boolValue, "\(where_): consumed") }
+        if let e = s["expect"] as? [String: Any] { try expect(e) }
     }
 
-    func testExternalChangeKeepsLatin() {
-        type("knhom")
-        proxy.moveCaretLeft(2)
-        XCTAssertTrue(composer.textChanged())
-        XCTAssertEqual(proxy.doc, "knhom")
-        XCTAssertEqual(proxy.marked, 0)
-        XCTAssertFalse(composer.isComposing)
-        XCTAssertEqual(spy.picks, [])
-    }
-
-    func testEchoesOfOwnWritesIgnored() {
-        for hasMarked in [true, false] {
-            proxy.contextHasMarked = hasMarked
-            type("knhom")
-            XCTAssertFalse(composer.textChanged(), "selectionDidChange after setMarkedText")
-            XCTAssertFalse(composer.textChanged(), "double echo")
-            XCTAssertEqual(proxy.markedText, "knhom")
-            _ = composer.candidateTapped(0)
-            XCTAssertFalse(composer.textChanged(), "the commit's echo")
+    /// "{name}" -> a saved string (or a saved list's first item).
+    func text(_ v: Any) -> String {
+        var s = v as! String
+        for (k, value) in saved {
+            if let t = value as? String { s = s.replacingOccurrences(of: "{\(k)}", with: t) }
+            else if let l = value as? [String] { s = s.replacingOccurrences(of: "{\(k)}", with: l.first ?? "") }
         }
-        XCTAssertEqual(spy.picks.count, 2)
+        return s
     }
 
-    func testNoEchoThenRealChange() {
-        type("knhom")
-        _ = composer.candidateTapped(0)  // no textChanged follows
-        type("tov")
-        proxy.moveCaretLeft(1)
-        XCTAssertTrue(composer.textChanged())
-        XCTAssertEqual(proxy.doc, "ខ្ញុំtov")
-        XCTAssertFalse(composer.isComposing)
+    func list(_ v: Any) -> [String] {
+        if let s = v as? String, s.hasPrefix("@") { return saved[String(s.dropFirst())] as! [String] }
+        return v as! [String]
     }
 
-    func testNilContextNeverCommits() {
-        proxy.contextNil = true
-        type("knhom")
-        XCTAssertFalse(composer.textChanged())
-        XCTAssertEqual(proxy.markedText, "knhom")
+    func int(_ v: Any) -> Int {
+        if let s = v as? String, s.hasPrefix("@") { return saved[String(s.dropFirst())] as! Int }
+        return (v as! NSNumber).intValue
     }
 
-    func testFallbackDoubleEcho() {
-        make(usesMarkedText: false)
-        type("kn")
-        XCTAssertFalse(composer.textChanged())
-        XCTAssertFalse(composer.textChanged())
-        type("hom")
-        XCTAssertEqual(proxy.doc, "knhom")
-        XCTAssertTrue(composer.isComposing)
-    }
-
-    func testFallbackCaretMovedBeforeCommit() throws {
-        make(usesMarkedText: false)
-        proxy.before = "hi "
-        type("knhom")
-        let i = try XCTUnwrap(composer.suggestions.firstIndex(of: "ខ្ញុំ"))
-        proxy.moveCaretLeft(2)  // no textChanged arrives
-        XCTAssertTrue(composer.candidateTapped(i))
-        XCTAssertEqual(proxy.doc, "hi knhom", "nothing deleted blind")
-        XCTAssertFalse(composer.isComposing)
-        XCTAssertEqual(spy.picks, [], "not inserted, so not learned")
-    }
-
-    func testSameTraitsReportedAgain() {
-        type("knhom")
-        XCTAssertFalse(composer.fieldTraitsChanged(secure: false, type: .text))
-        XCTAssertTrue(composer.isComposing)
-        XCTAssertEqual(proxy.markedText, "knhom")
-    }
-
-    func testModeFlipMidPhrase() {
-        type("knhom")
-        let other = Composer(engine: spy, proxy: FakeProxy())  // another keyboard instance
-        XCTAssertTrue(other.toggleMode())
-        XCTAssertFalse(composer.returnKey())
-        XCTAssertEqual(proxy.doc, "knhom")
-        XCTAssertEqual(proxy.marked, 0, "no marked text left dangling")
-        XCTAssertFalse(composer.isComposing)
-        for flip in [{ self.composer.backspace() }, { self.composer.candidateTapped(0) }, { self.composer.rawLatin() }] {
-            XCTAssertFalse(flip())
+    func expect(_ e: [String: Any]) throws {
+        let w = where_
+        for (key, v) in e {
+            switch key {
+            case "doc": XCTAssertEqual(proxy.doc, text(v), "\(w): doc")
+            case "markedText": XCTAssertEqual(proxy.markedText, text(v), "\(w): markedText")
+            case "marked": XCTAssertEqual(proxy.marked, int(v), "\(w): marked")
+            case "typed": XCTAssertEqual(composer.typed, text(v), "\(w): typed")
+            case "mode": XCTAssertEqual(composer.mode, text(v), "\(w): mode")
+            case "canToggle": XCTAssertEqual(composer.canToggle, (v as! NSNumber).boolValue, "\(w): canToggle")
+            case "isComposing": XCTAssertEqual(composer.isComposing, (v as! NSNumber).boolValue, "\(w): isComposing")
+            case "engineLoaded": XCTAssertEqual(spy.engine.loaded, (v as! NSNumber).boolValue, "\(w): engineLoaded")
+            case "suggestions": XCTAssertEqual(composer.suggestions, list(v), "\(w): suggestions")
+            case "notSuggestions": XCTAssertNotEqual(composer.suggestions, list(v), "\(w): suggestions should differ")
+            case "suggestionsContain": XCTAssertTrue(composer.suggestions.contains(text(v)), "\(w): \(text(v)) in \(composer.suggestions)")
+            case "suggestionsNotContain": XCTAssertFalse(composer.suggestions.contains(text(v)), "\(w): \(text(v)) not in suggestions")
+            case "firstSuggestion": XCTAssertEqual(composer.suggestions.first, text(v), "\(w): first Suggestion")
+            case "picks": XCTAssertEqual(spy.picks, list(v), "\(w): picks")
+            case "picksFile": XCTAssertEqual(picksFile, text(v), "\(w): picks.tsv")
+            case "picksFileContains": XCTAssertTrue(picksFile.contains(text(v)), "\(w): picks.tsv has \(text(v))")
+            case "suggests": XCTAssertEqual(spy.suggests, int(v), "\(w): suggest calls")
+            case "published": XCTAssertEqual(published, int(v), "\(w): published")
+            case "fileExists":
+                for (f, want) in v as! [String: Any] {
+                    XCTAssertEqual(FileManager.default.fileExists(atPath: userDir.appendingPathComponent(f).path),
+                                   (want as! NSNumber).boolValue, "\(w): \(f) exists")
+                }
+            case "file":
+                let o = v as! [String: Any]
+                XCTAssertEqual(try String(contentsOf: userDir.appendingPathComponent(o["name"] as! String), encoding: .utf8),
+                               o["content"] as! String, "\(w): file")
+            case "settingsOn":
+                for (n, want) in v as! [String: Any] { XCTAssertEqual(settings.isOn(n), (want as! NSNumber).boolValue, "\(w): setting \(n)") }
+            case "engineSetting":
+                for (n, want) in v as! [String: Any] { XCTAssertEqual(spy.engine.setting(n), (want as! NSNumber).boolValue, "\(w): engine setting \(n)") }
+            case "indexOf":
+                let o = v as! [String: Any]
+                let i = try XCTUnwrap(composer.suggestions.firstIndex(of: o["text"] as! String), "\(w): indexOf")
+                if let lt = o["lt"] { XCTAssertLessThan(i, int(lt), "\(w): index") }
+                if let gt = o["gt"] { XCTAssertGreaterThan(i, int(gt), "\(w): index") }
+                if let eq = o["eq"] { XCTAssertEqual(i, int(eq), "\(w): index") }
+            default: XCTFail("\(w): unknown expectation \(key)")
+            }
         }
-        XCTAssertTrue(other.toggleMode())
-    }
-
-    func testBadIndexes() {
-        type("knhom")
-        XCTAssertTrue(composer.candidateTapped(-1), "out of range: the Latin")
-        XCTAssertEqual(proxy.doc, "knhom")
-        XCTAssertEqual(spy.picks, [])
-        XCTAssertEqual(spy.engine.suggest("knhom", -1), [])
-        spy.engine.pick("knhom", -1)
-    }
-
-    func testFieldEndedKeepsLatin() {
-        type("knhom")
-        XCTAssertTrue(composer.fieldEnded())
-        XCTAssertEqual(proxy.doc, "knhom")
-        XCTAssertEqual(proxy.marked, 0)
-        XCTAssertFalse(composer.fieldEnded())
-    }
-
-    func testToggle() {
-        type("knhom")
-        XCTAssertFalse(composer.toggleMode(), "ignored mid-phrase")
-        XCTAssertEqual(composer.mode, "ខ")
-        _ = composer.rawLatin()
-        XCTAssertTrue(composer.toggleMode())
-        XCTAssertEqual(composer.mode, "EN")
-        let other = Composer(engine: spy, proxy: proxy)
-        XCTAssertEqual(other.mode, "EN", "shared across keyboard instances")
-        let calls = spy.suggests
-        for k in ["k", " ", ",", "1"] { XCTAssertFalse(composer.key(k)) }
-        XCTAssertFalse(composer.backspace())
-        XCTAssertFalse(composer.returnKey())
-        XCTAssertEqual(spy.suggests, calls)
-        XCTAssertTrue(composer.toggleMode())
-        XCTAssertEqual(composer.mode, "ខ")
-    }
-
-    func testCanToggleOnlyInKhmerEmptyTextField() {
-        XCTAssertTrue(composer.canToggle)
-        type("k")
-        XCTAssertFalse(composer.canToggle, "mid-phrase")
-        _ = composer.rawLatin()
-        XCTAssertTrue(composer.canToggle)
-        for (s, t) in [(true, FieldType.text), (false, .email), (false, .number)] {
-            _ = composer.fieldTraitsChanged(secure: s, type: t)
-            XCTAssertFalse(composer.canToggle)
-            XCTAssertEqual(composer.mode, "EN")
-        }
-        _ = composer.fieldTraitsChanged(secure: false, type: .text)
-        XCTAssertTrue(composer.canToggle)
-        XCTAssertEqual(composer.mode, "ខ")
-    }
-
-    func testURLFieldStartsEnglishButCanSwitchToKhmer() {
-        _ = composer.fieldTraitsChanged(secure: false, type: .url)
-        XCTAssertEqual(composer.mode, "EN", "URLs are Latin, so EN first")
-        XCTAssertTrue(composer.canToggle)
-        XCTAssertTrue(composer.toggleMode())
-        XCTAssertEqual(composer.mode, "ខ", "searching in Khmer from the address bar")
-        type("knhom")
-        XCTAssertEqual(composer.typed, "knhom")
-        _ = composer.rawLatin()
-        _ = composer.fieldTraitsChanged(secure: false, type: .text)
-        XCTAssertEqual(composer.mode, "ខ", "the global mode was not touched")
-        _ = composer.fieldTraitsChanged(secure: false, type: .url)
-        XCTAssertEqual(composer.mode, "EN", "a new URL field starts EN again")
-    }
-
-    func testEnglishChoiceSurvivesForcedField() {
-        XCTAssertTrue(composer.toggleMode())
-        _ = composer.fieldTraitsChanged(secure: true, type: .text)
-        XCTAssertEqual(composer.mode, "EN")
-        _ = composer.fieldTraitsChanged(secure: false, type: .text)
-        XCTAssertEqual(composer.mode, "EN", "the user's English choice is back after the password field")
-        XCTAssertTrue(composer.toggleMode())
-        XCTAssertEqual(composer.mode, "ខ")
-    }
-
-    func testEnglishModeTypesPlain() {
-        XCTAssertTrue(composer.toggleMode())
-        type("hello world")
-        XCTAssertEqual(proxy.doc, "hello world")
-        XCTAssertEqual(proxy.marked, 0)
-        XCTAssertEqual(composer.typed, "")
-        XCTAssertEqual(composer.suggestions, [])
-        XCTAssertEqual(spy.suggests, 0)
-    }
-
-    func testCursorMoveAndFieldEndLearnNothing() {
-        type("knhom")
-        proxy.moveCaretLeft(2)
-        XCTAssertTrue(composer.textChanged())
-        XCTAssertEqual(spy.picks, [])
-        type("tov")
-        XCTAssertTrue(composer.fieldEnded())
-        XCTAssertEqual(spy.picks, [])
-        XCTAssertEqual(picks, "")
-        XCTAssertEqual(proxy.marked, 0)
-    }
-
-    func testSecureFieldNeverCallsEngine() {
-        _ = composer.fieldTraitsChanged(secure: true, type: .text)
-        XCTAssertEqual(composer.mode, "EN")
-        type("knhom tov")
-        XCTAssertFalse(composer.returnKey())
-        XCTAssertFalse(composer.candidateTapped(0))
-        XCTAssertEqual(proxy.doc, "knhom tov")
-        XCTAssertEqual(proxy.marked, 0)
-        XCTAssertEqual(spy.suggests, 0)
-        XCTAssertEqual(spy.picks, [])
-        XCTAssertFalse(composer.toggleMode())
-        _ = composer.fieldTraitsChanged(secure: false, type: .text)
-        XCTAssertEqual(composer.mode, "ខ")
-    }
-
-    func testEmailURLNumberPassThrough() {
-        for t in [FieldType.email, .url, .number] {
-            _ = composer.fieldTraitsChanged(secure: false, type: t)
-            XCTAssertFalse(composer.key("a"))
-        }
-        XCTAssertEqual(spy.suggests, 0)
-    }
-
-    func testTraitsChangeMidPhraseKeepsLatin() {
-        type("knhom")
-        XCTAssertTrue(composer.fieldTraitsChanged(secure: true, type: .text))
-        XCTAssertEqual(proxy.doc, "knhom")
-        XCTAssertEqual(proxy.marked, 0)
-    }
-
-    func testEngineFailedTypesLatin() {
-        make(dataDir: "/nonexistent")
-        XCTAssertFalse(spy.engine.loaded)
-        XCTAssertTrue(spy.engine.setting("learn"))
-        type("knhom tov")
-        XCTAssertEqual(proxy.markedText, "knhom tov")
-        XCTAssertEqual(composer.suggestions, [])
-        returnKey()
-        XCTAssertEqual(proxy.doc, "knhom tov")
-        XCTAssertEqual(proxy.marked, 0)
-        type("ab")
-        XCTAssertTrue(composer.candidateTapped(3), "no suggestions: inserts the Latin")
-        XCTAssertEqual(proxy.doc, "knhom tovab")
-    }
-
-    func testMarkedTextFallback() throws {
-        make(usesMarkedText: false)
-        proxy.before = "hi "
-        type("knhomx")
-        XCTAssertEqual(proxy.doc, "hi knhomx")
-        XCTAssertEqual(proxy.marked, 0, "no marked text at all")
-        backspace()
-        XCTAssertEqual(proxy.doc, "hi knhom")
-        let i = try XCTUnwrap(composer.suggestions.firstIndex(of: "ខ្ញុំ"))
-        _ = composer.candidateTapped(i)
-        XCTAssertEqual(proxy.doc, "hi ខ្ញុំ")
-        type("tov")
-        XCTAssertTrue(composer.rawLatin())
-        XCTAssertEqual(proxy.doc, "hi ខ្ញុំtov")
-        type("ab")
-        for _ in 0..<2 { backspace() }
-        XCTAssertEqual(proxy.doc, "hi ខ្ញុំtov")
-        XCTAssertFalse(composer.isComposing)
-        type("x")
-        XCTAssertFalse(composer.textChanged(), "the insert's own textDidChange")
-        proxy.moveCaretLeft(1)
-        XCTAssertTrue(composer.textChanged())
-        XCTAssertEqual(proxy.doc, "hi ខ្ញុំtovx")
-    }
-
-    // MARK: suggestions off the main thread
-
-    func manualComposer() -> ManualScheduler {
-        let m = ManualScheduler()
-        composer = Composer(engine: spy, proxy: proxy, scheduler: m.scheduler)
-        return m
-    }
-
-    func testStaleSuggestionsAreDropped() {
-        let m = manualComposer()
-        type("k")
-        m.runEngine(0)  // "k" computed, its hop to main not run yet
-        type("n")
-        m.runMain()  // the stale result arrives
-        XCTAssertEqual(composer.suggestions, [], "stale result for a Phrase that moved on")
-        m.runEngine(1)
-        m.runMain()
-        XCTAssertEqual(composer.suggestions, spy.engine.suggest("kn", 9))
-    }
-
-    func testReturnBeforeResultsCommitsCurrentPhrase() {
-        let m = manualComposer()
-        type("knhom")
-        returnKey()
-        XCTAssertEqual(proxy.doc, spy.engine.suggest("knhom", 9)[0])
-        XCTAssertEqual(proxy.marked, 0)
-        m.runAll()  // late jobs must not resurrect anything
-        XCTAssertEqual(composer.suggestions, [])
-        XCTAssertFalse(composer.isComposing)
-        XCTAssertEqual(spy.picks, ["knhom"])
-    }
-
-    func testMarkedTextUpdatesBeforeSuggestions() {
-        let m = manualComposer()
-        var published = 0
-        composer.onSuggestions = { published += 1 }
-        type("knh")
-        XCTAssertEqual(proxy.markedText, "knh")
-        XCTAssertEqual(composer.suggestions, [])
-        XCTAssertEqual(spy.suggests, 0)
-        m.runAll()
-        XCTAssertEqual(composer.suggestions, spy.engine.suggest("knh", 9))
-        XCTAssertEqual(published, 1, "only the latest request publishes")
     }
 }
