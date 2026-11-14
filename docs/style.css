@@ -49,7 +49,8 @@ a { color: var(--link); text-decoration-thickness: 1.5px; text-underline-offset:
 .demo-wrap { margin: 8px 0 28px; }
 .demo { position: relative; }
 .demo video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 20px; background: var(--ink); }
-.demo button { position: absolute; right: 10px; bottom: 10px; width: 36px; height: 36px; border-radius: 50%; border: 1.5px solid var(--ink); background: var(--yellow); color: var(--ink); font-size: 14px; cursor: pointer; }
+.demo button { position: absolute; right: 10px; bottom: 10px; width: 36px; height: 36px; border-radius: 50%; border: 1.5px solid var(--ink); background: var(--yellow); color: var(--ink); display: grid; place-items: center; padding: 0; cursor: pointer; }
+.demo button svg { width: 16px; height: 16px; fill: currentColor; display: block; }
 .demo button:focus-visible, .btn:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--yellow); outline-offset: 3px; }
 
 /* Buttons */
