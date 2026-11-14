@@ -176,6 +176,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         val theme = KeyboardTheme.from(this)
         view?.theme = theme
         view?.haptics = HapticsChoice.get(this)
+        view?.systemFont = FontChoice.get(this) == FontChoice.SYSTEM
         colorNavigationBar(theme)
         loadUserWords()
         refresh()

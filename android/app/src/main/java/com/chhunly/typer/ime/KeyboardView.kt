@@ -126,8 +126,14 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     /** Kantumruy Pro (SIL OFL), Typer's font for Khmer and Latin; a variable font, so weights are set per draw. */
     private val kantumruy: Typeface? = if (Build.VERSION.SDK_INT >= 26) runCatching { resources.getFont(R.font.kantumruy_pro) }.getOrNull() else null
 
+    /** The phone's font instead of Kantumruy Pro ([FontChoice]); read when the Keyboard opens. */
+    var systemFont = false
+        set(value) {
+            if (field != value) { field = value; invalidate() }
+        }
+
     private fun font(bold: Boolean) {
-        val k = kantumruy
+        val k = kantumruy.takeUnless { systemFont }
         if (k != null && Build.VERSION.SDK_INT >= 26) {
             text.typeface = k
             text.fontVariationSettings = if (bold) "'wght' 700" else "'wght' 450"

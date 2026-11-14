@@ -75,6 +75,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.chhunly.typer.R
+import com.chhunly.typer.ime.FontChoice
 import com.chhunly.typer.ime.HapticsChoice
 import com.chhunly.typer.ime.ThemeChoice
 import kotlinx.coroutines.delay
@@ -129,6 +130,7 @@ fun CompanionScreen(khmer: Boolean, onKhmerChange: (Boolean) -> Unit) {
                 Section(copy.keyboardTitle) {
                     if (ThemeChoice.available) WallpaperCard(copy)
                     VibrationCard(copy)
+                    FontCard(copy)
                 }
                 Section(copy.featuresTitle) {
                     copy.features.forEachIndexed { i, feature -> FeatureCard(i, feature) }
@@ -362,12 +364,32 @@ private fun WallpaperCard(copy: Copy) {
 private fun VibrationCard(copy: Copy) {
     val context = LocalContext.current
     var choice by remember { mutableStateOf(HapticsChoice.get(context)) }
+    ChoiceCard(copy.vibrationTitle, copy.vibrationDetail, copy.vibrationOptions, HapticsChoice.entries.indexOf(choice)) { i ->
+        choice = HapticsChoice.entries[i]
+        HapticsChoice.set(context, choice)
+    }
+}
+
+@Composable
+private fun FontCard(copy: Copy) {
+    val context = LocalContext.current
+    val setFont = LocalSetFont.current
+    var choice by remember { mutableStateOf(FontChoice.get(context)) }
+    ChoiceCard(copy.fontTitle, copy.fontDetail, copy.fontOptions, FontChoice.entries.indexOf(choice)) { i ->
+        choice = FontChoice.entries[i]
+        setFont(choice)
+    }
+}
+
+/** A setting with a few options: title, detail, and a segmented row with the chosen option in Typer yellow. */
+@Composable
+private fun ChoiceCard(title: String, detail: String, options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
     val colors = MaterialTheme.colorScheme
     Card {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Txt(copy.vibrationTitle, 17, weight = FontWeight.SemiBold)
-                Txt(copy.vibrationDetail, 15, color = colors.onSurfaceVariant)
+                Txt(title, 17, weight = FontWeight.SemiBold)
+                Txt(detail, 15, color = colors.onSurfaceVariant)
             }
             Row(
                 Modifier
@@ -376,27 +398,24 @@ private fun VibrationCard(copy: Copy) {
                     .clip(RoundedCornerShape(12.dp))
                     .background(colors.surfaceVariant),
             ) {
-                HapticsChoice.entries.forEachIndexed { i, option ->
-                    val selected = choice == option
+                options.forEachIndexed { i, option ->
+                    val isSelected = i == selected
                     Box(
                         Modifier
                             .weight(1f)
                             .heightIn(min = 48.dp)
                             .padding(3.dp)
                             .clip(RoundedCornerShape(9.dp))
-                            .background(if (selected) TyperYellow else Color.Transparent)
-                            .selectable(selected = selected, role = Role.RadioButton, onClick = {
-                                choice = option
-                                HapticsChoice.set(context, option)
-                            })
+                            .background(if (isSelected) TyperYellow else Color.Transparent)
+                            .selectable(selected = isSelected, role = Role.RadioButton, onClick = { onSelect(i) })
                             .padding(horizontal = 2.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Txt(
-                            copy.vibrationOptions[i],
+                            option,
                             14,
-                            weight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (selected) TyperInk else colors.onSurface,
+                            weight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) TyperInk else colors.onSurface,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                             maxLines = 1,
                         )

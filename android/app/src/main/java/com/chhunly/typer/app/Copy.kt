@@ -29,6 +29,9 @@ data class Copy(
     /** Labels for System, Off, Light and Strong, in that order. */
     val vibrationOptions: List<String>,
     val vibrationDetail: String,
+    val fontTitle: String,
+    val fontOptions: List<String>,
+    val fontDetail: String,
 ) {
     companion object {
         val khmer = Copy(
@@ -61,6 +64,9 @@ data class Copy(
             vibrationTitle = "ការញ័រពេលចុច",
             vibrationOptions = listOf("តាមប្រព័ន្ធ", "បិទ", "ស្រាល", "ខ្លាំង"),
             vibrationDetail = "តាមប្រព័ន្ធ៖ ធ្វើតាមការកំណត់ការញ័ររបស់ទូរស័ព្ទ។",
+            fontTitle = "ពុម្ពអក្សរ",
+            fontOptions = listOf("Kantumruy Pro", "តាមប្រព័ន្ធ"),
+            fontDetail = "Kantumruy Pro ជាពុម្ពអក្សររបស់ Typer។ តាមប្រព័ន្ធ៖ ប្រើពុម្ពអក្សររបស់ទូរស័ព្ទ ទាំងក្តារចុច និងកម្មវិធីនេះ។",
         )
 
         val english = Copy(
@@ -93,6 +99,9 @@ data class Copy(
             vibrationTitle = "Key vibration",
             vibrationOptions = listOf("System", "Off", "Light", "Strong"),
             vibrationDetail = "System follows your phone's touch vibration setting.",
+            fontTitle = "Font",
+            fontOptions = listOf("Kantumruy Pro", "System"),
+            fontDetail = "Kantumruy Pro is Typer's font. System uses your phone's font, on the keyboard and in this app.",
         )
     }
 }
