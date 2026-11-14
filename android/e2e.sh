@@ -85,7 +85,8 @@ if cmd == "prefix":  # centre of the first Keyboard node whose label starts with
         print(centre(hit[0])); sys.exit(0)
     sys.exit(1)
 if cmd == "desctext":  # text of the field (not a Keyboard key) with this content-desc
-    hit = [n for n in nodes if n.get("content-desc") == args[0] and n.get("class") != "android.widget.Button"]
+    hit = [n for n in nodes if n.get("content-desc") == args[0]
+           and n.get("class") not in ("android.widget.Button", "android.inputmethodservice.Keyboard$Key")]
     print(hit[0].get("text") if hit else ""); sys.exit(0 if hit else 1)
 if cmd == "labels":
     for n in nodes:
@@ -422,6 +423,64 @@ scenario_measure() { # memory after typing a 6-word Phrase, focus-to-first-frame
     log "PASS measure: numbers recorded"
 }
 
+TALKBACK=com.google.android.marvin.talkback/com.google.android.marvin.talkback.TalkBackService
+talkback() { # talkback on|off
+    if [ "$1" = on ]; then
+        "$ADB" shell pm grant com.google.android.marvin.talkback android.permission.POST_NOTIFICATIONS 2>/dev/null || true
+        "$ADB" shell settings put secure enabled_accessibility_services $TALKBACK
+        "$ADB" shell settings put secure accessibility_enabled 1
+    else
+        "$ADB" shell settings put secure enabled_accessibility_services '""'
+        "$ADB" shell settings put secure accessibility_enabled 0
+    fi
+    sleep 3
+}
+
+# A touch from the emulator's own touchscreen (its console), so it goes through TalkBack's explore-by-touch like
+# a finger would: `adb shell input` touches are injected past TalkBack and reach the Keyboard as plain touches.
+# finger <x> <y> [shot]: touch, hold and drift a little (TalkBack moves its focus there and reads it), lift.
+# With TalkBack's developer option "Display speech output" on, the screenshot shows what TalkBack said.
+finger() {
+    "$ADB" emu event mouse "$1" "$2" 0 1 >/dev/null
+    sleep 0.3
+    "$ADB" emu event mouse $(($1 + 3)) $(($2 + 2)) 0 1 >/dev/null
+    sleep 0.4
+    [ -z "${3:-}" ] || { sleep 0.5; shot "$3"; }
+    "$ADB" emu event mouse $(($1 + 5)) $(($2 + 3)) 0 0 >/dev/null
+}
+
+# TalkBack on: explore by touch. A TalkBack user touches a key, hears it, lifts to type it; the Keyboard must type
+# each key exactly once and let a Suggestion in the strip be picked the same way. uiautomator is an accessibility
+# client too and Android pauses TalkBack while it reads the screen, so every position is read before TalkBack
+# comes on and the field after it goes off; touch_exploration_enabled is checked around the touches.
+scenario_talkback() {
+    "$ADB" emu ping >/dev/null 2>&1 || { log "N/A talkback: needs the emulator console (adb emu), not a phone"; return; }
+    open_app || { FAILED=1; return; }
+    type_keys knhom  # dry run, TalkBack off: where does the ខ្ញុំ Suggestion sit?
+    pick=$(wait_for "ខ្ញុំ" 20) || { log "FAIL talkback: no ខ្ញុំ in the strip (dry run)"; FAILED=1; return; }
+    xy=$(ui bounds "abc, keep Latin") && tap $xy
+    for _ in 1 2 3 4 5; do tap $(key_at delete); done
+    [ -z "$(field_text)" ] || { log "FAIL talkback: could not empty the field before the run"; FAILED=1; return; }
+    talkback on
+    tb_on=$("$ADB" shell settings get secure touch_exploration_enabled | tr -d '\r')
+    "$ADB" logcat -c
+    # a human pace: touches much closer than this are taken by TalkBack's own gesture detection, not the Keyboard
+    for c in k n h o m; do finger $(key_at $c) "talkback-says-$c"; sleep 1.5; done
+    sleep 1.5
+    shot talkback-typed
+    finger $pick talkback-says-pick
+    sleep 1.5
+    shot talkback-picked
+    tb_still=$("$ADB" shell settings get secure touch_exploration_enabled | tr -d '\r')
+    "$ADB" logcat -d >"$OUT/talkback-logcat.txt" 2>/dev/null || true
+    talkback off
+    if [ "$tb_on" = 1 ] && [ "$tb_still" = 1 ]; then log "PASS talkback: touch exploration was on for every touch"
+    else log "FAIL talkback: touch exploration was not on throughout (before '$tb_on', after '$tb_still')"; FAILED=1; fi
+    text=$(field_text)
+    if [ "$text" = "ខ្ញុំ" ]; then log "PASS talkback: knhom by explore-by-touch, then ខ្ញុំ from the strip: '$text'"
+    else log "FAIL talkback: wanted exactly 'ខ្ញុំ', field holds '$text'"; FAILED=1; fi
+}
+
 # Screenshots of Typer in the same field the Gboard reference used (Contacts, First name; android/docs/reference.md),
 # light and dark, at 411 and 360 dp wide, idle and composing. Not a pass/fail check: for comparing by eye.
 scenario_compare() {
@@ -450,7 +509,7 @@ scenario_compare() {
 }
 
 log "Typer Android e2e $(date)  device: $("$ADB" shell getprop ro.product.model | tr -d '\r') API $("$ADB" shell getprop ro.build.version.sdk | tr -d '\r')"
-for s in ${*:-tracer phrase learn password english keys}; do
+for s in ${*:-tracer phrase learn password english keys talkback}; do
     log "-- $s"
     "scenario_$s"
 done
