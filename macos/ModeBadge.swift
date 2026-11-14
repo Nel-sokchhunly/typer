@@ -22,7 +22,7 @@ enum ModeBadge {
         label.frame = NSRect(x: 0, y: 3, width: 30, height: 15)  // labels draw top-aligned; nudge to center
         let fill = NSView(frame: NSRect(x: 0, y: 0, width: 30, height: 20))
         fill.wantsLayer = true
-        fill.layer?.backgroundColor = NSColor(red: 0.96, green: 0.78, blue: 0.26, alpha: 1).cgColor  // #f5c842
+        fill.layer?.backgroundColor = NSColor(red: 0xf5 / 255, green: 0xc8 / 255, blue: 0x42 / 255, alpha: 1).cgColor  // #f5c842
         v.addSubview(fill)
         v.addSubview(label)
         return p
