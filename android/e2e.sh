@@ -574,6 +574,33 @@ sys.exit(0 if diff > 200 else 1)
 PY
 }
 
+scenario_khmer() { # the Khmer page: long press ខ, type ខ្មែរ key by key (shift for ែ), delete, a long-press popup, back to Sing
+    open_app || { FAILED=1; return; }
+    read_keys
+    set -- $(key_at "Khmer mode"); hold $1 $2 0.7
+    wait_for "Khmer letters, back to Sing" 10 >/dev/null || { log "FAIL khmer: long press on ខ did not open the Khmer page"; FAILED=1; shot khmer-fail; return; }
+    read_keys
+    shot khmer-page
+    for k in ខ ្ ម; do tap $(key_at "$k"); done
+    tap $(key_at shift); sleep 0.3; read_keys
+    shot khmer-shift
+    tap $(key_at ែ); sleep 0.3; read_keys
+    tap $(key_at រ)
+    sleep 0.5
+    check "khmer: ខ្មែរ typed key by key" "ខ្មែរ" "$(field_text)"
+    tap $(key_at delete); sleep 0.4
+    check "khmer: delete removes the last character" "ខ្មែ" "$(field_text)"
+    set -- $(key_at ១)
+    "$ADB" shell "input motionevent DOWN $1 $2; sleep 0.7"
+    shot khmer-popup
+    w=$(( ($(screen_width) - 20) / 12 ))
+    "$ADB" shell "input motionevent MOVE $(($1 + w)) $2; sleep 0.2; input motionevent UP $(($1 + w)) $2"
+    sleep 0.5
+    check "khmer: long press and slide picks an alternate" "ខ្មែ៱" "$(field_text)"
+    tap $(key_at "Khmer letters, back to Sing")
+    wait_for "Khmer mode" 10 >/dev/null && read_keys && key_at q >/dev/null && log "PASS khmer: ខ goes back to the Sing letters" || { log "FAIL khmer: not back on the Sing letters"; FAILED=1; }
+}
+
 # Screenshots of Typer in the same field the Gboard reference used (Contacts, First name; android/docs/reference.md),
 # light and dark, at 411 and 360 dp wide, idle and composing. Not a pass/fail check: for comparing by eye.
 scenario_compare() {
@@ -602,7 +629,7 @@ scenario_compare() {
 }
 
 log "Typer Android e2e $(date)  device: $("$ADB" shell getprop ro.product.model | tr -d '\r') API $("$ADB" shell getprop ro.build.version.sdk | tr -d '\r')"
-for s in ${*:-tracer phrase learn password english keys emoji talkback}; do
+for s in ${*:-tracer phrase learn password english keys emoji font khmer talkback}; do
     log "-- $s"
     "scenario_$s"
 done
