@@ -58,6 +58,8 @@ Widths at 411 dp / 360 dp. "W" is the window width, "k" a letter key width, "g" 
 
 ## Colour (Material 3 roles)
 
+Update: after the first device test the owner chose Typer's own palette (the iOS app's colours) as the default, with these Material 3 roles only when "Match my wallpaper" is on, and an iOS-style strip (only the top Suggestion, in a yellow pill, with abc and the count on their own buttons). The measurements below still set the layout.
+
 Gboard's default theme uses the system's dynamic colour. Sampled colours, matched to the Material 3 tonal roles
 of the emulator's default (blue) wallpaper scheme:
 

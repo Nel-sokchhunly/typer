@@ -106,6 +106,19 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     private val d = resources.displayMetrics.density
     /** px per sp, following the user's font size setting. */
+    /** Kantumruy Pro (SIL OFL), Typer's font for Khmer and Latin; a variable font, so weights are set per draw. */
+    private val kantumruy: Typeface? = if (Build.VERSION.SDK_INT >= 26) runCatching { resources.getFont(R.font.kantumruy_pro) }.getOrNull() else null
+
+    private fun font(bold: Boolean) {
+        val k = kantumruy
+        if (k != null && Build.VERSION.SDK_INT >= 26) {
+            text.typeface = k
+            text.fontVariationSettings = if (bold) "'wght' 700" else "'wght' 450"
+        } else {
+            text.typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+        }
+    }
+
     private val sp = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, 1f, resources.displayMetrics)
     private var metrics = Metrics(360f, 800f)
     private var keysCache: List<Key>? = null
@@ -223,7 +236,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             is KeyAction.Text -> {
                 drawLabel(canvas, a.text, cx, cy, if (a.text.length == 1) 26f else 22f, fg, alpha, onBaseline = a.text.length == 1)
                 key.hint?.let {
-                    text.typeface = Typeface.DEFAULT
+                    font(false)
                     text.textSize = 12f * sp
                     text.color = theme.onSurfaceVariant
                     text.textAlign = Paint.Align.RIGHT
@@ -247,7 +260,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     /** `onBaseline`: one shared baseline for single characters, so a row doesn't jump and `,` `.` sit low like text. */
     private fun drawLabel(canvas: Canvas, s: String, cx: Float, cy: Float, sizeSp: Float, color: Int, alpha: Int = 255, bold: Boolean = false, onBaseline: Boolean = false) {
-        text.typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+        font(bold)
         text.textSize = sizeSp * sp
         text.color = color
         text.alpha = alpha
@@ -299,7 +312,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     // ---- strip ----
 
     private fun stripSlots(): List<StripSlot> = when {
-        state.composing -> StripLayout.composing(metrics, state.suggestions.size)
+        state.composing -> StripLayout.composing(metrics)
         state.words.isNotEmpty() -> StripLayout.words(metrics, state.words.size)
         else -> StripLayout.punctuation(metrics, if (state.mode == "EN") KeyLayout.englishPunctuation else KeyLayout.punctuation)
     }
@@ -312,55 +325,62 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         is StripAction.Word -> state.words.getOrNull(a.index)?.let { if (a.index == 0) "“$it”" else it } ?: ""
     }
 
-    private fun emphasised(a: StripAction) =
-        (a is StripAction.Suggestion && a.index == 0 && state.suggestions.isNotEmpty()) || (a is StripAction.Word && a.index == 1)
+    /** Typer yellow: the top Suggestion (or the Phrase itself until Suggestions arrive) and the best English word. */
+    private fun emphasised(a: StripAction) = (a is StripAction.Suggestion && a.index == 0) || (a is StripAction.Word && a.index == 1)
 
+    /**
+     * The strip, as on iOS: pills. The top Suggestion (and the best English word) is Typer yellow with ink text; abc,
+     * the expand control, the other words and the punctuation keys sit on the function-key colour.
+     */
     private fun drawStrip(canvas: Canvas) {
-        val slots = stripSlots()
-        val divTop = px(metrics.stripHeight / 2 - 12f)
-        val divBottom = px(metrics.stripHeight / 2 + 12f)
-        for ((i, slot) in slots.withIndex()) {
+        val radius = px(8f)
+        for (slot in stripSlots()) {
             val r = rectOf(slot.box)
-            if (stripDown == slot) {
-                fill.color = theme.onLetter
+            val a = slot.action
+            val yellow = emphasised(a)
+            val (bg, fg) = if (yellow) theme.mode to theme.onMode else theme.functionKey to theme.onFunction
+            fill.color = bg
+            canvas.drawRoundRect(r, radius, radius, fill)
+            if (stripDown == slot) {  // pressed: the state layer, as on the keys
+                fill.color = fg
                 fill.alpha = 26
-                canvas.drawRoundRect(RectF(r.left, r.top + px(4f), r.right, r.bottom - px(4f)), px(20f), px(20f), fill)
+                canvas.drawRoundRect(r, radius, radius, fill)
                 fill.alpha = 255
             }
-            val a = slot.action
             when (a) {
                 StripAction.Expand -> {
-                    drawLabel(canvas, stripLabel(a), r.centerX() - px(9f), r.centerY(), 16f, theme.onSurfaceVariant, bold = true)
-                    drawIcon(canvas, if (state.showAll) R.drawable.ic_collapse else R.drawable.ic_expand, r.centerX() + px(11f), r.centerY(), theme.onSurfaceVariant, 20f)
+                    drawLabel(canvas, stripLabel(a), r.centerX() - px(8f), r.centerY(), 16f, fg, bold = true)
+                    drawIcon(canvas, if (state.showAll) R.drawable.ic_collapse else R.drawable.ic_expand, r.centerX() + px(11f), r.centerY(), fg, 18f)
                 }
-                StripAction.Latin -> drawLabel(canvas, "abc", r.centerX(), r.centerY(), 16f, theme.onSurfaceVariant, bold = true)
-                else -> drawStripText(canvas, stripLabel(a), r, emphasised(a), a is StripAction.Punctuation)
-            }
-            // thin dividers between Suggestions / words, and before the abc control
-            val next = slots.getOrNull(i + 1)
-            if (next != null && a !is StripAction.Punctuation && a != StripAction.Latin) {
-                fill.color = theme.outlineVariant
-                canvas.drawRect(r.right - px(0.5f), divTop, r.right + px(0.5f), divBottom, fill)
+                StripAction.Latin -> drawLabel(canvas, "abc", r.centerX(), r.centerY(), 16f, fg, bold = true)
+                else -> drawStripText(canvas, stripLabel(a), r, yellow, a is StripAction.Punctuation, fg, start = a is StripAction.Suggestion)
             }
         }
     }
 
     /**
-     * Suggestion text, sized for Khmer: stacked vowels and subscripts need about 1.9 em, so 20 sp Khmer fits the 48 dp
-     * strip. Long text shrinks to 70%, then loses its start (the end, where the user types, stays visible).
+     * Strip text, sized for Khmer: stacked vowels and subscripts need about 1.9 em of height. Long text shrinks to 70%,
+     * then loses its start (the end, where the user types, stays visible). `start`: aligned to the pill's left edge.
      */
-    private fun drawStripText(canvas: Canvas, s: String, r: RectF, bold: Boolean, punct: Boolean) {
+    private fun drawStripText(canvas: Canvas, s: String, r: RectF, bold: Boolean, punct: Boolean, color: Int, start: Boolean = false) {
         if (s.isEmpty()) return
-        val khmer = s.any { it in 'ក'..'៿' }
-        val size = if (punct) 20f else if (khmer) 20f else 18f
-        text.typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-        text.color = theme.onLetter
+        val khmer = s.any { it in '\u1780'..'\u17FF' }
+        val size = if (punct) 20f else 18f
+        font(bold)
+        text.color = color
         text.textSize = size * sp
-        val avail = r.width() - px(12f)
+        val pad = px(12f)
+        val avail = r.width() - 2 * pad
         val w = text.measureText(s)
         if (w > avail) text.textSize = max(size * 0.7f * sp, text.textSize * avail / w)
         val shown = TextUtils.ellipsize(s, text, avail, TextUtils.TruncateAt.START).toString()
-        canvas.drawText(shown, r.centerX(), stripBaseline(r, khmer), text)
+        if (start) {
+            text.textAlign = Paint.Align.LEFT
+            canvas.drawText(shown, r.left + pad, stripBaseline(r, khmer), text)
+            text.textAlign = Paint.Align.CENTER
+        } else {
+            canvas.drawText(shown, r.centerX(), stripBaseline(r, khmer), text)
+        }
     }
 
     /** One baseline per script and size, from a reference with the tallest stacks, so slots line up and never clip. */
@@ -405,7 +425,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     }
 
     private fun drawPanelText(canvas: Canvas, s: String, x: Float, row: RectF, sizeSp: Float, color: Int, bold: Boolean, right: Float = row.right) {
-        text.typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+        font(bold)
         text.textSize = sizeSp * sp
         text.color = color
         val avail = right - x
@@ -557,9 +577,34 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         }
     }
 
-    /** Follows the system's touch-feedback setting (no FLAG_IGNORE_GLOBAL_SETTING). */
+    /** Key vibration from the Companion app ([HapticsChoice]); read when the Keyboard opens. */
+    var haptics = HapticsChoice.SYSTEM
+
+    private val vibrator: android.os.Vibrator? by lazy {
+        if (Build.VERSION.SDK_INT >= 31) context.getSystemService(android.os.VibratorManager::class.java)?.defaultVibrator
+        else @Suppress("DEPRECATION") context.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+    }
+
+    /**
+     * SYSTEM follows the phone's touch-feedback setting (no FLAG_IGNORE_GLOBAL_SETTING), with a tap on press and a
+     * lighter one on release. LIGHT and STRONG are a fixed tick or click on press only; OFF is silent.
+     */
     private fun haptic(constant: Int) {
-        performHapticFeedback(constant)
+        when (haptics) {
+            HapticsChoice.SYSTEM -> performHapticFeedback(constant)
+            HapticsChoice.OFF -> Unit
+            HapticsChoice.LIGHT, HapticsChoice.STRONG -> {
+                if (Build.VERSION.SDK_INT >= 27 && constant == HapticFeedbackConstants.KEYBOARD_RELEASE) return
+                val v = vibrator ?: return
+                val strong = haptics == HapticsChoice.STRONG
+                when {
+                    Build.VERSION.SDK_INT >= 29 -> v.vibrate(android.os.VibrationEffect.createPredefined(
+                        if (strong) android.os.VibrationEffect.EFFECT_CLICK else android.os.VibrationEffect.EFFECT_TICK))
+                    Build.VERSION.SDK_INT >= 26 -> v.vibrate(android.os.VibrationEffect.createOneShot(if (strong) 18 else 8, if (strong) 200 else 70))
+                    else -> @Suppress("DEPRECATION") v.vibrate(if (strong) 18L else 8L)
+                }
+            }
+        }
     }
 
     override fun onDetachedFromWindow() {

@@ -5,14 +5,10 @@ import android.content.res.Configuration
 import android.os.Build
 
 /**
- * The Material 3 colour roles the Keyboard draws with (mapping in android/docs/reference.md):
- * background = surface container; letter keys = surface container lowest (light) / highest (dark), as Gboard;
- * function keys = secondary container; the return key with an action = primary. The ខ/EN key is Typer yellow in
- * every theme, the one brand colour on the Keyboard.
- *
- * Android 14+: the system's dynamic colour roles. Android 12-13: the same roles approximated from the system's
- * tonal palettes (the nearest tone). Below 12: a fixed scheme generated from Typer yellow #f5c842 (Material
- * colour utilities, tonal spot), see [yellowLight] / [yellowDark].
+ * The Keyboard's colours. By default Typer's own palette, the same as the iOS app (yellow #f5c842, ink, cream, warm
+ * greys), light and dark. With "Match my wallpaper" on (Android 12+, [ThemeChoice]) the Material 3 roles from the
+ * phone's dynamic colour instead (mapping in android/docs/reference.md): Android 14+ the system's roles, 12-13 the
+ * nearest tones of the system palettes. Either way the ខ/EN key and the top Suggestion are Typer yellow.
  */
 class KeyboardTheme(
     val dark: Boolean,
@@ -36,9 +32,10 @@ class KeyboardTheme(
             val dark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
                 Configuration.UI_MODE_NIGHT_YES
             return when {
+                !ThemeChoice.materialYou(context) -> if (dark) typerDark else typerLight
                 Build.VERSION.SDK_INT >= 34 -> system34(context, dark)
                 Build.VERSION.SDK_INT >= 31 -> palette31(context, dark)
-                else -> if (dark) yellowDark else yellowLight
+                else -> if (dark) typerDark else typerLight
             }
         }
 
@@ -95,34 +92,35 @@ class KeyboardTheme(
             )
         }
 
-        // Material 3 tonal-spot scheme from seed #f5c842 (@material/material-color-utilities 0.3.0).
-        val yellowLight = KeyboardTheme(
+        // Typer's palette, from the iOS app (ios/App/TyperApp.swift): yellow f5c842, ink 1a1a1a, cream edeae3,
+        // page f7f5f0 / 1d1c1a, card ffffff / 2a2926, muted 5f5b53 / a8a294; keys a step apart like the iOS Keyboard.
+        val typerLight = KeyboardTheme(
             dark = false,
-            background = 0xFFF6EDDF.toInt(),  // surfaceContainer
-            letterKey = 0xFFFFFFFF.toInt(),  // surfaceContainerLowest
-            onLetter = 0xFF1F1B13.toInt(),  // onSurface
-            functionKey = 0xFFF2E1BB.toInt(),  // secondaryContainer
-            onFunction = 0xFF51462A.toInt(),  // onSecondaryContainer
-            action = 0xFF745B0C.toInt(),  // primary
-            onAction = 0xFFFFFFFF.toInt(),  // onPrimary
-            outlineVariant = 0xFFCFC5B4.toInt(),
-            onSurfaceVariant = 0xFF4C4639.toInt(),
-            primary = 0xFF745B0C.toInt(),
+            background = 0xFFEDEAE3.toInt(),  // cream
+            letterKey = 0xFFFFFFFF.toInt(),
+            onLetter = 0xFF1A1A1A.toInt(),  // ink
+            functionKey = 0xFFD8D3C7.toInt(),
+            onFunction = 0xFF1A1A1A.toInt(),
+            action = 0xFF1A1A1A.toInt(),  // ink, as the iOS app's tint
+            onAction = 0xFFEDEAE3.toInt(),
+            outlineVariant = 0xFFC9C3B6.toInt(),
+            onSurfaceVariant = 0xFF5F5B53.toInt(),  // muted
+            primary = 0xFF1A1A1A.toInt(),
             popup = 0xFFFFFFFF.toInt(),
         )
-        val yellowDark = KeyboardTheme(
+        val typerDark = KeyboardTheme(
             dark = true,
-            background = 0xFF231F17.toInt(),  // surfaceContainer
-            letterKey = 0xFF39342B.toInt(),  // surfaceContainerHighest
-            onLetter = 0xFFEAE1D4.toInt(),
-            functionKey = 0xFF51462A.toInt(),
-            onFunction = 0xFFF2E1BB.toInt(),
-            action = 0xFFE4C36C.toInt(),
-            onAction = 0xFF3D2E00.toInt(),
-            outlineVariant = 0xFF4C4639.toInt(),
-            onSurfaceVariant = 0xFFCFC5B4.toInt(),
-            primary = 0xFFE4C36C.toInt(),
-            popup = 0xFF39342B.toInt(),
+            background = 0xFF1D1C1A.toInt(),  // page
+            letterKey = 0xFF57554F.toInt(),
+            onLetter = 0xFFF4F1EA.toInt(),
+            functionKey = 0xFF353430.toInt(),
+            onFunction = 0xFFF4F1EA.toInt(),
+            action = 0xFFF5C842.toInt(),  // yellow on dark, as the iOS app's accents
+            onAction = 0xFF1A1A1A.toInt(),
+            outlineVariant = 0xFF46443F.toInt(),
+            onSurfaceVariant = 0xFFA8A294.toInt(),  // muted
+            primary = 0xFFF5C842.toInt(),
+            popup = 0xFF57554F.toInt(),
         )
     }
 }

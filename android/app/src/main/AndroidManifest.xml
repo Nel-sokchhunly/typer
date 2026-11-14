@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- No INTERNET permission: nothing Typer does uses the network. -->
+    <!-- No INTERNET permission: nothing Typer does uses the network. VIBRATE (granted at install, no prompt) is only
+         for the Light and Strong key-vibration choices; "System" uses the view's own haptic feedback. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"

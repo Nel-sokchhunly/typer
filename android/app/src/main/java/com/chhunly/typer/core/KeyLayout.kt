@@ -132,31 +132,39 @@ sealed interface StripAction {
 
 data class StripSlot(val action: StripAction, val box: Box)
 
+/**
+ * The strip, as on iOS: pills in the 48 dp strip, 6 dp apart. Composing: the top Suggestion fills the
+ * width (the others are in the panel), then abc and the expand control with the count.
+ */
 object StripLayout {
     /** Width of the abc and expand controls at the strip's right end. */
     const val CONTROL = 52f
+    const val PILL = 40f  // iOS uses 36; Khmer stacks want a little more
+    const val GAP = 6f
 
-    /** Composing: up to three Suggestions side by side, then abc and the expand control with the count. */
-    fun composing(m: Metrics, suggestions: Int): List<StripSlot> {
+    private fun pill(m: Metrics, left: Float, width: Float) = Box(left, (m.stripHeight - PILL) / 2, width, PILL)
+
+    fun composing(m: Metrics): List<StripSlot> {
         val right = m.width - m.margin
-        val expand = StripSlot(StripAction.Expand, Box(right - CONTROL, 0f, CONTROL, m.stripHeight))
-        val latin = StripSlot(StripAction.Latin, Box(right - 2 * CONTROL, 0f, CONTROL, m.stripHeight))
-        val n = suggestions.coerceIn(1, 3)
-        val w = (right - 2 * CONTROL - m.margin) / n
-        return List(n) { StripSlot(StripAction.Suggestion(it), Box(m.margin + it * w, 0f, w, m.stripHeight)) } +
-            listOf(latin, expand)
+        val expand = StripSlot(StripAction.Expand, pill(m, right - CONTROL, CONTROL))
+        val latin = StripSlot(StripAction.Latin, pill(m, right - 2 * CONTROL - GAP, CONTROL))
+        val top = StripSlot(StripAction.Suggestion(0), pill(m, m.margin, right - 2 * CONTROL - 2 * GAP - m.margin))
+        return listOf(top, latin, expand)
+    }
+
+    /** `items` pills of equal width across the strip. */
+    private fun row(m: Metrics, items: Int): List<Box> {
+        val w = (m.width - 2 * m.margin - (items - 1) * GAP) / items
+        return List(items) { pill(m, m.margin + it * (w + GAP), w) }
     }
 
     /** Idle: the punctuation row across the whole strip. */
-    fun punctuation(m: Metrics, marks: List<String>): List<StripSlot> {
-        val w = (m.width - 2 * m.margin) / marks.size
-        return marks.mapIndexed { i, p -> StripSlot(StripAction.Punctuation(p), Box(m.margin + i * w, 0f, w, m.stripHeight)) }
-    }
+    fun punctuation(m: Metrics, marks: List<String>): List<StripSlot> =
+        row(m, marks.size).mapIndexed { i, b -> StripSlot(StripAction.Punctuation(marks[i]), b) }
 
     /** English words in Typer's order: best, second, then the word as typed (index 0) in quotes. */
     fun words(m: Metrics, count: Int): List<StripSlot> {
         val order = (1 until count) + 0
-        val w = (m.width - 2 * m.margin) / order.size
-        return order.mapIndexed { i, idx -> StripSlot(StripAction.Word(idx), Box(m.margin + i * w, 0f, w, m.stripHeight)) }
+        return row(m, order.size).mapIndexed { i, b -> StripSlot(StripAction.Word(order[i]), b) }
     }
 }
