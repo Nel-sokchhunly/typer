@@ -329,7 +329,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     private fun emphasised(a: StripAction) = (a is StripAction.Suggestion && a.index == 0) || (a is StripAction.Word && a.index == 1)
 
     /**
-     * The strip, as on iOS: pills. The top Suggestion (and the best English word) is Typer yellow with ink text; abc,
+     * The strip, as on iOS: pills. The top Suggestion (and the best English word) is Typer yellow with ink text in the
+     * regular weight; abc,
      * the expand control, the other words and the punctuation keys sit on the function-key colour.
      */
     private fun drawStrip(canvas: Canvas) {
@@ -353,7 +354,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                     drawIcon(canvas, if (state.showAll) R.drawable.ic_collapse else R.drawable.ic_expand, r.centerX() + px(11f), r.centerY(), fg, 18f)
                 }
                 StripAction.Latin -> drawLabel(canvas, "abc", r.centerX(), r.centerY(), 16f, fg, bold = true)
-                else -> drawStripText(canvas, stripLabel(a), r, yellow, a is StripAction.Punctuation, fg, start = a is StripAction.Suggestion)
+                else -> drawStripText(canvas, stripLabel(a), r, false, a is StripAction.Punctuation, fg, start = a is StripAction.Suggestion)  // regular weight: the yellow says it's the top one
             }
         }
     }
