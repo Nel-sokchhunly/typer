@@ -43,6 +43,7 @@ private struct Copy {
 
 struct SetupView: View {
     @State private var text = ""
+    @FocusState private var typing: Bool
     @AppStorage("khmer") private var khmer = true
 
     var body: some View {
@@ -76,9 +77,12 @@ struct SetupView: View {
                     Text(copy.openSettings).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent).controlSize(.large)
-                TextField(copy.tryHere, text: $text).textFieldStyle(.roundedBorder)
+                TextField(copy.tryHere, text: $text).textFieldStyle(.roundedBorder).focused($typing)
             }
             .padding()
         }
+        .scrollDismissesKeyboard(.immediately)
+        .contentShape(Rectangle())
+        .onTapGesture { typing = false }  // tap outside the field closes the keyboard
     }
 }

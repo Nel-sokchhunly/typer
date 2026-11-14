@@ -101,6 +101,7 @@ struct KeyboardView: View {
                     }
                 }
             }
+            .noScrollEdgeBlur()
             #if DEBUG
             Text(Memory.label).font(.system(size: 9)).foregroundColor(.secondary)
             #endif
@@ -225,5 +226,12 @@ struct KeyView: View {
                 try? await Task.sleep(nanoseconds: 80_000_000)
             }
         }
+    }
+}
+
+private extension View {
+    /// iOS 26+ blurs scroll view edges, which smears the whole short candidate bar; turn it off.
+    @ViewBuilder func noScrollEdgeBlur() -> some View {
+        if #available(iOS 26, *) { scrollEdgeEffectHidden() } else { self }
     }
 }
