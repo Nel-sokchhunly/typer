@@ -10,20 +10,20 @@ struct KeyboardView: View {
     let onGlobe: () -> Void
     let onMode: () -> Void
 
-    private let margin: CGFloat = 3
+    private let margin: CGFloat = 8  // same side inset for bar and keys; clears the iOS 26 frame's rounded corners
     private let gap: CGFloat = 6
     private static let keyHeight: CGFloat = 43
     private static let rowGap: CGFloat = 8
     private let keyHeight = KeyboardView.keyHeight
     private let rowGap = KeyboardView.rowGap
     /// Candidate bar + gap + four rows: the controller sizes the keyboard to exactly this.
-    static let height: CGFloat = 8 + 40 + 6 + 4 * keyHeight + 3 * rowGap + 4
+    static let height: CGFloat = 10 + 40 + 6 + 4 * keyHeight + 3 * rowGap + 4
 
     var body: some View {
         GeometryReader { geo in
             let kw = (geo.size.width - 2 * margin - 9 * gap) / 10
             VStack(spacing: 0) {
-                candidateBar.padding(.horizontal, 14).zIndex(-1)  // clear the rounded corners of the iOS 26 keyboard frame
+                candidateBar.zIndex(-1)
                 Spacer().frame(height: 6)
                 if model.showAll && !model.typed.isEmpty {
                     panel.frame(height: 4 * keyHeight + 3 * rowGap)
@@ -35,7 +35,7 @@ struct KeyboardView: View {
                 }
             }
             .padding(.horizontal, margin)
-            .padding(.top, 8)
+            .padding(.top, 10)
         }
     }
 
@@ -101,8 +101,9 @@ struct KeyboardView: View {
                     .font(.system(size: 18, weight: .bold))
                     .lineLimit(1).truncationMode(.head)
                     .padding(.horizontal, 10)
+                    .foregroundColor(KeyStyle.mode.foreground)
                     .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
-                    .background(Color.accentColor.opacity(0.25))
+                    .background(KeyStyle.mode.background)  // Typer's yellow, like the ខ/EN key
                     .cornerRadius(8)
                     .onTouchUp { onCandidate(0) }
                 barButton(Text("abc").font(.system(size: 16, weight: .semibold))) { onLatin() }  // keep the Latin
