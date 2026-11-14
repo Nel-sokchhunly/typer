@@ -569,7 +569,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     // ---- accessibility: every key, strip slot and panel row is a virtual node with a label ----
 
-    private class Target(val id: Int, val label: String, val box: Box, val activate: () -> Unit)
+    /** `key`: a Keyboard key (TalkBack reads just its label, as on other keyboards), else a strip or panel button. */
+    private class Target(val id: Int, val label: String, val box: Box, val key: Boolean = false, val activate: () -> Unit)
 
     private fun targets(): List<Target> {
         val out = ArrayList<Target>()
@@ -592,7 +593,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                 }
             }
         } else {
-            for ((i, k) in keys.withIndex()) out += Target(KEYS + i, describe(k), k.box) { listener.onKey(k.action) }
+            for ((i, k) in keys.withIndex()) out += Target(KEYS + i, describe(k), k.box, key = true) { listener.onKey(k.action) }
         }
         return out
     }
@@ -634,7 +635,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             val t = ts.firstOrNull { it.id == virtualViewId } ?: return null
             val info = AccessibilityNodeInfo.obtain(host, t.id)
             info.packageName = context.packageName
-            info.className = "android.widget.Button"
+            info.className = if (t.key) KEY_CLASS else BUTTON_CLASS
             info.contentDescription = t.label
             info.setParent(host)
             val r = Rect(px(t.box.left).toInt(), px(t.box.top).toInt(), px(t.box.right).toInt(), px(t.box.bottom).toInt())
@@ -687,9 +688,10 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         if (!am.isEnabled) return
         val e = AccessibilityEvent.obtain(type)
         e.packageName = context.packageName
-        e.className = "android.widget.Button"
+        val t = targets().firstOrNull { it.id == id }
+        e.className = if (t?.key == true) KEY_CLASS else BUTTON_CLASS
         e.setSource(this, id)
-        targets().firstOrNull { it.id == id }?.let { e.contentDescription = it.label }
+        t?.let { e.contentDescription = it.label }
         parent?.requestSendAccessibilityEvent(this, e)
     }
 
@@ -728,5 +730,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         private const val STRIP = 1000
         private const val PANEL = 2000
         private const val NO_ID = Int.MIN_VALUE
+        /** The platform's keyboard-key class: screen readers treat it as a key and don't append "Button". */
+        private const val KEY_CLASS = "android.inputmethodservice.Keyboard\$Key"
+        private const val BUTTON_CLASS = "android.widget.Button"
     }
 }
