@@ -134,12 +134,12 @@ jobs:
       - run: cd ios && xcodegen generate
       - run: xcodebuild -project ios/Typer.xcodeproj -scheme Typer -destination 'generic/platform=iOS Simulator' ARCHS=arm64 CODE_SIGNING_ALLOWED=NO build
 
-  android-check: # Android Keyboard: engine for 3 ABIs, JVM fixture tests, debug APK. The path gate is a step, so this is one job
-    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+  android-check: # Android Keyboard: engine for 3 ABIs, JVM fixture tests, debug APK (artifact; attached to v* releases)
     runs-on: ubuntu-latest # the image ships the Android SDK and NDK
     steps:
       - uses: actions/checkout@v5
-      - uses: dorny/paths-filter@v3.0.2 # same gate as ios-changes, inside the job
+      - uses: dorny/paths-filter@v3.0.2 # same gate as ios-changes, inside the job; tags always build
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         id: filter
         with:
           filters: |
@@ -149,35 +149,39 @@ jobs:
               - 'data/**'
               - 'fixtures/**'
               - '.github/workflows/ci.yml'
-      - if: steps.filter.outputs.android == 'true'
+      - id: gate
+        run: echo "go=${{ startsWith(github.ref, 'refs/tags/v') || steps.filter.outputs.android == 'true' }}" >> "$GITHUB_OUTPUT"
+      - if: steps.gate.outputs.go == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
-      - if: steps.filter.outputs.android == 'true'
+      - if: steps.gate.outputs.go == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
             android/jni -> target
-      - if: steps.filter.outputs.android == 'true'
+      - if: steps.gate.outputs.go == 'true'
         uses: gradle/actions/setup-gradle@v4
-      - if: steps.filter.outputs.android == 'true'
+      - if: steps.gate.outputs.go == 'true'
         run: |
           rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
           cargo install cargo-ndk --locked
-      - if: steps.filter.outputs.android == 'true'
+      - if: steps.gate.outputs.go == 'true'
         run: sh android/build.sh host # data, engine for arm64-v8a / armeabi-v7a / x86_64 and this runner, debug APK
-      - if: steps.filter.outputs.android == 'true'
+      - if: steps.gate.outputs.go == 'true'
         run: cd android && ./gradlew testDebugUnitTest # Composer fixtures + English words, against the real engine
-      - if: steps.filter.outputs.android == 'true'
+      - if: steps.gate.outputs.go == 'true'
+        run: mkdir -p build && cp android/app/build/outputs/apk/debug/app-debug.apk build/Typer-android-debug.apk
+      - if: steps.gate.outputs.go == 'true'
         uses: actions/upload-artifact@v5
         with:
           name: typer-android-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: build/Typer-android-debug.apk
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test, windows-check, linux-check]
+    needs: [test, windows-check, linux-check, android-check]
     runs-on: macos-latest
     permissions:
       contents: write
@@ -210,6 +214,10 @@ jobs:
         with:
           name: linux-deb
           path: build
-      - run: gh release create "$GITHUB_REF_NAME" build/Typer.pkg build/Typer-macos.zip build/Typer-windows-setup.exe build/Typer-linux-amd64.deb build/Typer-ios-unsigned.ipa --generate-notes
+      - uses: actions/download-artifact@v5
+        with:
+          name: typer-android-debug
+          path: build
+      - run: gh release create "$GITHUB_REF_NAME" build/Typer.pkg build/Typer-macos.zip build/Typer-windows-setup.exe build/Typer-linux-amd64.deb build/Typer-ios-unsigned.ipa build/Typer-android-debug.apk --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
