@@ -46,6 +46,8 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
 
     // layout state (iOS KeyboardModel)
     private var page = KeyPage.LETTERS
+    /** The letters page ?123 goes back to: Sing's letters, or the Khmer page once chosen (kept across fields). */
+    private var letters = KeyPage.LETTERS
     private var shift = Shift.OFF
     /** The user set shift by hand since the last key; auto-cap leaves it alone until a key is typed. */
     private var shiftChosen = false
@@ -146,7 +148,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         }
         returnFor(attribute)
         if (!restarting) {
-            page = if (type == FieldType.NUMBER) KeyPage.NUMBERS else KeyPage.LETTERS
+            page = if (type == FieldType.NUMBER) KeyPage.NUMBERS else letters
             shift = Shift.OFF
             shiftChosen = false
             showAll = false
@@ -247,7 +249,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         if (!composer.isComposing) showAll = false
         if (afterKey) shiftChosen = false
         if (shift != Shift.LOCK && !shiftChosen) {
-            shift = if (AutoCap.shouldShift(before, autoCap, khmer)) Shift.ONCE else Shift.OFF
+            shift = if (page != KeyPage.KHMER && AutoCap.shouldShift(before, autoCap, khmer)) Shift.ONCE else Shift.OFF
         }
         render()
     }
@@ -293,14 +295,15 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             KeyAction.Return -> handle(composer.returnKey()) { returnKey() }
             KeyAction.Shift -> shiftTapped()
             KeyAction.Page -> {
-                page = if (page == KeyPage.LETTERS) KeyPage.NUMBERS else KeyPage.LETTERS
+                page = if (page == KeyPage.LETTERS || page == KeyPage.KHMER) KeyPage.NUMBERS else letters
                 refresh()
             }
             KeyAction.Symbols -> {
                 page = if (page == KeyPage.NUMBERS) KeyPage.SYMBOLS else KeyPage.NUMBERS
                 render()
             }
-            KeyAction.Mode -> modeTapped()
+            KeyAction.Mode -> if (page == KeyPage.KHMER) khmerPage(false) else modeTapped()
+            KeyAction.KhmerPage -> khmerPage(page != KeyPage.KHMER)
             KeyAction.Emoji -> openEmoji()
         }
     }
@@ -379,6 +382,18 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         lastShiftTap = now
         shiftChosen = true
         render()
+    }
+
+    /**
+     * The Khmer page on or off; ខ on it goes back to the Sing letters. Shift starts off either way. A Phrase in
+     * progress stays: the first Khmer key inserts its top Suggestion, as any non-Latin key does.
+     */
+    private fun khmerPage(on: Boolean) {
+        letters = if (on) KeyPage.KHMER else KeyPage.LETTERS
+        page = letters
+        shift = Shift.OFF
+        shiftChosen = true
+        refresh()
     }
 
     /** Switching mode never turns shift on: the keys stay as they are until the next letter. */

@@ -15,7 +15,7 @@ data class Box(val left: Float, val top: Float, val width: Float, val height: Fl
     fun distance(x: Float, y: Float): Float = hypot(max(max(left - x, 0f), x - right), max(max(top - y, 0f), y - bottom))
 }
 
-enum class KeyPage { LETTERS, NUMBERS, SYMBOLS }
+enum class KeyPage { LETTERS, NUMBERS, SYMBOLS, KHMER }
 
 sealed interface KeyAction {
     /** A typed character: letter, digit, punctuation or symbol. */
@@ -32,20 +32,25 @@ sealed interface KeyAction {
     data object Return : KeyAction
     /** Open the emoji page. */
     data object Emoji : KeyAction
+    /** The Khmer layout page (long press on ខ); ខ on that page goes back to the Sing letters. */
+    data object KhmerPage : KeyAction
 }
 
 /** How a key is drawn: letters and space on the lightest surface, function keys on secondary container. */
 enum class KeyStyle { LETTER, FUNCTION, ACTION, MODE }
 
-/** `hint`: the long-press character, drawn small in the top-right corner (digits on the letters page's top row). */
-data class Key(val action: KeyAction, val box: Box, val style: KeyStyle, val hint: String? = null)
+/**
+ * `hint`: the long-press character, drawn small in the top-right corner (digits on the letters page's top row).
+ * `more`: several long-press characters, chosen by sliding in a popup (the Khmer page); `hint` is then the first.
+ */
+data class Key(val action: KeyAction, val box: Box, val style: KeyStyle, val hint: String? = null, val more: List<String> = emptyList())
 
 /**
  * Sizes in dp from android/docs/reference.md (measured on Gboard): side margin 4.5, gap 1.29% of the width,
  * row pitch from the screen height, keys 80% of the pitch, a 48 dp suggestion strip plus 4 dp above row 1.
  */
-/** `extraTop`: room above the strip, e.g. the emoji search results row. */
-class Metrics(val width: Float, screenHeight: Float, val extraTop: Float = 0f) {
+/** `extraTop`: room above the strip, e.g. the emoji search results row. `rows`: 4, or 5 on the Khmer page. */
+class Metrics(val width: Float, screenHeight: Float, val extraTop: Float = 0f, val rows: Int = 4) {
     val margin = 4.5f
     val gap = (width * 0.0129f).coerceIn(4f, 6f)
     /** Gboard scales rows with screen height: 59 dp at 914 dp tall, 50.5 dp at 800; a line through both. */
@@ -56,8 +61,11 @@ class Metrics(val width: Float, screenHeight: Float, val extraTop: Float = 0f) {
     val stripTop = extraTop
     val rowsTop = extraTop + stripHeight + 4f
     val keyWidth = (width - 2 * margin - 9 * gap) / 10
-    /** Strip, four rows and the padding under the last row; the navigation bar inset comes on top. */
-    val height = rowsTop + 4 * keyHeight + 3 * rowGap + rowGap
+    /** The Khmer page's keys: 12 to a row. */
+    val khmerKeyWidth = (width - 2 * margin - 11 * gap) / 12
+    /** Strip, the rows and the padding under the last row; the navigation bar inset comes on top. */
+    val height = rowsTop + rows * keyHeight + rows * rowGap
+    val bottomRow get() = rows - 1
     /** Rounded keys: Gboard's corner scales with the key (about 7.5 dp at 411 dp wide, 6.5 at 360). */
     val radius = keyWidth * 0.215f
 }
@@ -74,6 +82,7 @@ object KeyLayout {
 
     /** `upper`: letters page with shift on. */
     fun keys(m: Metrics, page: KeyPage, upper: Boolean): List<Key> {
+        if (page == KeyPage.KHMER) return khmer(m, upper)
         val out = ArrayList<Key>(40)
         val k = m.keyWidth
         val g = m.gap
@@ -83,7 +92,7 @@ object KeyLayout {
             out.add(Key(a, Box(x, rowTop(row), w, m.keyHeight), style, hint))
 
         val rows = when (page) {
-            KeyPage.LETTERS -> letters
+            KeyPage.LETTERS, KeyPage.KHMER -> letters
             KeyPage.NUMBERS -> numbers
             KeyPage.SYMBOLS -> symbols
         }
@@ -104,19 +113,78 @@ object KeyLayout {
             if (i == 2) add(KeyAction.Backspace, m.width - m.margin - wide, i, wide, KeyStyle.FUNCTION)
         }
 
+        bottomRow(m, out, KHMER_HINT)
+        return out
+    }
+
+    /** The bottom row of the letters, numbers and Khmer pages. `modeHint`: the ខ key's long-press (the Khmer page). */
+    private fun bottomRow(m: Metrics, out: MutableList<Key>, modeHint: String?) {
+        val k = m.keyWidth
+        val g = m.gap
+        val wide = 1.5f * k + 0.5f * g
+        val top = m.rowsTop + m.bottomRow * m.pitch
         var x = m.margin
-        fun next(a: KeyAction, w: Float, style: KeyStyle) {
-            add(a, x, 3, w, style)
+        fun next(a: KeyAction, w: Float, style: KeyStyle, hint: String? = null) {
+            out.add(Key(a, Box(x, top, w, m.keyHeight), style, hint))
             x += w + g
         }
         next(KeyAction.Page, wide, KeyStyle.FUNCTION)
-        next(KeyAction.Mode, k, KeyStyle.MODE)
+        next(KeyAction.Mode, k, KeyStyle.MODE, modeHint)
         next(KeyAction.Text(","), k, KeyStyle.FUNCTION)
         next(KeyAction.Emoji, k, KeyStyle.FUNCTION)  // where Gboard has it, after the comma
         next(KeyAction.Space, 3 * k + 2 * g, KeyStyle.LETTER)
         next(KeyAction.Text("."), k, KeyStyle.FUNCTION)
-        add(KeyAction.Return, m.width - m.margin - wide, 3, wide, KeyStyle.ACTION)
+        out.add(Key(KeyAction.Return, Box(m.width - m.margin - wide, top, wide, m.keyHeight), KeyStyle.ACTION))
+    }
+
+    /** Drawn small on the ខ key: long press it for the Khmer page. */
+    const val KHMER_HINT = "ក"
+
+    /**
+     * The Khmer page: the standard Khmer keyboard arrangement (as on Gboard's Khmer layout): Khmer digits, three
+     * rows of letters and signs, 12 keys to a row, shift for the second level. Each key is "text" or
+     * "text alternate alternate..." (long press). It types characters as they are: no Sing, no Learning.
+     */
+    private val khmerBase = listOf(
+        listOf("១ 1 ៱", "២ 2 ៲", "៣ 3 ៳", "៤ 4 ៴", "៥ 5 ៵", "៦ 6 ៶", "៧ 7 ៷", "៨ 8 ៸", "៩ 9 ៹", "០ 0 ៰", "ឥ ឦ", "ឲ ឱ"),
+        listOf("ឆ", "ឹ", "េ", "រ", "ត", "យ", "ុ", "ិ", "ោ", "ផ", "ៀ", "ឪ ឧ ឱ ឳ ឩ ឨ"),
+        listOf("ា", "ស", "ដ", "ថ", "ង", "ហ", "្", "ក", "ល", "ើ", "់", "ឮ ឭ ឰ"),
+        listOf("ឋ", "ខ", "ច", "វ", "ប", "ន", "ម", "ុំ", "។", "៊ ៘"),
+    )
+    private val khmerShift = listOf(
+        listOf("!", "ៗ", "\" ៑", "៛ $ €", "% ៖", "៍ ៙", "័ ៚", "៏ ៗ", "( { «", ") } »", "៌ ×", "៎"),
+        listOf("ឈ ៜ", "ឺ ៝", "ែ", "ឬ ឫ", "ទ", "ួ", "ូ", "ី", "ៅ", "ភ", "ឿ", "ឰ"),
+        listOf("ាំ", "ៃ", "ឌ", "ធ", "អ", "ះ ៈ", "ញ", "គ ឝ", "ឡ", "ោះ", "៉", "ឯ"),
+        listOf("ឍ", "ឃ", "ជ", "េះ", "ព ឞ", "ណ", "ំ", "ុះ", "៕", "?"),
+    )
+
+    private fun khmer(m: Metrics, upper: Boolean): List<Key> {
+        val out = ArrayList<Key>(56)
+        val k = m.khmerKeyWidth
+        val g = m.gap
+        for ((i, row) in (if (upper) khmerShift else khmerBase).withIndex()) {
+            val top = m.rowsTop + i * m.pitch
+            var x = m.margin
+            if (i == 3) {
+                out.add(Key(KeyAction.Shift, Box(x, top, k, m.keyHeight), KeyStyle.FUNCTION))
+                x += k + g
+            }
+            for (spec in row) {
+                val parts = spec.split(' ')
+                val more = parts.drop(1)
+                out.add(Key(KeyAction.Text(parts[0]), Box(x, top, k, m.keyHeight), KeyStyle.LETTER, more.firstOrNull(), if (more.size > 1) more else emptyList()))
+                x += k + g
+            }
+            if (i == 3) out.add(Key(KeyAction.Backspace, Box(x, top, m.width - m.margin - x, m.keyHeight), KeyStyle.FUNCTION))
+        }
+        bottomRow(m, out, null)
         return out
+    }
+
+    /** How a key's text is drawn: a combining sign (ិ, ្, ុំ) sits on a dotted circle, as in Khmer keyboard charts. */
+    fun label(text: String): String {
+        val t = Character.getType(text.codePointAt(0))
+        return if (t == Character.NON_SPACING_MARK.toInt() || t == Character.COMBINING_SPACING_MARK.toInt()) "\u25CC$text" else text
     }
 
     /** The emoji page's bottom row: back to the letters, space, delete. */
@@ -124,7 +192,7 @@ object KeyLayout {
         val k = m.keyWidth
         val g = m.gap
         val wide = 1.5f * k + 0.5f * g
-        val top = m.rowsTop + 3 * m.pitch
+        val top = m.rowsTop + m.bottomRow * m.pitch
         return listOf(
             Key(KeyAction.Page, Box(m.margin, top, wide, m.keyHeight), KeyStyle.FUNCTION),
             Key(KeyAction.Space, Box(m.margin + wide + g, top, m.width - 2 * m.margin - 2 * wide - 2 * g, m.keyHeight), KeyStyle.LETTER),

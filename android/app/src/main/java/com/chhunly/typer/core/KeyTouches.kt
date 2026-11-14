@@ -11,8 +11,10 @@ sealed interface KeyEffect {
     data object StopRepeat : KeyEffect
     /** Arm the long-press timer (300 ms); the caller calls `longPress` when it fires. */
     data object StartLongPress : KeyEffect
-    /** The long-press character of a key (its hint digit). */
-    data class FireHint(val text: String) : KeyEffect
+    /** The long-press character of a key (its hint digit), or the ខ key's Khmer page. */
+    data class FireHint(val text: String, val key: Key) : KeyEffect
+    /** Long press on a key with several alternates: open its popup; the view tracks the slide and types the pick. */
+    data class ShowMore(val key: Key) : KeyEffect
     /** Space-bar drag: move the caret by this many clusters (negative = left). */
     data class MoveCaret(val clusters: Int) : KeyEffect
     data object DragStarted : KeyEffect
@@ -49,7 +51,7 @@ class KeyTouches(private val step: Float = 10f) {
         val backspace = key.action == KeyAction.Backspace
         held = Held(id, key, backspace, x)
         if (backspace) fx += listOf(KeyEffect.Fire(KeyAction.Backspace), KeyEffect.StartRepeat)
-        else if (key.hint != null || key.action == KeyAction.Space) fx += KeyEffect.StartLongPress
+        else if (key.hint != null || key.more.isNotEmpty() || key.action == KeyAction.Space) fx += KeyEffect.StartLongPress
         return fx
     }
 
@@ -95,9 +97,13 @@ class KeyTouches(private val step: Float = 10f) {
             h.dragging = true  // hold space, then slide: the caret follows
             return listOf(KeyEffect.DragStarted)
         }
+        if (h.key.more.size > 1) {
+            h.long = true
+            return listOf(KeyEffect.ShowMore(h.key))
+        }
         val hint = h.key.hint ?: return emptyList()
         h.long = true
-        return listOf(KeyEffect.FireHint(hint))
+        return listOf(KeyEffect.FireHint(hint, h.key))
     }
 
     fun up(id: Int, key: Key): List<KeyEffect> {
