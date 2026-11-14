@@ -1,89 +1,109 @@
 :root {
-  --bg: #edeae3; --fg: #1a1a1a; --muted: #5f5b53; --card: #e4e0d6; --line: #cfc9bc; --ink: #1a1a1a;
-  --sage: #a7b8b2; --pink: #e6b2aa; --accent: #2a4a44; --code: #1a1a1a; --code-fg: #edeae3;
+  --yellow: #f5c842; --ink: #1a1a1a; --cream: #edeae3;
+  --bg: #f7f5f0; --fg: #1a1a1a; --muted: #5f5b53; --card: #fff; --line: #e3dfd5;
+  --chip: #edeae3; --code: #1a1a1a; --code-fg: #edeae3; --link: #1a1a1a;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro", "Segoe UI", Roboto, sans-serif;
+  --khmer: "Khmer Sangam MN", "Khmer MN", "Noto Sans Khmer", "Khmer UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1d1c1a; --fg: #f1eee6; --muted: #a8a294; --card: #2a2926; --line: #3a3834; --chip: #3a3834; --link: #f5c842; }
 }
 * { box-sizing: border-box; }
-body {
-  margin: 0; background: var(--bg); color: var(--fg);
-  font: 17px/1.65 Montserrat, -apple-system, "Segoe UI", sans-serif;
+html { scroll-behavior: smooth; background: var(--yellow); }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.65 var(--sans); }
+html[lang="km"] body, .km { font-family: var(--sans), "Khmer Sangam MN", "Noto Sans Khmer", sans-serif; }
+html[lang="km"] body { line-height: 1.9; }
+.km { font-family: var(--khmer); }
+
+/* Hero */
+.hero-top { background: var(--yellow); color: var(--ink); padding: 16px 16px 56px; }
+.hero-top .wrap { max-width: 760px; margin: 0 auto; }
+.bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 32px; }
+.switch { display: inline-flex; border: 1.5px solid var(--ink); border-radius: 999px; padding: 2px; }
+.seg { padding: 4px 16px; border-radius: 999px; color: var(--ink); text-decoration: none; font-size: 14px; font-weight: 700; line-height: 1.6; }
+.seg.on { background: var(--ink); color: var(--yellow); }
+.pill {
+  display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px;
+  border: 1.5px solid var(--ink); border-radius: 999px; color: var(--ink); text-decoration: none; font-size: 14px; font-weight: 700;
 }
-.km { font-family: "Khmer Sangam MN", "Khmer MN", "Noto Sans Khmer", sans-serif; }
-main { max-width: 760px; margin: 0 auto; padding: 88px 24px 96px; }
-.label { font-size: 13px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
-h1 { font-size: 56px; font-weight: 600; line-height: 1.05; margin: 0 0 14px; letter-spacing: -0.02em; }
-.h1-km { font-weight: 400; letter-spacing: 0; color: var(--muted); }
-.h1-sep { font-weight: 300; color: var(--line); }
-h2 { font-size: 28px; font-weight: 600; margin: 72px 0 10px; letter-spacing: -0.01em; padding-top: 20px; border-top: 1.5px solid var(--ink); }
-h3 { font-size: 19px; font-weight: 600; margin: 32px 0 6px; }
-.lead { font-size: 21px; color: var(--muted); margin: 0 0 32px; }
-.hero { position: relative; margin: 8px 18px 44px 0; }
-.hero::before { content: ""; position: absolute; inset: 0; transform: translate(18px, 18px); background: var(--sage); border-radius: 18px; }
-.hero img { position: relative; display: block; width: 100%; border-radius: 18px; box-shadow: 0 0 0 1.5px var(--ink); }
-.hero .demo { position: relative; }
-.hero video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 18px; box-shadow: 0 0 0 1.5px var(--ink); background: var(--ink); }
-.demo button { position: absolute; right: 10px; bottom: 10px; width: 36px; height: 36px; border-radius: 50%; border: 1.5px solid var(--ink); background: var(--pink); color: var(--ink); font-size: 14px; cursor: pointer; }
-.demo button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pill:hover, .seg:not(.on):hover { background: rgba(26,26,26,.1); }
+.app-icon { display: block; width: 88px; height: 88px; border-radius: 20px; box-shadow: 0 6px 18px rgba(26,26,26,.25); }
+h1 { font-size: clamp(56px, 16vw, 88px); font-weight: 800; line-height: 1.45; margin: 12px 0 0; letter-spacing: 0; }
+.sub { font-size: 26px; font-weight: 600; opacity: .6; margin: 0; line-height: 1.3; }
+.tag { font-size: 20px; font-weight: 600; margin: 16px 0 0; line-height: 1.5; }
+html[lang="km"] .tag { line-height: 1.9; }
+
+/* Sheet overlapping the hero */
+.sheet { position: relative; margin-top: -24px; background: var(--bg); border-radius: 28px 28px 0 0; }
+main { max-width: 760px; margin: 0 auto; padding: 32px 16px 96px; overflow-wrap: break-word; }
+.label { font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+html[lang="km"] .label { letter-spacing: 0; text-transform: none; font-size: 14px; }
+h2 { font-size: 13px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 56px 0 12px; scroll-margin-top: 16px; }
+html[lang="km"] h2 { font-size: 16px; letter-spacing: 0; text-transform: none; line-height: 1.7; }
+h3 { font-size: 19px; font-weight: 700; margin: 28px 0 6px; }
+.lead { font-size: 20px; color: var(--muted); margin: 0 0 24px; }
+html[lang="km"] .lead { line-height: 1.8; }
+a { color: var(--link); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+
+/* Demo */
+.demo-wrap { margin: 8px 0 28px; }
+.demo { position: relative; }
+.demo video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 20px; background: var(--ink); }
+.demo button { position: absolute; right: 10px; bottom: 10px; width: 36px; height: 36px; border-radius: 50%; border: 1.5px solid var(--ink); background: var(--yellow); color: var(--ink); font-size: 14px; cursor: pointer; }
+.demo button:focus-visible, .btn:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--yellow); outline-offset: 3px; }
+
+/* Buttons */
+.btns { display: flex; flex-wrap: wrap; gap: 12px; }
 .btn {
-  display: inline-block; background: var(--pink); color: var(--ink); text-decoration: none;
-  border: 1.5px solid var(--ink); padding: 14px 24px; font-weight: 600;
-  transition: transform .15s, box-shadow .15s;
+  display: inline-flex; align-items: center; gap: 10px; background: var(--yellow); color: var(--ink); text-decoration: none;
+  border: 1.5px solid var(--ink); border-radius: 999px; padding: 13px 22px; font-weight: 700;
+  transition: transform .15s;
 }
-.btn:hover { transform: translate(-3px, -3px); box-shadow: 4px 4px 0 var(--ink); }
-.btn:active { transform: none; box-shadow: none; }
-.btns { display: flex; flex-wrap: wrap; gap: 14px; }
+.btn::after { content: "\2192"; font-weight: 700; }
+.btn:hover { transform: translateY(-2px); }
+.btn:active { transform: none; }
 .note { color: var(--muted); font-size: 15px; }
-.step { display: flex; gap: 14px; align-items: baseline; }
+.warn { border-left: 3px solid var(--yellow); padding: 4px 0 4px 14px; margin: 14px 0; }
+
+/* Steps */
+.card { background: var(--card); border-radius: 16px; padding: 4px 16px 12px; margin: 12px 0; }
+.card h3 { margin: 12px 0 6px; }
+.step { display: flex; gap: 12px; align-items: center; }
 .num {
-  flex: none; width: 30px; height: 30px; border: 1.5px solid var(--ink); background: var(--sage);
-  display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px;
-  transform: translateY(-3px);
+  flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--yellow); color: var(--ink);
+  display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;
 }
-pre {
-  position: relative; background: var(--code); color: var(--code-fg);
-  padding: 18px 20px; overflow-x: auto; font-size: 14px; line-height: 1.6; margin: 12px 0;
-}
-pre button {
-  position: absolute; top: 10px; right: 10px; border: 1px solid #5f5b53; padding: 3px 10px;
-  background: var(--code); color: var(--code-fg); font: 500 12px Montserrat, sans-serif; letter-spacing: .08em; cursor: pointer;
-}
-pre button:hover { border-color: var(--code-fg); }
+
+/* Privacy */
+.privacy { background: var(--ink); color: var(--cream); border-radius: 20px; padding: 20px; margin: 56px 0 0; }
+.privacy .lock { color: var(--yellow); display: block; margin-bottom: 8px; }
+.privacy h2 { color: var(--yellow); font-size: 22px; font-weight: 700; letter-spacing: 0; text-transform: none; margin: 0 0 8px; }
+html[lang="km"] .privacy h2 { font-size: 22px; }
+.privacy p { margin: 0; }
+.privacy a { color: var(--yellow); }
+.privacy code { background: #2f2e2b; color: var(--cream); }
+@media (prefers-color-scheme: dark) { .privacy { background: #0f0f0e; border: 1px solid #3a3834; } }
+
+/* Code, tables, misc */
+pre { position: relative; background: var(--code); color: var(--code-fg); border-radius: 14px; padding: 18px 16px; overflow-x: auto; font-size: 14px; line-height: 1.6; margin: 12px 0; }
+@media (prefers-color-scheme: dark) { pre { background: #0f0f0e; } }
+pre button { position: absolute; top: 10px; right: 10px; border: 1px solid var(--yellow); border-radius: 999px; padding: 3px 12px; background: var(--ink); color: var(--yellow); font: 700 12px var(--sans); cursor: pointer; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-p code, li code, td code { background: var(--card); padding: 1px 6px; font-size: 0.88em; }
-figure { margin: 18px 0 8px; }
-figure img { display: block; max-width: 100%; }
+p code, li code, td code { background: var(--chip); padding: 1px 6px; border-radius: 6px; font-size: .88em; }
+figure { margin: 16px 0 8px; }
+figure img { display: block; max-width: 100%; height: auto; border-radius: 12px; }
 figcaption { color: var(--muted); font-size: 15px; margin-top: 8px; }
-table { border-collapse: collapse; width: 100%; margin: 14px 0; border-top: 1.5px solid var(--ink); }
-td { padding: 10px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-td:first-child { white-space: nowrap; font-weight: 600; width: 1%; }
-kbd {
-  font: 600 13px Montserrat, sans-serif; border: 1px solid var(--ink); border-bottom-width: 2px;
-  padding: 1px 7px; background: var(--bg);
-}
-details { border: 1.5px solid var(--ink); padding: 14px 18px; margin: 18px 0; }
-summary { cursor: pointer; font-weight: 600; }
-.warn { border-left: 3px solid var(--pink); padding: 4px 0 4px 14px; margin: 14px 0; }
-a { color: var(--fg); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
-html { scroll-behavior: smooth; }
-h2 { scroll-margin-top: 72px; } /* clear the fixed top bar */
+table { border-collapse: collapse; width: 100%; margin: 14px 0; background: var(--card); border-radius: 16px; overflow: hidden; }
+td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 600; }
+@media (min-width: 600px) { td:first-child { white-space: nowrap; width: 1%; } }
+kbd { font: 700 13px var(--sans); border: 1px solid var(--muted); border-bottom-width: 2px; border-radius: 6px; padding: 1px 7px; background: var(--bg); color: var(--fg); }
+details { background: var(--card); border-radius: 16px; padding: 12px 16px; margin: 16px 0; }
+summary { cursor: pointer; font-weight: 700; }
 .toc { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 22px 0 0; font-size: 14px; }
 .toc span { color: var(--muted); margin-right: 4px; }
-.toc a {
-  padding: 4px 12px; border: 1.5px solid var(--ink); text-decoration: none; font-weight: 500;
-  transition: background .15s;
-}
-.toc a:hover { background: var(--sage); }
-.top { position: fixed; top: 18px; right: 18px; z-index: 10; display: flex; gap: 10px; }
-.pill {
-  display: inline-flex; align-items: center; gap: 8px; height: 38px; line-height: 1;
-  padding: 0 14px; background: var(--bg); color: var(--ink); border: 1.5px solid var(--ink);
-  font-size: 14px; font-weight: 600; text-decoration: none;
-  transition: transform .15s, box-shadow .15s;
-}
-.pill:hover { transform: translate(-2px, -2px); box-shadow: 3px 3px 0 var(--ink); }
+.toc a { padding: 4px 14px; background: var(--card); border-radius: 999px; text-decoration: none; font-weight: 600; color: var(--fg); }
+.toc a:hover { background: var(--yellow); color: var(--ink); }
 
-/* Khmer page: Khmer glyphs fall back to Noto Sans Khmer; stacks need taller lines; no caps/tracking */
-html[lang="km"] body { font-family: Montserrat, "Noto Sans Khmer", "Khmer Sangam MN", "Khmer UI", sans-serif; line-height: 1.9; }
-html[lang="km"] .label, html[lang="km"] h1, html[lang="km"] h2 { letter-spacing: 0; text-transform: none; }
-html[lang="km"] h1 { line-height: 1.35; }
-html[lang="km"] h2 { line-height: 1.6; }
-html[lang="km"] .lead { line-height: 1.8; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .btn { transition: none; } }
