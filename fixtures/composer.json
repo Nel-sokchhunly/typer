@@ -85,12 +85,19 @@
       ]
     },
     {
-      "name": "a digit commits the top Suggestion, then passes through",
+      "name": "a number stays in the Phrase, like punctuation",
+      "steps": [
+        {"op": "type", "text": "knhom mean 3", "expect": {"typed": "knhom mean 3", "isComposing": true}},
+        {"op": "type", "text": " nak", "expect": {"typed": "knhom mean 3 nak"}}
+      ]
+    },
+    {
+      "name": "an emoji commits the top Suggestion, then passes through; idle, a digit passes through",
       "steps": [
         {"op": "type", "text": "knhom"},
         {"op": "saveFirst", "as": "top"},
-        {"op": "type", "text": "2", "expect": {"doc": "{top}2", "marked": 0}},
-        {"op": "type", "text": "😀", "expect": {"doc": "{top}2😀"}}
+        {"op": "type", "text": "😀", "expect": {"doc": "{top}😀", "marked": 0}},
+        {"op": "type", "text": "2", "expect": {"doc": "{top}😀2"}}
       ]
     },
     {

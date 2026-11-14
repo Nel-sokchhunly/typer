@@ -103,8 +103,8 @@ public final class Composer {
             typed.append(c)
         } else if c == " " && isComposing {
             if !typed.hasSuffix(" ") { typed.append(" ") }  // space separates words, never commits
-        } else if isComposing && c.isASCII && (c.isPunctuation || c.isSymbol) {
-            typed.append(c)  // stays as typed in the suggestion: "knhom," -> ខ្ញុំ,
+        } else if isComposing && c.isASCII && (c.isPunctuation || c.isSymbol || c.isNumber) {
+            typed.append(c)  // stays as typed in the suggestion: "knhom," -> ខ្ញុំ, and "mean 3 nak" -> មាន 3 នាក់
         } else {
             return otherKey()
         }
@@ -113,7 +113,7 @@ public final class Composer {
         return true
     }
 
-    /// Digit, emoji, ...: insert the top suggestion, then let the key through.
+    /// Emoji, non-ASCII, ...: insert the top suggestion, then let the key through.
     private func otherKey() -> Bool {
         if isComposing { commit(0) }
         return false

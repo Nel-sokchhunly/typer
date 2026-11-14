@@ -122,7 +122,7 @@ class Composer(
         when {
             ascii && (c.isLetter() || c == '\'') -> typed += c
             c == ' ' && isComposing -> if (!typed.endsWith(" ")) typed += " "  // space separates words, never commits
-            isComposing && ascii && c in ASCII_PUNCTUATION -> typed += c  // stays as typed: "knhom," -> ខ្ញុំ,
+            isComposing && ascii && (c in ASCII_PUNCTUATION || c in '0'..'9') -> typed += c  // stays as typed: "knhom," -> ខ្ញុំ, and "mean 3 nak" -> មាន 3 នាក់
             else -> return otherKey()
         }
         if (starting) anchor = proxy.documentContextBeforeInput
@@ -130,7 +130,7 @@ class Composer(
         return true
     }
 
-    /** Digit, emoji, ...: insert the top Suggestion, then let the key through. */
+    /** Emoji, non-ASCII, ...: insert the top Suggestion, then let the key through. */
     private fun otherKey(): Boolean {
         if (isComposing) commit(0)
         return false
