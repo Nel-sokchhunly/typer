@@ -19,6 +19,8 @@ final class ProxyAdapter: TextProxy {
 final class KeyboardModel: ObservableObject {
     @Published var typed = ""
     @Published var suggestions: [String] = []
+    /// English mode: the word before the caret, then up to two iOS completions or fixes for it; empty hides them.
+    @Published var englishWords: [String] = []
     /// The all-Suggestions panel is open in place of the keys.
     @Published var showAll = false
     @Published var needsGlobe = false
@@ -42,7 +44,7 @@ final class KeyboardModel: ObservableObject {
     /// The one layout both the drawn keys and the touch layer use; empty while the all-Suggestions panel replaces the keys.
     func keys(width: CGFloat) -> [Key] {
         if showAll && !typed.isEmpty { return [] }
-        return KeyLayout.keys(width: width, page: page, upper: shift != .off, globe: needsGlobe, bar: !typed.isEmpty ? [] : mode == "EN" ? KeyLayout.englishPunctuation : KeyLayout.punctuation)
+        return KeyLayout.keys(width: width, page: page, upper: shift != .off, globe: needsGlobe, bar: !typed.isEmpty || !englishWords.isEmpty ? [] : mode == "EN" ? KeyLayout.englishPunctuation : KeyLayout.punctuation)
     }
 
     /// Shift once; a quick second tap locks caps; tapping a lock (or a lone shift) turns it off.
@@ -70,6 +72,8 @@ private final class ClickInputView: UIInputView, UIInputViewAudioFeedback {
 final class KeyboardViewController: UIInputViewController {
     private let haptic = UIImpactFeedbackGenerator(style: .light)
     private let model = KeyboardModel()
+    private var lexicon: [String] = []  // iOS's extra words for keyboards: contact names, text replacements
+    private var wordsAllowed = false  // English word suggestions: plain text fields that allow autocorrection
     private lazy var composer: Composer = {
         let userDir = try? FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).path
@@ -97,7 +101,8 @@ final class KeyboardViewController: UIInputViewController {
             rootView: KeyboardView(
                 model: model,
                 onCandidate: { [unowned self] in handle(composer.candidateTapped($0)) },
-                onLatin: { [unowned self] in handle(composer.rawLatin()) }))
+                onLatin: { [unowned self] in handle(composer.rawLatin()) },
+                onEnglishWord: { [unowned self] in englishWordTapped($0) }))
         hosting.view.translatesAutoresizingMaskIntoConstraints = false
         hosting.view.backgroundColor = .clear
         hosting.view.isMultipleTouchEnabled = true
@@ -123,6 +128,7 @@ final class KeyboardViewController: UIInputViewController {
             layer.topAnchor.constraint(equalTo: view.topAnchor),
             layer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
+        requestSupplementaryLexicon { [weak self] lex in self?.lexicon = lex.entries.map(\.documentText) }
         let height = view.heightAnchor.constraint(equalToConstant: KeyboardView.height)
         height.priority = UILayoutPriority(999)
         height.isActive = true
@@ -178,6 +184,7 @@ final class KeyboardViewController: UIInputViewController {
         default: "return"
         }
         _ = composer.fieldTraitsChanged(secure: t.isSecureTextEntry ?? false, type: type)
+        wordsAllowed = type == .text && t.isSecureTextEntry != true && t.autocorrectionType != .no
     }
 
     /// A key fired by the touch layer.
@@ -211,6 +218,9 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func refresh(afterKey: Bool = false) {
+        let khmer = composer.mode == "ខ"
+        let before = khmer ? nil : textDocumentProxy.documentContextBeforeInput  // Khmer needs neither: skip the IPC read
+        model.englishWords = !khmer && wordsAllowed ? Self.englishWords(before: before, lexicon: lexicon) : []
         model.typed = composer.typed
         model.suggestions = composer.suggestions
         if composer.typed.isEmpty { model.showAll = false }
@@ -218,10 +228,48 @@ final class KeyboardViewController: UIInputViewController {
         model.canToggle = composer.canToggle
         if afterKey { model.shiftChosen = false }
         if model.shift != .lock && !model.shiftChosen {  // a typed key or a field change re-decides shift, like Apple's
-            let khmer = composer.mode == "ខ"
-            let before = khmer ? nil : textDocumentProxy.documentContextBeforeInput  // Khmer never auto-caps: skip the IPC read
             model.shift = AutoCap.shouldShift(before: before, kind: model.autoCap, khmerMode: khmer) ? .once : .off
         }
+    }
+}
+
+extension KeyboardViewController {
+    /// The word you were typing becomes the tapped one, then a space; index 0 keeps it as typed.
+    fileprivate func englishWordTapped(_ i: Int) {
+        let words = model.englishWords
+        guard i < words.count else { return }
+        if i > 0 {
+            for _ in words[0] { textDocumentProxy.deleteBackward() }
+            textDocumentProxy.insertText(words[i])
+        }
+        textDocumentProxy.insertText(" ")
+        refresh(afterKey: true)
+    }
+
+    private static let checker = UITextChecker()
+
+    /// [typed, best, second] from iOS's English dictionary (and your contacts and text replacements), or [] if no help.
+    /// Completions, most likely first; a spelling fix only when nothing completes the word.
+    static func englishWords(before: String?, lexicon: [String]) -> [String] {
+        guard let before else { return [] }
+        let word = String(before.reversed().prefix { $0.isLetter || $0 == "'" }.reversed())
+        guard !word.isEmpty, word != "'" else { return [] }
+        let range = NSRange(location: 0, length: (word as NSString).length)
+        let lower = word.lowercased()
+        var found = lexicon.filter { $0.count > word.count && $0.lowercased().hasPrefix(lower) }.prefix(1).map { $0 }
+        found += checker.completions(forPartialWordRange: range, in: word, language: "en_US") ?? []
+        // a half-typed word looks misspelled ("hel"), so spelling fixes only when nothing completes it ("teh" -> the)
+        if found.isEmpty,
+           checker.rangeOfMisspelledWord(in: word, range: range, startingAt: 0, wrap: false, language: "en_US").location != NSNotFound {
+            found += checker.guesses(forWordRange: range, in: word, language: "en_US") ?? []
+        }
+        var seen: Set<String> = [lower]
+        let capital = word.first?.isUppercase == true
+        let picks = found.compactMap { w -> String? in
+            let w = capital ? w.prefix(1).uppercased() + w.dropFirst() : w
+            return seen.insert(w.lowercased()).inserted ? w : nil
+        }.prefix(2)
+        return picks.isEmpty ? [] : [word] + picks
     }
 }
 
