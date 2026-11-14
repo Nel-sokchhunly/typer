@@ -113,6 +113,15 @@ struct KeyboardView: View {
     }
 }
 
+/// Called on every key touch-down; the controller plays haptic and click when Full Access allows.
+private struct KeyPressKey: EnvironmentKey { static let defaultValue: () -> Void = {} }
+extension EnvironmentValues {
+    var keyPress: () -> Void {
+        get { self[KeyPressKey.self] }
+        set { self[KeyPressKey.self] = newValue }
+    }
+}
+
 enum KeyStyle { case letter, function, prominent }
 
 private func dynamic(light: UIColor, dark: UIColor) -> Color {
@@ -143,6 +152,7 @@ struct KeyView: View {
     var repeats = false
     let action: () -> Void
 
+    @Environment(\.keyPress) private var keyPress
     @State private var pressed = false
     @State private var repeater: Task<Void, Never>?
 
@@ -160,6 +170,7 @@ struct KeyView: View {
                         .onChanged { _ in
                             guard !pressed else { return }
                             pressed = true
+                            keyPress()
                             if repeats { startRepeating() }
                         }
                         .onEnded { v in
