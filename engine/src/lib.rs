@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 pub mod ffi;
@@ -171,6 +171,12 @@ pub fn write_setting(dir: &Path, name: &str, on: bool) -> std::io::Result<()> {
     fs::write(dir.join("settings.txt"), text)
 }
 
+// The Windows frontend keeps the Engine in a static Mutex, so it must stay Send; this fails the build on every platform if not.
+const _: fn() = || {
+    fn send<T: Send>() {}
+    send::<Engine>();
+};
+
 pub struct Engine {
     words: Vec<String>,
     first_generated: usize, // words from here on have rule-generated spellings (generated.tsv)
@@ -219,12 +225,12 @@ fn read_counts(path: &Path, counts: &mut Counts) {
 /// Words of a path as a shared linked list (newest first), so extending a path copies nothing.
 struct Node {
     word: String, // Khmer word, or raw latin token
-    prev: Option<Rc<Node>>,
+    prev: Option<Arc<Node>>,
 }
 
 #[derive(Clone)]
 struct Path_ {
-    last: Rc<Node>,
+    last: Arc<Node>,
     score: f32,
     neg: bool, // a negation is waiting for its ទេ
 }
@@ -469,7 +475,7 @@ impl Engine {
         beams.truncate(keep + 1);
         beams.resize(n + 1, Vec::new());
         if keep == 0 {
-            let node = |w: &str, prev| Rc::new(Node { word: w.into(), prev });
+            let node = |w: &str, prev| Arc::new(Node { word: w.into(), prev });
             beams[0] = vec![Path_ { last: node("<s>", Some(node("<s>", None))), score: 0.0, neg: false }];
         }
         for i in 0..n {
@@ -513,7 +519,7 @@ impl Engine {
                         let closes = p.neg && w == NEG_CLOSE;
                         let neg = (p.neg || NEGATIONS.contains(&w.as_str())) && !closes && !is_punct(w);
                         let bonus = if closes { NEG_BONUS } else { 0.0 };
-                        let last = Rc::new(Node { word: w.clone(), prev: Some(p.last.clone()) });
+                        let last = Arc::new(Node { word: w.clone(), prev: Some(p.last.clone()) });
                         beams[i + len].push(Path_ { last, score: p.score + lm + spell + bonus, neg });
                     }
                 }
