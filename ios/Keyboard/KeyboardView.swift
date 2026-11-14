@@ -93,6 +93,8 @@ struct KeyboardView: View {
 
     // MARK: candidate bar
 
+    private static let punctuation = ["។", "៕", "ៗ", "៛", "?", "!"]
+
     private var candidateBar: some View {
         HStack(spacing: 6) {
             if !model.typed.isEmpty {
@@ -109,6 +111,11 @@ struct KeyboardView: View {
                 barButton(Text("abc").font(.system(size: 16, weight: .semibold))) { onLatin() }  // keep the Latin
                 barButton(Image(systemName: model.showAll ? "chevron.up" : "chevron.down")
                     .font(.system(size: 17, weight: .bold))) { model.showAll.toggle() }
+            } else {
+                // Khmer punctuation QWERTY lacks; next-word Suggestions will take this spot later
+                ForEach(Self.punctuation, id: \.self) { p in
+                    KeyView(text: p, style: .function, width: nil, height: 36, fontSize: 20) { onKey(p) }
+                }
             }
         }
         .frame(height: 40)
