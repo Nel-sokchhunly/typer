@@ -201,6 +201,21 @@ extension KeyStyle {
     }
 }
 
+/// Rollover, like Apple's keyboard: when a new key goes down while another is still held, the held key
+/// commits at that moment; the new one fires on its own touch-up.
+final class KeyTracker {
+    static let shared = KeyTracker()
+    private var held: (id: UUID, commit: () -> Void)?
+
+    func down(_ id: UUID, commit: @escaping () -> Void) {
+        let previous = held
+        held = (id, commit)
+        previous?.commit()
+    }
+
+    func up(_ id: UUID) { if held?.id == id { held = nil } }
+}
+
 /// One key. Fires on touch-up inside the key (a plain Button drops fast taps), previews the character above the finger,
 /// and with `repeats` fires on touch-down, then again after 0.4 s and every 0.08 s while held.
 struct KeyView: View {
@@ -217,6 +232,7 @@ struct KeyView: View {
     @Environment(\.keyPress) private var keyPress
     @State private var pressed = false
     @State private var repeater: Task<Void, Never>?
+    @State private var touch: UUID?  // set while this key is down and not yet committed
 
     var body: some View {
         GeometryReader { geo in
@@ -232,10 +248,16 @@ struct KeyView: View {
                         .onChanged { _ in
                             guard !pressed else { return }
                             pressed = true
+                            let id = UUID()
+                            touch = id
+                            KeyTracker.shared.down(id) { commitHeld() }  // commits the previous key first
                             keyPress()
                             if repeats { startRepeating() }
                         }
                         .onEnded { v in
+                            guard let id = touch else { return }  // already committed by the next key
+                            touch = nil
+                            KeyTracker.shared.up(id)
                             pressed = false
                             repeater?.cancel()
                             if repeats { return }
@@ -264,6 +286,15 @@ struct KeyView: View {
             .shadow(color: .black.opacity(0.35), radius: 2, x: 0, y: 1)
             .offset(y: -46)
             .allowsHitTesting(false)
+    }
+
+    /// The next key went down while this one was held: fire now, so keys land in touch order.
+    private func commitHeld() {
+        guard touch != nil else { return }
+        touch = nil
+        pressed = false
+        repeater?.cancel()
+        if !repeats { action() }
     }
 
     private func startRepeating() {
