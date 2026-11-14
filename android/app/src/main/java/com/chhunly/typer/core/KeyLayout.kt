@@ -30,6 +30,8 @@ sealed interface KeyAction {
     data object Mode : KeyAction
     data object Space : KeyAction
     data object Return : KeyAction
+    /** Open the emoji page. */
+    data object Emoji : KeyAction
 }
 
 /** How a key is drawn: letters and space on the lightest surface, function keys on secondary container. */
@@ -42,7 +44,8 @@ data class Key(val action: KeyAction, val box: Box, val style: KeyStyle, val hin
  * Sizes in dp from android/docs/reference.md (measured on Gboard): side margin 4.5, gap 1.29% of the width,
  * row pitch from the screen height, keys 80% of the pitch, a 48 dp suggestion strip plus 4 dp above row 1.
  */
-class Metrics(val width: Float, screenHeight: Float) {
+/** `extraTop`: room above the strip, e.g. the emoji search results row. */
+class Metrics(val width: Float, screenHeight: Float, val extraTop: Float = 0f) {
     val margin = 4.5f
     val gap = (width * 0.0129f).coerceIn(4f, 6f)
     /** Gboard scales rows with screen height: 59 dp at 914 dp tall, 50.5 dp at 800; a line through both. */
@@ -50,7 +53,8 @@ class Metrics(val width: Float, screenHeight: Float) {
     val keyHeight = pitch * 0.8f
     val rowGap = pitch - keyHeight
     val stripHeight = 48f
-    val rowsTop = stripHeight + 4f
+    val stripTop = extraTop
+    val rowsTop = extraTop + stripHeight + 4f
     val keyWidth = (width - 2 * margin - 9 * gap) / 10
     /** Strip, four rows and the padding under the last row; the navigation bar inset comes on top. */
     val height = rowsTop + 4 * keyHeight + 3 * rowGap + rowGap
@@ -108,10 +112,24 @@ object KeyLayout {
         next(KeyAction.Page, wide, KeyStyle.FUNCTION)
         next(KeyAction.Mode, k, KeyStyle.MODE)
         next(KeyAction.Text(","), k, KeyStyle.FUNCTION)
-        next(KeyAction.Space, 4 * k + 3 * g, KeyStyle.LETTER)
+        next(KeyAction.Emoji, k, KeyStyle.FUNCTION)  // where Gboard has it, after the comma
+        next(KeyAction.Space, 3 * k + 2 * g, KeyStyle.LETTER)
         next(KeyAction.Text("."), k, KeyStyle.FUNCTION)
         add(KeyAction.Return, m.width - m.margin - wide, 3, wide, KeyStyle.ACTION)
         return out
+    }
+
+    /** The emoji page's bottom row: back to the letters, space, delete. */
+    fun emojiRow(m: Metrics): List<Key> {
+        val k = m.keyWidth
+        val g = m.gap
+        val wide = 1.5f * k + 0.5f * g
+        val top = m.rowsTop + 3 * m.pitch
+        return listOf(
+            Key(KeyAction.Page, Box(m.margin, top, wide, m.keyHeight), KeyStyle.FUNCTION),
+            Key(KeyAction.Space, Box(m.margin + wide + g, top, m.width - 2 * m.margin - 2 * wide - 2 * g, m.keyHeight), KeyStyle.LETTER),
+            Key(KeyAction.Backspace, Box(m.width - m.margin - wide, top, wide, m.keyHeight), KeyStyle.FUNCTION),
+        )
     }
 
     /** The key containing the point, else the nearest: no dead zones in the gaps or at the edges. */
@@ -142,7 +160,7 @@ object StripLayout {
     const val PILL = 40f  // iOS uses 36; Khmer stacks want a little more
     const val GAP = 6f
 
-    private fun pill(m: Metrics, left: Float, width: Float) = Box(left, (m.stripHeight - PILL) / 2, width, PILL)
+    private fun pill(m: Metrics, left: Float, width: Float) = Box(left, m.stripTop + (m.stripHeight - PILL) / 2, width, PILL)
 
     fun composing(m: Metrics): List<StripSlot> {
         val right = m.width - m.margin

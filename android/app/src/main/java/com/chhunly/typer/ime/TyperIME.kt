@@ -14,6 +14,8 @@ import android.view.inputmethod.EditorInfo
 import com.chhunly.typer.core.AutoCap
 import com.chhunly.typer.core.Composer
 import com.chhunly.typer.core.Engine
+import com.chhunly.typer.core.EmojiData
+import com.chhunly.typer.core.EmojiRecents
 import com.chhunly.typer.core.EnglishWords
 import com.chhunly.typer.core.FieldType
 import com.chhunly.typer.core.KeyAction
@@ -56,6 +58,16 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     /** English word suggestions allowed: plain text fields that don't turn suggestions off, not passwords. */
     private var wordsAllowed = false
     private var words: List<String> = emptyList()
+
+    // emoji page: data loaded once off the main thread; recents and chosen skin tones kept on the phone only
+    @Volatile private var emojiData: EmojiData? = null
+    private var emojiOpen = false
+    private var emojiSearch = false
+    private var query = ""
+    private var results: List<String> = emptyList()
+    private var recents: List<String> = emptyList()
+    private var tones: Map<String, String> = emptyMap()
+    private val emojiPrefs by lazy { getSharedPreferences("typer_emoji", MODE_PRIVATE) }
     private var dragCaret = -1
 
     // English words: loaded once, off the main thread
@@ -80,6 +92,17 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             engine.real = if (e.loaded) e else NoSuggestions
         }
         loader.execute {
+            val data = try {
+                EmojiData.load(asset("data/emoji.json"), asset("data/emoji-variants.json"), asset("data/emoji-names.tsv"))
+            } catch (e: Exception) {  // missing or broken data: the emoji key does nothing
+                null
+            }
+            main.post {
+                emojiData = data
+                view?.emojiData = data
+            }
+        }
+        loader.execute {
             english = try {
                 assets.open("data/english.tsv").use { EnglishWords.load(it) }
             } catch (e: java.io.IOException) {
@@ -97,7 +120,12 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     /** No extract (fullscreen) editor, also in landscape: the Phrase is composed in the app's own field. */
     override fun onEvaluateFullscreenMode() = false
 
-    override fun onCreateInputView(): View = KeyboardView(this, this).also { view = it }
+    override fun onCreateInputView(): View = KeyboardView(this, this).also {
+        view = it
+        it.emojiData = emojiData
+    }
+
+    private fun asset(path: String) = assets.open(path).use { it.readBytes().toString(Charsets.UTF_8) }
 
     override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
@@ -190,6 +218,8 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         composer.fieldEnded()
         view?.reset()
         showAll = false
+        emojiOpen = false
+        emojiSearch = false
         super.onFinishInputView(finishingInput)
     }
 
@@ -233,6 +263,12 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             showAll = showAll,
             returnKind = returnKind,
             returnAction = returnAction,
+            emoji = emojiOpen,
+            emojiSearch = emojiSearch,
+            query = query,
+            results = results,
+            recents = recents,
+            tones = tones,
         )
     }
 
@@ -247,6 +283,8 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     // ---- view events ----
 
     override fun onKey(action: KeyAction) {
+        if (emojiSearch) return searchKey(action)
+        if (emojiOpen && action == KeyAction.Page) return closeEmoji()
         when (action) {
             is KeyAction.Text -> type(action.text)
             KeyAction.Space -> type(" ")
@@ -262,7 +300,62 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
                 render()
             }
             KeyAction.Mode -> modeTapped()
+            KeyAction.Emoji -> openEmoji()
         }
+    }
+
+    // ---- emoji ----
+
+    private fun openEmoji() {
+        if (emojiData == null) return
+        recents = EmojiRecents.decode(emojiPrefs.getString("recents", null))
+        tones = emojiPrefs.getString("tones", null)?.let { s ->
+            s.split('\n').mapNotNull { l -> l.split('\t').takeIf { it.size == 2 }?.let { it[0] to it[1] } }.toMap()
+        } ?: emptyMap()
+        emojiOpen = true
+        render()
+    }
+
+    private fun closeEmoji() {
+        emojiOpen = false
+        emojiSearch = false
+        refresh()
+    }
+
+    /** An emoji from the grid, a tone panel or search: typed like any other key (it ends a Phrase first). */
+    override fun onEmoji(emoji: String) {
+        type(emoji)
+        val data = emojiData ?: return
+        val base = data.base(emoji)
+        if (data.variants.containsKey(base)) tones = if (base == emoji) tones - base else tones + (base to emoji)
+        recents = EmojiRecents.add(recents, emoji)
+        emojiPrefs.edit()
+            .putString("recents", EmojiRecents.encode(recents))
+            .putString("tones", tones.entries.joinToString("\n") { "${it.key}\t${it.value}" })
+            .apply()
+        render()
+    }
+
+    override fun onEmojiSearch(open: Boolean) {
+        emojiSearch = open
+        query = ""
+        results = emptyList()
+        if (open) shift = Shift.OFF
+        render()
+    }
+
+    /** While searching, the letters type the query; return or the emoji key goes back to the emoji page. */
+    private fun searchKey(action: KeyAction) {
+        when (action) {
+            is KeyAction.Text -> query += action.text.lowercase()
+            KeyAction.Space -> if (query.isNotEmpty() && !query.endsWith(" ")) query += " "
+            KeyAction.Backspace -> query = query.dropLast(1)
+            KeyAction.Return, KeyAction.Emoji, KeyAction.Page -> return onEmojiSearch(false)
+            KeyAction.Shift -> return shiftTapped()
+            else -> return
+        }
+        results = emojiData?.search(query) ?: emptyList()
+        render()
     }
 
     /** A DEL key event, not deleteSurroundingText: editors then delete whole emoji and selections themselves. */
@@ -329,7 +422,9 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     }
 
     /** Long press on the top row: the hint digit, typed like any digit (it commits the Phrase first). */
-    override fun onHint(text: String) = type(text)
+    override fun onHint(text: String) {
+        if (emojiSearch) searchKey(KeyAction.Text(text)) else type(text)
+    }
 
     /** Hold or slide on the space bar: the caret follows, cluster by cluster. Mid-Phrase, the Phrase stays Latin. */
     override fun onDragStart() {

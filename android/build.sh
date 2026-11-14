@@ -14,6 +14,7 @@ if [ -z "${ANDROID_NDK_HOME:-}" ]; then
 fi
 
 python3 data/build.py >/dev/null
+python3 data/emoji.py >/dev/null  # emoji keyboard: list, skin tones, English and Khmer names
 
 command -v cargo-ndk >/dev/null || cargo install cargo-ndk
 for t in aarch64-linux-android armv7-linux-androideabi x86_64-linux-android; do
@@ -26,6 +27,7 @@ mkdir -p "$OUT/jniLibs" "$OUT/assets/data"
 # cargo-ndk reads the crate from the current directory
 (cd android/jni && cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -P 24 -o ../app/build/rust/jniLibs build --release)
 for f in lexicon ngrams english generated; do cp "data/out/$f.tsv" "$OUT/assets/data/"; done
+for f in emoji.json emoji-variants.json emoji-names.tsv; do cp "data/out/$f" "$OUT/assets/data/"; done
 
 case "${1:-}" in host | check) cargo build --release --manifest-path android/jni/Cargo.toml ;; esac
 

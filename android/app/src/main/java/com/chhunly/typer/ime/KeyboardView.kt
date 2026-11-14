@@ -55,6 +55,10 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         fun onDragStart()
         fun onCaret(clusters: Int)
         fun onDragEnd()
+        /** An emoji tapped on the emoji page or in search results. */
+        fun onEmoji(emoji: String)
+        /** Open or close emoji search (the letters type the query). */
+        fun onEmojiSearch(open: Boolean)
     }
 
     enum class Shift { OFF, ONCE, LOCK }
@@ -83,6 +87,15 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         val returnKind: ReturnKind = ReturnKind.NEWLINE,
         /** The field has an action (search, send, ...): the return key is drawn in primary. */
         val returnAction: Boolean = false,
+        /** The emoji page is open (instead of the keys). */
+        val emoji: Boolean = false,
+        /** Emoji search: the letters type [query], [results] show above it. */
+        val emojiSearch: Boolean = false,
+        val query: String = "",
+        val results: List<String> = emptyList(),
+        val recents: List<String> = emptyList(),
+        /** Base emoji -> the skin tone last chosen for it. */
+        val tones: Map<String, String> = emptyMap(),
     ) {
         val composing get() = typed.isNotEmpty()
         val panelOpen get() = showAll && composing
@@ -91,10 +104,14 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     var state = State()
         set(value) {
             if (field == value) return
-            val relayout = field.page != value.page || (field.shift != Shift.OFF) != (value.shift != Shift.OFF)
+            val relayout = field.page != value.page || (field.shift != Shift.OFF) != (value.shift != Shift.OFF) ||
+                field.emoji != value.emoji || field.emojiSearch != value.emojiSearch
             if (field.panelOpen != value.panelOpen) panelScroll = 0f
+            if (field.emoji != value.emoji) { emojiScroll = 0f; tonePopup = null }
+            val resize = field.emojiSearch != value.emojiSearch
             field = value
             if (relayout) keysCache = null
+            if (resize) requestLayout()
             invalidate()
         }
 
@@ -123,7 +140,25 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     private var metrics = Metrics(360f, 800f)
     private var keysCache: List<Key>? = null
     private val keys: List<Key>
-        get() = keysCache ?: KeyLayout.keys(metrics, state.page, state.shift != Shift.OFF).also { keysCache = it }
+        get() = keysCache ?: (if (state.emoji && !state.emojiSearch) KeyLayout.emojiRow(metrics)
+        else KeyLayout.keys(metrics, if (state.emojiSearch) KeyPage.LETTERS else state.page, state.shift != Shift.OFF)).also { keysCache = it }
+
+    /** Emoji data, set by the service once loaded off the main thread; the emoji key does nothing until then. */
+    var emojiData: com.chhunly.typer.core.EmojiData? = null
+        set(value) {
+            field = value
+            emoji = value?.let { EmojiPanel(it) }
+        }
+    private var emoji: EmojiPanel? = null
+    private var emojiScroll = 0f
+    /** The open skin-tone panel: its options and their boxes (dp). */
+    private var tonePopup: List<Pair<String, Box>>? = null
+    private val scroller = android.widget.OverScroller(context)
+    private var velocity: android.view.VelocityTracker? = null
+    private var emojiDown: Pair<Float, Float>? = null  // where an emoji-page touch started (dp)
+    private var emojiScrolling = false
+    private var emojiLongPress: Runnable? = null
+    private var emojiLongPressed = false
 
     /** The navigation bar (or gesture area) under the keys, in px; the background is drawn behind it. */
     private var bottomInset = 0
@@ -155,8 +190,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
         val screenH = resources.displayMetrics.heightPixels / d
-        val m = Metrics(w / d, screenH)
-        if (m.width != metrics.width || m.pitch != metrics.pitch) {
+        val m = Metrics(w / d, screenH, if (state.emojiSearch) SEARCH_ROW else 0f)
+        if (m.width != metrics.width || m.pitch != metrics.pitch || m.extraTop != metrics.extraTop) {
             metrics = m
             keysCache = null
         }
@@ -195,8 +230,208 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     override fun onDraw(canvas: Canvas) {
         canvas.drawColor(theme.background)
-        drawStrip(canvas)
-        if (state.panelOpen) drawPanel(canvas) else drawKeys(canvas)
+        val panel = emoji
+        when {
+            state.emoji && state.emojiSearch && panel != null -> {
+                drawSearchRows(canvas)
+                drawKeys(canvas)
+            }
+            state.emoji && panel != null -> drawEmojiPage(canvas, panel)
+            else -> {
+                drawStrip(canvas)
+                if (state.panelOpen) drawPanel(canvas) else drawKeys(canvas)
+            }
+        }
+    }
+
+    // ---- emoji page ----
+
+    private val emojiPaint = TextPaint(Paint.ANTI_ALIAS_FLAG)
+
+    private fun drawEmojiPage(canvas: Canvas, panel: EmojiPanel) {
+        val m = metrics
+        panel.layout(m, state.recents, state.tones)
+        emojiScroll = emojiScroll.coerceIn(0f, panel.maxScroll(m))
+        // tab bar in the strip's place
+        val current = panel.sectionAt(emojiScroll)
+        for ((i, tab) in panel.tabs.withIndex()) {
+            val r = rectOf(panel.tabBox(m, i))
+            when {
+                tab.section < 0 -> drawIcon(canvas, R.drawable.ic_search, r.centerX(), r.centerY(), theme.onSurfaceVariant, 22f)
+                tab.icon == null -> drawIcon(canvas, R.drawable.ic_recent, r.centerX(), r.centerY(), theme.onSurfaceVariant, 22f)
+                else -> panel.drawEmoji(canvas, emojiPaint, tab.icon, r, 20f * sp)
+            }
+            if (tab.section == current) {
+                fill.color = theme.mode  // Typer yellow marks the section in view
+                canvas.drawRoundRect(RectF(r.left + px(6f), r.bottom - px(5f), r.right - px(6f), r.bottom - px(2f)), px(2f), px(2f), fill)
+            }
+        }
+        // grid
+        val vp = rectOf(panel.viewport(m))
+        canvas.save()
+        canvas.clipRect(vp)
+        font(true)
+        text.textSize = 13f * sp
+        text.color = theme.onSurfaceVariant
+        text.textAlign = Paint.Align.LEFT
+        for ((title, top) in panel.visibleTitles(m, emojiScroll)) {
+            canvas.drawText(title.uppercase(), px(m.margin + 6f), px(top + panel.titleHeight - 9f), text)
+        }
+        text.textAlign = Paint.Align.CENTER
+        val size = panel.cellHeight(m) * 0.6f * d
+        for ((e, b) in panel.visibleCells(m, emojiScroll)) panel.drawEmoji(canvas, emojiPaint, e, rectOf(b), size)
+        canvas.restore()
+        // bottom row: letters, space, delete
+        val pressed = tracker.pressed
+        for (key in keys) drawKey(canvas, key, key in pressed)
+        // skin-tone panel on top
+        tonePopup?.let { options ->
+            val first = options.first().second
+            val last = options.last().second
+            val r = RectF(px(options.minOf { it.second.left }) - px(6f), px(first.top) - px(6f),
+                px(options.maxOf { it.second.right }) + px(6f), px(last.bottom) + px(6f))
+            fill.color = 0x33000000
+            canvas.drawRoundRect(RectF(r.left, r.top + px(2f), r.right, r.bottom + px(2f)), px(14f), px(14f), fill)
+            fill.color = theme.popup
+            canvas.drawRoundRect(r, px(14f), px(14f), fill)
+            for ((e, b) in options) panel.drawEmoji(canvas, emojiPaint, e, rectOf(b), size)
+        }
+    }
+
+    /** Emoji search: results above, the query with a close button below, the letters under them. */
+    private fun drawSearchRows(canvas: Canvas) {
+        val m = metrics
+        val panel = emoji ?: return
+        val cw = panel.cellWidth(m)
+        val size = min(cw, SEARCH_ROW) * 0.6f * d
+        state.results.take(panel.cols).forEachIndexed { i, e ->
+            panel.drawEmoji(canvas, emojiPaint, e, rectOf(Box(m.margin + i * cw, 0f, cw, SEARCH_ROW)), size)
+        }
+        if (state.results.isEmpty()) {
+            font(false)
+            text.textSize = 14f * sp
+            text.color = theme.onSurfaceVariant
+            canvas.drawText(if (state.query.isBlank()) "Type to search emoji, in English or Khmer" else "No emoji found",
+                px(m.width / 2), px(SEARCH_ROW / 2 + 5f), text)
+        }
+        val field = searchField()
+        val r = rectOf(field)
+        fill.color = theme.letterKey
+        canvas.drawRoundRect(r, r.height() / 2, r.height() / 2, fill)
+        drawIcon(canvas, R.drawable.ic_search, r.left + px(20f), r.centerY(), theme.onSurfaceVariant, 20f)
+        font(false)
+        text.textSize = 17f * sp
+        text.textAlign = Paint.Align.LEFT
+        text.color = if (state.query.isEmpty()) theme.onSurfaceVariant else theme.onLetter
+        canvas.drawText(state.query.ifEmpty { "Search emoji" }, r.left + px(40f), r.centerY() - (text.ascent() + text.descent()) / 2, text)
+        text.textAlign = Paint.Align.CENTER
+        val close = rectOf(searchClose())
+        drawIcon(canvas, R.drawable.ic_close, close.centerX(), close.centerY(), theme.onSurfaceVariant, 22f)
+    }
+
+    private fun searchField(): Box {
+        val m = metrics
+        return Box(m.margin, SEARCH_ROW + 4f, m.width - 2 * m.margin - 52f, m.stripHeight - 8f)
+    }
+
+    private fun searchClose(): Box {
+        val m = metrics
+        return Box(m.width - m.margin - 48f, SEARCH_ROW, 48f, m.stripHeight)
+    }
+
+    private fun searchResultAt(x: Float, y: Float): String? {
+        val panel = emoji ?: return null
+        if (y >= SEARCH_ROW) return null
+        val i = ((x - metrics.margin) / panel.cellWidth(metrics)).toInt()
+        return state.results.take(panel.cols).getOrNull(i)
+    }
+
+    /** Touches on the emoji page's tab bar and grid (the bottom row goes through the key tracker). */
+    private fun emojiTouch(e: MotionEvent, x: Float, y: Float): Boolean {
+        val panel = emoji ?: return false
+        val m = metrics
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                scroller.forceFinished(true)
+                emojiDown = x to y
+                emojiScrolling = false
+                emojiLongPressed = false
+                velocity?.recycle()
+                velocity = android.view.VelocityTracker.obtain().also { it.addMovement(e) }
+                val cell = if (tonePopup == null) panel.cellAt(m, x, y, emojiScroll) else null
+                if (cell != null && emojiData?.variants?.containsKey(emojiData?.base(cell.first) ?: cell.first) == true) {
+                    val r = Runnable {
+                        emojiLongPressed = true
+                        haptic(HapticFeedbackConstants.LONG_PRESS)
+                        val data = emojiData ?: return@Runnable
+                        tonePopup = panel.tonePanel(m, data.base(cell.first), cell.second)
+                        invalidate()
+                    }
+                    emojiLongPress = r
+                    handler.postDelayed(r, LONG_PRESS)
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                velocity?.addMovement(e)
+                val (dx, dy) = emojiDown ?: return true
+                if (!emojiScrolling && abs(y - dy) * d > slop && tonePopup == null && panel.viewport(m).contains(dx, dy)) {
+                    emojiScrolling = true
+                    emojiLongPress?.let { handler.removeCallbacks(it) }
+                }
+                if (emojiScrolling) {
+                    emojiScroll = (emojiScroll - (y - (emojiDown?.second ?: y))).coerceIn(0f, panel.maxScroll(m))
+                    emojiDown = dx to y
+                    invalidate()
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                emojiLongPress?.let { handler.removeCallbacks(it) }
+                val start = emojiDown
+                emojiDown = null
+                if (emojiScrolling) {
+                    velocity?.let { v ->
+                        v.addMovement(e)
+                        v.computeCurrentVelocity(1000)
+                        scroller.fling(0, px(emojiScroll).toInt(), 0, -v.yVelocity.toInt(), 0, 0, 0, px(panel.maxScroll(m)).toInt())
+                        postInvalidateOnAnimation()
+                    }
+                } else if (!emojiLongPressed && start != null) {
+                    val popup = tonePopup
+                    when {
+                        popup != null -> {
+                            tonePopup = null
+                            popup.firstOrNull { it.second.contains(x, y) }?.let { tap(); listener.onEmoji(it.first) }
+                        }
+                        y < m.rowsTop -> panel.tabs.indices.firstOrNull { panel.tabBox(m, it).contains(x, metrics.stripTop + m.stripHeight / 2) }?.let { i ->
+                            tap()
+                            val tab = panel.tabs[i]
+                            if (tab.section < 0) listener.onEmojiSearch(true)
+                            else emojiScroll = panel.scrollFor(tab.section).coerceIn(0f, panel.maxScroll(m))
+                        }
+                        else -> panel.cellAt(m, x, y, emojiScroll)?.let { tap(); listener.onEmoji(it.first) }
+                    }
+                }
+                velocity?.recycle()
+                velocity = null
+                invalidate()
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                emojiLongPress?.let { handler.removeCallbacks(it) }
+                emojiDown = null
+                velocity?.recycle()
+                velocity = null
+            }
+        }
+        return true
+    }
+
+    private fun tap() = haptic(HapticFeedbackConstants.KEYBOARD_TAP)
+
+    override fun computeScroll() {
+        if (scroller.computeScrollOffset()) {
+            emojiScroll = scroller.currY / d
+            postInvalidateOnAnimation()
+        }
     }
 
     private fun drawKeys(canvas: Canvas) {
@@ -251,7 +486,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             }, cx, cy, fg)
             KeyAction.Backspace -> drawIcon(canvas, R.drawable.ic_backspace, cx, cy, fg)
             KeyAction.Return -> drawIcon(canvas, state.returnKind.icon, cx, cy, fg)
-            KeyAction.Page -> drawLabel(canvas, if (state.page == KeyPage.LETTERS) "?123" else "ABC", cx, cy, 16f, fg, alpha, bold = true)
+            KeyAction.Page -> drawLabel(canvas, if (state.page == KeyPage.LETTERS && !state.emoji) "?123" else "ABC", cx, cy, 16f, fg, alpha, bold = true)
+            KeyAction.Emoji -> drawIcon(canvas, R.drawable.ic_emoji, cx, cy, fg)
             KeyAction.Symbols -> drawLabel(canvas, if (state.page == KeyPage.NUMBERS) "=\\<" else "?123", cx, cy, 16f, fg, alpha, bold = true)
             KeyAction.Mode -> drawLabel(canvas, state.mode, cx, cy, if (state.mode == "EN") 16f else 20f, fg, alpha, bold = true)
             KeyAction.Space -> Unit  // blank, like Gboard
@@ -449,6 +685,20 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         val id = e.getPointerId(i)
         val x = e.getX(i) / d
         val y = e.getY(i) / d
+        if (state.emoji && !state.emojiSearch && emoji != null) {
+            // the grid and tab bar own a touch that starts above the bottom row; the bottom row goes to the keys
+            val bottomTop = metrics.rowsTop + 3 * metrics.pitch - metrics.rowGap / 2
+            if (emojiDown != null || (e.actionMasked == MotionEvent.ACTION_DOWN && (y < bottomTop || tonePopup != null))) return emojiTouch(e, x, y)
+        }
+        if (state.emoji && state.emojiSearch && y < metrics.rowsTop - 2f) {
+            if (e.actionMasked == MotionEvent.ACTION_UP) {
+                when {
+                    searchClose().contains(x, y) -> { tap(); listener.onEmojiSearch(false) }
+                    else -> searchResultAt(x, y)?.let { tap(); listener.onEmoji(it) }
+                }
+            }
+            return true
+        }
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> when {
                 y < metrics.rowsTop - 2f -> if (e.actionMasked == MotionEvent.ACTION_DOWN) {
@@ -620,6 +870,32 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     private fun targets(): List<Target> {
         val out = ArrayList<Target>()
+        val panel = emoji
+        val data = emojiData
+        if (state.emoji && panel != null && data != null) {
+            if (state.emojiSearch) {
+                state.results.take(panel.cols).forEachIndexed { i, e ->
+                    out += Target(EMOJI + i, data.label(e), Box(metrics.margin + i * panel.cellWidth(metrics), 0f, panel.cellWidth(metrics), SEARCH_ROW)) { listener.onEmoji(e) }
+                }
+                out += Target(STRIP, "close emoji search", searchClose()) { listener.onEmojiSearch(false) }
+                for ((i, k) in keys.withIndex()) out += Target(KEYS + i, describe(k), k.box, key = true) { listener.onKey(k.action) }
+                return out
+            }
+            panel.layout(metrics, state.recents, state.tones)
+            tonePopup?.let { opts ->
+                opts.forEachIndexed { i, (e, b) -> out += Target(EMOJI + i, data.label(e), b) { tonePopup = null; listener.onEmoji(e) } }
+                return out
+            }
+            panel.tabs.forEachIndexed { i, tab ->
+                out += Target(STRIP + i, tab.label, panel.tabBox(metrics, i)) {
+                    if (tab.section < 0) listener.onEmojiSearch(true)
+                    else { emojiScroll = panel.scrollFor(tab.section).coerceIn(0f, panel.maxScroll(metrics)); invalidate() }
+                }
+            }
+            panel.visibleCells(metrics, emojiScroll).forEachIndexed { i, (e, b) -> out += Target(EMOJI + i, data.label(e), b) { listener.onEmoji(e) } }
+            for ((i, k) in keys.withIndex()) out += Target(KEYS + i, describe(k), k.box, key = true) { listener.onKey(k.action) }
+            return out
+        }
         for ((i, s) in stripSlots().withIndex()) {
             val label = when (val a = s.action) {
                 StripAction.Latin -> "abc, keep Latin"
@@ -657,7 +933,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         }
         KeyAction.Backspace -> "delete"
         KeyAction.Return -> state.returnKind.label
-        KeyAction.Page -> if (state.page == KeyPage.LETTERS) "numbers and symbols" else "letters"
+        KeyAction.Page -> if (state.page == KeyPage.LETTERS && !state.emoji) "numbers and symbols" else "letters"
+        KeyAction.Emoji -> "emoji"
         KeyAction.Symbols -> if (state.page == KeyPage.NUMBERS) "more symbols" else "numbers"
         KeyAction.Mode -> if (state.mode == "EN") "English mode" else "Khmer mode"
         KeyAction.Space -> "space"
@@ -748,7 +1025,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         val x = event.x / d
         val y = event.y / d
         val ts = targets()
-        val under = if (y < metrics.rowsTop || state.panelOpen) ts.firstOrNull { it.box.contains(x, y) }
+        val under = if (y < metrics.rowsTop || state.panelOpen || state.emoji) ts.firstOrNull { it.box.contains(x, y) }
         else KeyLayout.hit(x, y, keys)?.let { k -> ts.firstOrNull { it.id == KEYS + keys.indexOf(k) } }
         when (event.actionMasked) {
             MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> if (under?.id != hovered) {
@@ -775,6 +1052,9 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         private const val KEYS = 1
         private const val STRIP = 1000
         private const val PANEL = 2000
+        private const val EMOJI = 3000
+        /** Height of the emoji search results row above the query (dp). */
+        const val SEARCH_ROW = 48f
         private const val NO_ID = Int.MIN_VALUE
         /** The platform's keyboard-key class: screen readers treat it as a key and don't append "Button". */
         private const val KEY_CLASS = "android.inputmethodservice.Keyboard\$Key"
