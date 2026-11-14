@@ -25,9 +25,13 @@ struct KeyboardView: View {
             VStack(spacing: 0) {
                 candidateBar.zIndex(-1)
                 Spacer().frame(height: 6)
-                VStack(spacing: rowGap) {
-                    ForEach(0..<3, id: \.self) { i in row(i, kw: kw, width: geo.size.width).zIndex(Double(i)) }
-                    bottomRow(kw: kw).zIndex(3)
+                if model.showAll && !model.typed.isEmpty {
+                    panel.frame(height: 4 * keyHeight + 3 * rowGap)
+                } else {
+                    VStack(spacing: rowGap) {
+                        ForEach(0..<3, id: \.self) { i in row(i, kw: kw, width: geo.size.width).zIndex(Double(i)) }
+                        bottomRow(kw: kw).zIndex(3)
+                    }
                 }
             }
             .padding(.horizontal, margin)
@@ -90,29 +94,81 @@ struct KeyboardView: View {
     // MARK: candidate bar
 
     private var candidateBar: some View {
-        HStack {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    if !model.typed.isEmpty {
-                        chip(model.typed, bold: false, onLatin)
-                        ForEach(Array(model.suggestions.enumerated()), id: \.offset) { i, s in
-                            chip(s, bold: i == 0) { onCandidate(i) }
-                        }
-                    }
-                }
+        HStack(spacing: 0) {
+            if !model.typed.isEmpty {
+                // only the first Suggestion; head-truncated so the end, where the user types, stays visible
+                Button { onCandidate(0) } label: {
+                    Text(model.suggestions.first ?? model.typed)
+                        .font(.system(size: 18, weight: .bold))
+                        .lineLimit(1).truncationMode(.head)
+                        .padding(.horizontal, 10)
+                        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                        .background(Color.accentColor.opacity(0.25))
+                        .cornerRadius(6)
+                }.foregroundColor(.primary)
+                Button { model.showAll.toggle() } label: {
+                    Image(systemName: model.showAll ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 16, weight: .semibold))
+                        .frame(width: 44, height: 40)
+                        .contentShape(Rectangle())
+                }.foregroundColor(.primary)
             }
-            .noScrollEdgeBlur()
         }
         .frame(height: 40)
     }
 
-    private func chip(_ text: String, bold: Bool, _ action: @escaping () -> Void) -> some View {
+    // MARK: all-Suggestions panel
+
+    private var panel: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                ForEach(Array(model.suggestions.enumerated()), id: \.offset) { i, s in
+                    panelRow(i == 0 ? AttributedString(s) : highlighted(s), bold: i == 0) {
+                        model.showAll = false
+                        onCandidate(i)
+                    }
+                }
+                panelRow(AttributedString(model.typed), tag: "abc") {
+                    model.showAll = false
+                    onLatin()
+                }
+            }
+        }
+        .noScrollEdgeBlur()
+        .background(KeyStyle.letter.background.opacity(0.5))
+        .cornerRadius(5)
+    }
+
+    private func panelRow(_ text: AttributedString, bold: Bool = false, tag: String? = nil,
+                          _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(text).font(.system(size: 18, weight: bold ? .bold : .regular))
-                .padding(.horizontal, 10).frame(height: 32)
-                .background(bold ? Color.accentColor.opacity(0.25) : Color(.systemGray5))
-                .cornerRadius(6)
-        }.foregroundColor(.primary)
+            HStack(alignment: .top, spacing: 8) {
+                Text(text).font(.system(size: 20, weight: bold ? .bold : .regular)).lineSpacing(6)
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+                if let tag {
+                    Text(tag).font(.system(size: 12)).foregroundColor(.secondary)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color(.systemGray5)).cornerRadius(4)
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .foregroundColor(.primary)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    /// Suggestion `s` with the part that differs from Suggestion 1 on Typer's yellow.
+    private func highlighted(_ s: String) -> AttributedString {
+        var a = AttributedString(s)
+        if let first = model.suggestions.first, let r = SuggestionDiff.changed(s, from: first),
+           let lo = AttributedString.Index(r.lowerBound, within: a), let hi = AttributedString.Index(r.upperBound, within: a) {
+            a[lo..<hi].backgroundColor = Color(red: 0.96, green: 0.78, blue: 0.26)
+            a[lo..<hi].foregroundColor = Color(white: 0.1)
+        }
+        return a
     }
 }
 
