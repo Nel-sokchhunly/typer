@@ -1,6 +1,7 @@
 #!/bin/sh
 # ios/build.sh          build build/ios/Typer.xcframework (the Rust engine for device + simulator)
 # ios/build.sh device   ...then generate the Xcode project, build, and install on the connected iPhone
+# ios/build.sh ipa      ...then archive unsigned and zip build/ios/Typer.ipa (re-sign it with Sideloadly etc.)
 set -eu
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.cargo/bin:$PATH"
@@ -32,6 +33,17 @@ mkdir -p "$OUT/data"
 for f in lexicon ngrams english generated; do cp "data/out/$f.tsv" "$OUT/data/"; done
 echo "built: $OUT/Typer.xcframework"
 
+if [ "${1:-}" = ipa ]; then
+    (cd ios && xcodegen generate --quiet)
+    rm -rf "$OUT/Typer.xcarchive" "$OUT/ipa" "$OUT/Typer.ipa"
+    xcodebuild -project ios/Typer.xcodeproj -scheme Typer -configuration Release -destination 'generic/platform=iOS' \
+        -archivePath "$OUT/Typer.xcarchive" CODE_SIGNING_ALLOWED=NO archive -quiet
+    mkdir -p "$OUT/ipa/Payload"
+    cp -R "$OUT/Typer.xcarchive/Products/Applications/Typer.app" "$OUT/ipa/Payload/"
+    (cd "$OUT/ipa" && zip -qry ../Typer.ipa Payload)
+    echo "built: $OUT/Typer.ipa"
+    exit 0
+fi
 [ "${1:-}" = device ] || exit 0
 
 # One command onto the plugged-in iPhone: sh ios/build.sh device
