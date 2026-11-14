@@ -40,13 +40,13 @@ data class Key(val action: KeyAction, val box: Box, val style: KeyStyle, val hin
 
 /**
  * Sizes in dp from android/docs/reference.md (measured on Gboard): side margin 4.5, gap 1.29% of the width,
- * row pitch 6.45% of the screen height (Gboard scales rows with screen height), keys 80% of the pitch, a 48 dp
- * suggestion strip plus 4 dp above row 1.
+ * row pitch from the screen height, keys 80% of the pitch, a 48 dp suggestion strip plus 4 dp above row 1.
  */
 class Metrics(val width: Float, screenHeight: Float) {
     val margin = 4.5f
     val gap = (width * 0.0129f).coerceIn(4f, 6f)
-    val pitch = (screenHeight * 0.0645f).coerceIn(46f, 64f)
+    /** Gboard scales rows with screen height: 59 dp at 914 dp tall, 50.5 dp at 800; a line through both. */
+    val pitch = (screenHeight * 0.07456f - 9.15f).coerceIn(46f, 64f)
     val keyHeight = pitch * 0.8f
     val rowGap = pitch - keyHeight
     val stripHeight = 48f
@@ -54,8 +54,8 @@ class Metrics(val width: Float, screenHeight: Float) {
     val keyWidth = (width - 2 * margin - 9 * gap) / 10
     /** Strip, four rows and the padding under the last row; the navigation bar inset comes on top. */
     val height = rowsTop + 4 * keyHeight + 3 * rowGap + rowGap
-    /** Rounded keys: Gboard's corner is a fifth of the key width (7 dp at 411 dp wide, 6 dp at 360). */
-    val radius = keyWidth * 0.2f
+    /** Rounded keys: Gboard's corner scales with the key (about 7.5 dp at 411 dp wide, 6.5 at 360). */
+    val radius = keyWidth * 0.215f
 }
 
 object KeyLayout {

@@ -35,16 +35,16 @@ Widths at 411 dp / 360 dp. "W" is the window width, "k" a letter key width, "g" 
 | Row 2 indent | half a key plus half a gap each side | same | `(k + g) / 2` | screenshots |
 | Shift and backspace width | 55.6 dp = 1.5k + 0.5g | 48 dp | `1.5k + 0.5g` | screenshots |
 | Bottom row | `?123` 1.5k, `,` 1k, emoji 1k, space 4k + 3g, `.` 1k, enter 1.5k | same proportions | `?123` 1.5k, ខ/EN 1k, `,` 1k, space 4k + 3g, `.` 1k, return 1.5k (Typer's mode key takes the emoji key's place) | screenshots |
-| Row pitch (key top to next key top) | 59 dp (155 px) | 50.5 dp | `screen height dp x 0.0645`, clamped 46..64 dp | screenshots: Gboard scales row height with screen height (914 dp tall: 59; 800 dp tall: 50.5) |
+| Row pitch (key top to next key top) | 59 dp (155 px) | 50.5 dp | `0.07456 x screen height dp - 9.15`, clamped 46..64 dp (the line through both measurements) | screenshots: Gboard scales row height with screen height (914 dp tall: 59; 800 dp tall: 50.5) |
 | Key height | 47 dp | 40.5 dp | 0.8 x pitch | screenshots (47/59 = 0.80, 40.5/50.5 = 0.80) |
 | Vertical gap between rows | 12 dp | 10 dp | 0.2 x pitch | screenshots |
-| Letter key corner radius | 7.0 dp | 6.0 dp | 0.2k | corner fit on the q key at both widths |
+| Letter key corner radius | 7.0 dp | 6.0 dp | 0.215k (the same corner fit then reads 7.0 dp on Typer at 411 dp) | corner fit on the q key at both widths |
 | Space, `,` and `.` corner radius | 7 dp (rounded rectangle, not a pill) | | same as letter keys | corner fit on the space bar |
 | `?123` and enter shape | full pill (radius = half the key height) | same | pill | screenshots |
 | Top of keyboard to top of row 1 (suggestion strip) | 52 dp | 52 dp | 52 dp: 48 dp strip + 4 dp | screenshots: unchanged across widths and heights |
 | Strip dividers | 1 dp wide, 24 dp tall, centred | | 1 dp x 24 dp, outline variant | screenshots |
 | Keys area (keyboard top to bottom of the last row) | 276 dp | 244.5 dp | follows from the rows above | screenshots |
-| Below the last row | 12 dp to Gboard's bottom, then the navigation bar area (the system's down-chevron "hide" button) | | 0.2 x pitch padding, then the navigation bar inset reported by the window | screenshots; `dumpsys window`: navigation bar inset 63 px = 24 dp (gesture navigation) |
+| Below the last row | 12 dp, then the system's 48 dp bar for keyboards (hide chevron, keyboard switcher) | | 0.2 x pitch, then the larger of the navigation-bar and tappable-element insets (48 dp with gesture navigation on Android 16) | screenshots; the Keyboard window's insets: navigation bars 24 dp, tappable element 48 dp |
 
 ## Labels
 

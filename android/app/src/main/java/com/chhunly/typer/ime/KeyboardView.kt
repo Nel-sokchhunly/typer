@@ -54,6 +54,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         fun onPanel(index: Int)
         fun onDragStart()
         fun onCaret(clusters: Int)
+        fun onDragEnd()
     }
 
     enum class Shift { OFF, ONCE, LOCK }
@@ -104,7 +105,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         }
 
     private val d = resources.displayMetrics.density
-    private val sp = resources.displayMetrics.scaledDensity
+    /** px per sp, following the user's font size setting. */
+    private val sp = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, 1f, resources.displayMetrics)
     private var metrics = Metrics(360f, 800f)
     private var keysCache: List<Key>? = null
     private val keys: List<Key>
@@ -147,8 +149,10 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     }
 
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
+        // With gesture navigation the system draws its own bar for the Keyboard (hide and switch buttons, 48 dp):
+        // that is a tappable element, taller than the navigation bar inset. Keep the keys clear of both.
         val bottom = if (Build.VERSION.SDK_INT >= 30) {
-            insets.getInsets(WindowInsets.Type.navigationBars()).bottom
+            maxOf(insets.getInsets(WindowInsets.Type.navigationBars()).bottom, insets.getInsets(WindowInsets.Type.tappableElement()).bottom)
         } else {
             @Suppress("DEPRECATION") insets.systemWindowInsetBottom
         }
@@ -215,8 +219,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         val cy = r.centerY()
         when (val a = key.action) {
             is KeyAction.Text -> {
-                val letter = key.style == KeyStyle.LETTER
-                drawLabel(canvas, a.text, cx, cy, if (letter && a.text.length == 1) 26f else 22f, fg, alpha)
+                drawLabel(canvas, a.text, cx, cy, if (a.text.length == 1) 26f else 22f, fg, alpha, onBaseline = a.text.length == 1)
                 key.hint?.let {
                     text.typeface = Typeface.DEFAULT
                     text.textSize = 12f * sp
@@ -240,14 +243,14 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         }
     }
 
-    private fun drawLabel(canvas: Canvas, s: String, cx: Float, cy: Float, sizeSp: Float, color: Int, alpha: Int = 255, bold: Boolean = false) {
+    /** `onBaseline`: one shared baseline for single characters, so a row doesn't jump and `,` `.` sit low like text. */
+    private fun drawLabel(canvas: Canvas, s: String, cx: Float, cy: Float, sizeSp: Float, color: Int, alpha: Int = 255, bold: Boolean = false, onBaseline: Boolean = false) {
         text.typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
         text.textSize = sizeSp * sp
         text.color = color
         text.alpha = alpha
         text.getTextBounds(s, 0, s.length, bounds)
-        // Centre by the glyphs' own box for symbols; letters share one baseline so a row doesn't jump.
-        val baseline = if (s.length == 1 && s[0].isLetter()) cy + text.textSize * 0.36f else cy - bounds.exactCenterY()
+        val baseline = if (onBaseline) cy + text.textSize * 0.36f else cy - bounds.exactCenterY()
         canvas.drawText(s, cx, baseline, text)
         text.alpha = 255
     }
@@ -279,7 +282,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         val label = (key.action as KeyAction.Text).text
         val r = bubble(key)
         drawBubbleBackground(canvas, r)
-        drawLabel(canvas, label, r.centerX(), r.centerY(), 26f, theme.onLetter)
+        drawLabel(canvas, label, r.centerX(), r.centerY(), 26f, theme.onLetter, onBaseline = label.length == 1)
     }
 
     /** Long press: the hint digit, selected (primary circle), as Gboard shows it. */
@@ -470,14 +473,20 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                             listener.onPanel(if (row == state.suggestions.size) -1 else row)
                         }
                     }
-                    else -> KeyLayout.hit(x, y, keys)?.let { run(id, tracker.up(id, it)) }
+                    else -> {
+                        val dragging = tracker.dragging
+                        KeyLayout.hit(x, y, keys)?.let { run(id, tracker.up(id, it)) }
+                        if (dragging && !tracker.dragging) listener.onDragEnd()
+                    }
                 }
                 if (e.actionMasked == MotionEvent.ACTION_UP) endTouches()
             }
             MotionEvent.ACTION_CANCEL -> {
                 stripDown = null
                 panelDownY = -1f
+                val dragging = tracker.dragging
                 for (p in 0 until e.pointerCount) run(e.getPointerId(p), tracker.cancel(e.getPointerId(p)))
+                if (dragging) listener.onDragEnd()
                 endTouches()
             }
         }
@@ -493,6 +502,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     /** Stop everything in flight (the Keyboard hides or the field changes). */
     fun reset() {
+        if (tracker.dragging) listener.onDragEnd()
         repeating?.let { handler.removeCallbacks(it) }
         repeating = null
         endTouches()

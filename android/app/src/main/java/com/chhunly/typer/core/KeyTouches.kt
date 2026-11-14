@@ -29,6 +29,9 @@ class KeyTouches(private val step: Float = 10f) {
         var long = false  // long-press fired: the touch-up types nothing
         var dragging = false
         var movedClusters = 0
+        /** Space held, then released without sliding: still a space. */
+        val spaceAfterAll get() = dragging && movedClusters == 0 && !moved
+        var moved = false
     }
 
     private var held: Held? = null
@@ -51,6 +54,7 @@ class KeyTouches(private val step: Float = 10f) {
     /** What an earlier touch does when a new one lands (rollover). */
     private fun finish(h: Held): List<KeyEffect> = when {
         h.repeating -> listOf(KeyEffect.StopRepeat)
+        h.spaceAfterAll -> listOf(KeyEffect.Fire(KeyAction.Space))
         h.long || h.dragging -> emptyList()
         else -> listOf(KeyEffect.Fire(h.key.action))
     }
@@ -75,6 +79,7 @@ class KeyTouches(private val step: Float = 10f) {
         val target = ((x - h.startX) / step).toInt()
         val delta = target - h.movedClusters
         if (delta == 0) return emptyList()
+        h.moved = true
         h.movedClusters = target
         return listOf(KeyEffect.MoveCaret(delta))
     }
@@ -98,6 +103,7 @@ class KeyTouches(private val step: Float = 10f) {
         held = null
         return when {
             h.repeating -> listOf(KeyEffect.StopRepeat)
+            h.spaceAfterAll -> listOf(KeyEffect.Fire(KeyAction.Space))
             h.long || h.dragging -> emptyList()
             else -> listOf(KeyEffect.Fire(key.action))
         }
