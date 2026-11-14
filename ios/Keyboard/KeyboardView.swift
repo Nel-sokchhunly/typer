@@ -128,7 +128,7 @@ struct KeyboardView: View {
         ScrollView {
             VStack(spacing: 0) {
                 ForEach(Array(model.suggestions.enumerated()), id: \.offset) { i, s in
-                    panelRow(i == 0 ? AttributedString(s) : highlighted(s), bold: i == 0) {
+                    panelRow(AttributedString(s), bold: i == 0) {
                         model.showAll = false
                         onCandidate(i)
                     }
@@ -139,9 +139,10 @@ struct KeyboardView: View {
                 }
             }
         }
+        .contentMargins(.vertical, 4, for: .scrollContent)
         .noScrollEdgeBlur()
         .background(KeyStyle.letter.background.opacity(0.5))
-        .cornerRadius(5)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))  // clips rows, dividers and press highlight
     }
 
     private func panelRow(_ text: AttributedString, bold: Bool = false, tag: String? = nil,
@@ -162,18 +163,7 @@ struct KeyboardView: View {
             .contentShape(Rectangle())
         }
         .foregroundColor(.primary)
-        .overlay(alignment: .bottom) { Divider() }
-    }
-
-    /// Suggestion `s` with the part that differs from Suggestion 1 on Typer's yellow.
-    private func highlighted(_ s: String) -> AttributedString {
-        var a = AttributedString(s)
-        if let first = model.suggestions.first, let r = SuggestionDiff.changed(s, from: first),
-           let lo = AttributedString.Index(r.lowerBound, within: a), let hi = AttributedString.Index(r.upperBound, within: a) {
-            a[lo..<hi].backgroundColor = Color(red: 0.96, green: 0.78, blue: 0.26)
-            a[lo..<hi].foregroundColor = Color(white: 0.1)
-        }
-        return a
+        .overlay(alignment: .bottom) { Divider().padding(.horizontal, 12) }
     }
 }
 
