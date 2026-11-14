@@ -63,6 +63,8 @@ a { color: var(--link); text-decoration-thickness: 1.5px; text-underline-offset:
 .btn::after { content: "\2192"; font-weight: 700; }
 .btn:hover { transform: translateY(-2px); }
 .btn:active { transform: none; }
+/* Not this visitor's OS: still a button, just quieter than the yellow one */
+.btn.muted { background: var(--chip); color: var(--fg); border-color: var(--line); }
 .note { color: var(--muted); font-size: 15px; }
 .warn { border-left: 3px solid var(--yellow); padding: 4px 0 4px 14px; margin: 14px 0; }
 
