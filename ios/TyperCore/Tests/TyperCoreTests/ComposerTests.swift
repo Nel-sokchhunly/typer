@@ -373,6 +373,54 @@ final class ComposerTests: XCTestCase {
         XCTAssertEqual(composer.mode, "ខ")
     }
 
+    func testCanToggleOnlyInKhmerEmptyTextField() {
+        XCTAssertTrue(composer.canToggle)
+        type("k")
+        XCTAssertFalse(composer.canToggle, "mid-phrase")
+        _ = composer.rawLatin()
+        XCTAssertTrue(composer.canToggle)
+        for (s, t) in [(true, FieldType.text), (false, .email), (false, .url), (false, .number)] {
+            _ = composer.fieldTraitsChanged(secure: s, type: t)
+            XCTAssertFalse(composer.canToggle)
+            XCTAssertEqual(composer.mode, "EN")
+        }
+        _ = composer.fieldTraitsChanged(secure: false, type: .text)
+        XCTAssertTrue(composer.canToggle)
+        XCTAssertEqual(composer.mode, "ខ")
+    }
+
+    func testEnglishChoiceSurvivesForcedField() {
+        XCTAssertTrue(composer.toggleMode())
+        _ = composer.fieldTraitsChanged(secure: true, type: .text)
+        XCTAssertEqual(composer.mode, "EN")
+        _ = composer.fieldTraitsChanged(secure: false, type: .text)
+        XCTAssertEqual(composer.mode, "EN", "the user's English choice is back after the password field")
+        XCTAssertTrue(composer.toggleMode())
+        XCTAssertEqual(composer.mode, "ខ")
+    }
+
+    func testEnglishModeTypesPlain() {
+        XCTAssertTrue(composer.toggleMode())
+        type("hello world")
+        XCTAssertEqual(proxy.doc, "hello world")
+        XCTAssertEqual(proxy.marked, 0)
+        XCTAssertEqual(composer.typed, "")
+        XCTAssertEqual(composer.suggestions, [])
+        XCTAssertEqual(spy.suggests, 0)
+    }
+
+    func testCursorMoveAndFieldEndLearnNothing() {
+        type("knhom")
+        proxy.moveCaretLeft(2)
+        XCTAssertTrue(composer.textChanged())
+        XCTAssertEqual(spy.picks, [])
+        type("tov")
+        XCTAssertTrue(composer.fieldEnded())
+        XCTAssertEqual(spy.picks, [])
+        XCTAssertEqual(picks, "")
+        XCTAssertEqual(proxy.marked, 0)
+    }
+
     func testSecureFieldNeverCallsEngine() {
         _ = composer.fieldTraitsChanged(secure: true, type: .text)
         XCTAssertEqual(composer.mode, "EN")
