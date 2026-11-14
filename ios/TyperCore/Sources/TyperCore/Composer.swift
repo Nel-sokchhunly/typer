@@ -104,9 +104,12 @@ public final class Composer {
         return true
     }
 
+    /// Whether the ខ/EN key does anything right now; the keyboard dims it otherwise.
+    public var canToggle: Bool { !isComposing && !secure && field == .text }
+
     /// Khmer <-> English. Ignored mid-phrase (a stray tap) and in fields that are English anyway.
     public func toggleMode() -> Bool {
-        guard !isComposing, !secure, field == .text else { return false }
+        guard canToggle else { return false }
         Self.english.toggle()
         return true
     }

@@ -23,6 +23,7 @@ final class KeyboardModel: ObservableObject {
     @Published var shift = Shift.off
     @Published var page = Page.letters
     @Published var mode = "ខ"  // the Composer's mode label
+    @Published var canToggle = true
     @Published var returnLabel = "return"
     @Published var returnProminent = false
     var autoCap = AutoCap.Kind.sentences
@@ -83,7 +84,7 @@ final class KeyboardViewController: UIInputViewController {
                 onCandidate: { [unowned self] in handle(composer.candidateTapped($0)) },
                 onLatin: { [unowned self] in handle(composer.rawLatin()) },
                 onGlobe: { [unowned self] in advanceToNextInputMode() },
-                onMode: { [unowned self] in _ = composer.toggleMode(); refresh() })
+                onMode: { [unowned self] in modeTapped() })
                 .environment(\.keyPress, { [unowned self] in keyFeedback() }))
         hosting.view.translatesAutoresizingMaskIntoConstraints = false
         hosting.view.backgroundColor = .clear
@@ -153,6 +154,14 @@ final class KeyboardViewController: UIInputViewController {
         _ = composer.fieldTraitsChanged(secure: t.isSecureTextEntry ?? false, type: type)
     }
 
+    /// Switching mode never turns shift on: the keys stay as they are until the next letter.
+    private func modeTapped() {
+        _ = composer.toggleMode()
+        if model.shift == .once { model.shift = .off }
+        model.shiftChosen = true
+        refresh()
+    }
+
     /// If the Composer declined the key, do the normal thing.
     private func handle(_ consumed: Bool, else fallback: () -> Void = {}) {
         if !consumed { fallback() }
@@ -163,6 +172,7 @@ final class KeyboardViewController: UIInputViewController {
         model.typed = composer.typed
         model.suggestions = composer.suggestions
         model.mode = composer.mode
+        model.canToggle = composer.canToggle
         if afterKey { model.shiftChosen = false }
         if model.shift != .lock && !model.shiftChosen {  // a typed key or a field change re-decides shift, like Apple's
             let before = textDocumentProxy.documentContextBeforeInput
