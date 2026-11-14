@@ -153,6 +153,13 @@ jobs:
           /usr/libexec/PlistBuddy -c "Set CFBundleShortVersionString $v" macos/Info.plist
           /usr/libexec/PlistBuddy -c "Set CFBundleVersion ${{ github.run_number }}" macos/Info.plist
       - run: macos/build.sh dist
+      - name: Build unsigned iOS IPA # re-sign with Sideloadly etc. to install
+        run: |
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+          brew install xcodegen
+          python3 data/emoji.py
+          sh ios/build.sh ipa
+          cp build/ios/Typer.ipa build/Typer-ios-unsigned.ipa
       - uses: actions/download-artifact@v5
         with:
           name: windows-setup
@@ -161,6 +168,6 @@ jobs:
         with:
           name: linux-deb
           path: build
-      - run: gh release create "$GITHUB_REF_NAME" build/Typer.pkg build/Typer-macos.zip build/Typer-windows-setup.exe build/Typer-linux-amd64.deb --generate-notes
+      - run: gh release create "$GITHUB_REF_NAME" build/Typer.pkg build/Typer-macos.zip build/Typer-windows-setup.exe build/Typer-linux-amd64.deb build/Typer-ios-unsigned.ipa --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
