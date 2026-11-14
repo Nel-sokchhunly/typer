@@ -17,7 +17,7 @@ It works in any app: Messenger, Telegram, Notes, browsers, and so on.
 
 > Typer is an early preview. Expect wrong suggestions sometimes. It learns from what you pick, so it gets better the more you use it.
 
-**Contents:** [Install](#install) ([macOS](#macos) · [Windows](#windows) · [Linux](#linux)) · [Use it](#use-it) · [Settings](#settings) · [Privacy](#privacy) · [Update](#update) · [Uninstall](#uninstall) · [Problems?](#problems) · [Development](#development)
+**Contents:** [Install](#install) ([macOS](#macos) · [Windows](#windows) · [Linux](#linux) · [Android](#android-preview)) · [Use it](#use-it) · [Settings](#settings) · [Privacy](#privacy) · [Update](#update) · [Uninstall](#uninstall) · [Problems?](#problems) · [Development](#development)
 
 ## Install
 
@@ -74,6 +74,17 @@ Ubuntu 22.04+ or Debian 12+ (64-bit Intel/AMD) with IBus, the default on GNOME. 
 1. Download **[Typer-linux-amd64.deb](https://github.com/Nel-sokchhunly/typer/releases/latest/download/Typer-linux-amd64.deb)** and open it to install, or run `sudo apt install ./Typer-linux-amd64.deb`.
 2. Log out and back in (IBus only finds new input methods when it starts).
 3. Open **Settings → Keyboard → Input Sources → + → Khmer → Typer / សរសេរ**.
+
+### Android (preview)
+
+Android 7.0 or newer. There is no Play Store listing yet: you install the app file yourself (sideload).
+
+1. Get **app-debug.apk**: open the latest successful run of the `ci` workflow on the [Actions page](https://github.com/Nel-sokchhunly/typer/actions/workflows/ci.yml), download the **typer-android-debug** artifact (sign in to GitHub first) and unzip it. Or build it yourself with `android/build.sh` (see `android/README.md`).
+2. Open the file on your phone. Android asks to allow installs from that app (your browser or file manager): allow it, then tap **Install**. The file is signed with a debug key, so Play Protect may warn about an unknown developer; only continue if you got the file from this repo.
+3. Open **សរសេរ (Typer)** from your apps and follow its two setup steps: **Open Settings** to turn on Typer (Android warns that any keyboard can collect what you type; Typer has no internet access and keeps everything on the phone), then **Choose keyboard** to pick Typer (សរសេរ).
+4. Try it in the app's test field: type `knhom` and tap **ខ្ញុំ**.
+
+To update: preview builds are signed with a different debug key each time, so Android refuses to install one over another. Uninstall the old app first (long-press the icon, **Uninstall**), then install the new file; this also clears what Typer has learned on the phone.
 
 ## Use it
 

@@ -12,7 +12,7 @@
 
 **Marked text**: The Phrase shown underlined in the text field while composing, before a Pick.
 
-**Khmer mode / English mode**: Whether the Keyboard turns Sing into Khmer (ខ) or types Latin as is (EN). Password, email, URL and number fields are always English mode.
+**Khmer mode / English mode**: Whether the Keyboard turns Sing into Khmer (ខ) or types Latin as is (EN). Password, email and number fields are always English mode; URL fields start in English mode and can switch to Khmer mode for that field.
 
 **Keyboard**: The typing surface the user installs (iOS keyboard extension, Android input method, macOS input method).
 
