@@ -23,6 +23,7 @@ final class KeyboardModel: ObservableObject {
     @Published var shift = Shift.off
     @Published var page = Page.letters
     @Published var mode = "ខ"  // the Composer's mode label
+    @Published var canToggle = true
     @Published var returnLabel = "return"
     @Published var returnProminent = false
     var autoCap = AutoCap.Kind.sentences
@@ -68,7 +69,7 @@ final class KeyboardViewController: UIInputViewController {
                 onCandidate: { [unowned self] in handle(composer.candidateTapped($0)) },
                 onLatin: { [unowned self] in handle(composer.rawLatin()) },
                 onGlobe: { [unowned self] in advanceToNextInputMode() },
-                onMode: { [unowned self] in _ = composer.toggleMode(); refresh() }))
+                onMode: { [unowned self] in _ = composer.toggleMode(); refresh(afterKey: true) }))
         hosting.view.translatesAutoresizingMaskIntoConstraints = false
         hosting.view.backgroundColor = .clear
         addChild(hosting)
@@ -146,6 +147,7 @@ final class KeyboardViewController: UIInputViewController {
         model.typed = composer.typed
         model.suggestions = composer.suggestions
         model.mode = composer.mode
+        model.canToggle = composer.canToggle
         if afterKey { model.shiftChosen = false }
         if model.shift != .lock && !model.shiftChosen {  // a typed key or a field change re-decides shift, like Apple's
             let before = textDocumentProxy.documentContextBeforeInput

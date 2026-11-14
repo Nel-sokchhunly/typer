@@ -74,8 +74,9 @@ struct KeyboardView: View {
             if model.needsGlobe {
                 KeyView(image: "globe", style: .function, width: kw * 1.1, height: keyHeight, action: onGlobe)
             }
-            // placeholder: ticket #30 decides what this key does
+            // dimmed when the mode is forced (password, email, URL, number) or a Phrase is open
             KeyView(text: model.mode, style: .function, width: kw * 1.1, height: keyHeight, fontSize: 16, action: onMode)
+                .opacity(model.canToggle ? 1 : 0.4)
             KeyView(text: "space", style: .letter, width: nil, height: keyHeight, fontSize: 16) { onKey(" ") }
             KeyView(text: model.returnLabel, style: model.returnProminent ? .prominent : .function, width: kw * 2.1,
                     height: keyHeight, fontSize: 16, action: onReturn)
