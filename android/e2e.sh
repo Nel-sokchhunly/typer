@@ -259,6 +259,35 @@ scenario_learn() { # Pick a non-first Suggestion from the panel; after a Keyboar
     xy=$(ui bounds "abc, keep Latin") && tap $xy  # leave the field clean
 }
 
+scenario_reset() { # learn a Pick, then the Companion app's Reset clears it: files gone, and the very next keystroke ranks as before
+    scenario_learn; [ $FAILED = 0 ] || return
+    "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null  # the Keyboard's process keeps running
+    wait_for try 30 >/dev/null || { log "FAIL reset: no Companion app"; FAILED=1; return; }
+    n=0
+    until xy=$(ui bounds "Reset"); do
+        n=$((n + 1))
+        [ $n -lt 6 ] || { log "FAIL reset: no Reset button"; FAILED=1; shot reset; return; }
+        "$ADB" shell input swipe 540 1600 540 700 300
+        sleep 0.5
+    done
+    tap $xy
+    wait_for "Cancel" 10 >/dev/null || { log "FAIL reset: no confirm dialog"; FAILED=1; shot reset; return; }
+    shot reset-confirm
+    tap $(ui bounds "Reset")  # the dialog's button: the dialog's window is the last in the dump
+    sleep 0.5
+    wait_for "Reset done" 10 >/dev/null && log "PASS reset: the card says Reset done" || { log "FAIL reset: no Reset done"; FAILED=1; }
+    shot reset-done
+    check "reset: learned files deleted" "gone" "$("$ADB" shell run-as $PKG ls files/user/user.tsv files/user/picks.tsv 2>/dev/null | grep -q tsv && echo kept || echo gone)"
+    open_app || { FAILED=1; return; }  # no restart_keyboard: the running engine must notice by itself
+    type_keys "ah ach"
+    sleep 1.5
+    first=$(ui first)
+    [ "$first" != "អាអាចម៍" ] && log "PASS reset: without a restart, first Suggestion back to '$first'" ||
+        { log "FAIL reset: អាអាចម៍ still first after Reset"; FAILED=1; }
+    shot reset
+    xy=$(ui bounds "abc, keep Latin") && tap $xy
+}
+
 scenario_password() { # a password field stays Latin and writes nothing to picks.tsv
     before=$(picks)
     open_fields password || { FAILED=1; return; }
@@ -629,7 +658,7 @@ scenario_compare() {
 }
 
 log "Typer Android e2e $(date)  device: $("$ADB" shell getprop ro.product.model | tr -d '\r') API $("$ADB" shell getprop ro.build.version.sdk | tr -d '\r')"
-for s in ${*:-tracer phrase learn password english keys emoji font khmer talkback}; do
+for s in ${*:-tracer phrase learn reset password english keys emoji font khmer talkback}; do
     log "-- $s"
     "scenario_$s"
 done
