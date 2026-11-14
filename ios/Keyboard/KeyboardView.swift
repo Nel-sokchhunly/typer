@@ -133,7 +133,7 @@ struct KeyboardView: View {
         ScrollView {
             VStack(spacing: 0) {
                 ForEach(Array(model.suggestions.enumerated()), id: \.offset) { i, s in
-                    panelRow(AttributedString(s), bold: i == 0) {
+                    panelRow(AttributedString(s), number: i + 1, bold: i == 0) {
                         model.showAll = false
                         onCandidate(i)
                     }
@@ -150,10 +150,12 @@ struct KeyboardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))  // clips rows, dividers and press highlight
     }
 
-    private func panelRow(_ text: AttributedString, bold: Bool = false, tag: String? = nil,
+    private func panelRow(_ text: AttributedString, number: Int? = nil, bold: Bool = false, tag: String? = nil,
                           _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(alignment: .top, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(number.map(String.init) ?? "").font(.system(size: 14, weight: .semibold).monospacedDigit())
+                    .foregroundColor(.secondary).frame(width: 20, alignment: .trailing)  // the abc row keeps the space, so text lines up
                 Text(text).font(.system(size: 20, weight: bold ? .bold : .regular)).lineSpacing(6)
                     .multilineTextAlignment(.leading)
                 Spacer(minLength: 0)
