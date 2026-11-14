@@ -75,7 +75,7 @@ struct KeyboardView: View {
                 KeyView(image: "globe", style: .function, width: kw * 1.1, height: keyHeight, action: onGlobe)
             }
             // dimmed when the mode is forced (password, email, URL, number) or a Phrase is open
-            KeyView(text: model.mode, style: .function, width: kw * 1.1, height: keyHeight, fontSize: 16, action: onMode)
+            KeyView(text: model.mode, style: .mode, width: kw * 1.1, height: keyHeight, fontSize: 16, action: onMode)
                 .opacity(model.canToggle ? 1 : 0.4)
             KeyView(text: "space", style: .letter, width: nil, height: keyHeight, fontSize: 16) { onKey(" ") }
             KeyView(text: model.returnLabel, style: model.returnProminent ? .prominent : .function, width: kw * 2.1,
@@ -114,7 +114,16 @@ struct KeyboardView: View {
     }
 }
 
-enum KeyStyle { case letter, function, prominent }
+/// Called on every key touch-down; the controller plays haptic and click when Full Access allows.
+private struct KeyPressKey: EnvironmentKey { static let defaultValue: () -> Void = {} }
+extension EnvironmentValues {
+    var keyPress: () -> Void {
+        get { self[KeyPressKey.self] }
+        set { self[KeyPressKey.self] = newValue }
+    }
+}
+
+enum KeyStyle { case letter, function, prominent, mode }
 
 private func dynamic(light: UIColor, dark: UIColor) -> Color {
     Color(UIColor { $0.userInterfaceStyle == .dark ? dark : light })
@@ -126,9 +135,16 @@ extension KeyStyle {
         case .letter: return dynamic(light: .white, dark: UIColor(white: 0.42, alpha: 1))
         case .function: return dynamic(light: UIColor(red: 0.68, green: 0.71, blue: 0.75, alpha: 1), dark: UIColor(white: 0.27, alpha: 1))
         case .prominent: return .accentColor
+        case .mode: return Color(red: 0.96, green: 0.78, blue: 0.26)  // #f5c842, Typer's yellow (macOS mode badge)
         }
     }
-    var foreground: Color { self == .prominent ? .white : .primary }
+    var foreground: Color {
+        switch self {
+        case .prominent: return .white
+        case .mode: return Color(white: 0.1)  // dark on yellow in light and dark mode
+        default: return .primary
+        }
+    }
 }
 
 /// One key. Fires on touch-up inside the key (a plain Button drops fast taps), previews the character above the finger,
@@ -144,6 +160,7 @@ struct KeyView: View {
     var repeats = false
     let action: () -> Void
 
+    @Environment(\.keyPress) private var keyPress
     @State private var pressed = false
     @State private var repeater: Task<Void, Never>?
 
@@ -161,6 +178,7 @@ struct KeyView: View {
                         .onChanged { _ in
                             guard !pressed else { return }
                             pressed = true
+                            keyPress()
                             if repeats { startRepeating() }
                         }
                         .onEnded { v in

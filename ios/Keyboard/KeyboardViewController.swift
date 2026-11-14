@@ -46,7 +46,13 @@ final class KeyboardModel: ObservableObject {
     }
 }
 
+/// The keyboard's root view; UIInputViewAudioFeedback is what lets playInputClick() make a sound.
+private final class ClickInputView: UIInputView, UIInputViewAudioFeedback {
+    var enableInputClicksWhenVisible: Bool { true }
+}
+
 final class KeyboardViewController: UIInputViewController {
+    private let haptic = UIImpactFeedbackGenerator(style: .light)
     private let model = KeyboardModel()
     private lazy var composer: Composer = {
         let userDir = try? FileManager.default.url(
@@ -57,6 +63,15 @@ final class KeyboardViewController: UIInputViewController {
         let suggester: Suggester = engine.loaded ? engine : NoSuggestions()
         return Composer(engine: suggester, proxy: ProxyAdapter { [unowned self] in textDocumentProxy })
     }()
+
+    override func loadView() { view = ClickInputView(frame: .zero, inputViewStyle: .keyboard) }
+
+    /// Key touch-down feedback. Both need Full Access; without it we stay silent.
+    private func keyFeedback() {
+        guard hasFullAccess else { return }
+        haptic.impactOccurred()
+        UIDevice.current.playInputClick()
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -69,7 +84,8 @@ final class KeyboardViewController: UIInputViewController {
                 onCandidate: { [unowned self] in handle(composer.candidateTapped($0)) },
                 onLatin: { [unowned self] in handle(composer.rawLatin()) },
                 onGlobe: { [unowned self] in advanceToNextInputMode() },
-                onMode: { [unowned self] in _ = composer.toggleMode(); refresh(afterKey: true) }))
+                onMode: { [unowned self] in modeTapped() })
+                .environment(\.keyPress, { [unowned self] in keyFeedback() }))
         hosting.view.translatesAutoresizingMaskIntoConstraints = false
         hosting.view.backgroundColor = .clear
         addChild(hosting)
@@ -89,6 +105,7 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         model.needsGlobe = needsInputModeSwitchKey
+        if hasFullAccess { haptic.prepare() }
         traitsChanged()
         refresh()
     }
@@ -135,6 +152,14 @@ final class KeyboardViewController: UIInputViewController {
         default: "return"
         }
         _ = composer.fieldTraitsChanged(secure: t.isSecureTextEntry ?? false, type: type)
+    }
+
+    /// Switching mode never turns shift on: the keys stay as they are until the next letter.
+    private func modeTapped() {
+        _ = composer.toggleMode()
+        if model.shift == .once { model.shift = .off }
+        model.shiftChosen = true
+        refresh()
     }
 
     /// If the Composer declined the key, do the normal thing.
