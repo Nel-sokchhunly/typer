@@ -22,6 +22,7 @@ typedef struct {
     IBusProperty *settings; /* "Settings…" in the top-bar menu: opens Typer Settings */
     IBusPropList *props;
     gboolean ctrl_alone; /* Ctrl pressed with no other key since */
+    gint64 ctrl_down;    /* when that Ctrl went down (g_get_monotonic_time, µs) */
     guint flash;         /* timer that hides the badge shown on a toggle */
 } TyperEngine;
 
@@ -154,13 +155,18 @@ static void focus_in(IBusEngine *ie) {
     ibus_engine_register_properties(ie, e->props);
 }
 
+/* A longer Ctrl press (Ctrl-click, Ctrl+scroll) is not a tap. Like ctrlTapLimit in macos/InputController.swift
+ * and CTRL_TAP_MS in windows/src/lib.rs. */
+#define CTRL_TAP_MS 400
+
 /* Mirrors macos/InputController.swift. TRUE = we handled the key. */
 static gboolean process_key_event(IBusEngine *ie, guint keyval, guint keycode, guint mods) {
     TyperEngine *e = (TyperEngine *)ie;
     (void)keycode;
     gboolean ctrl_key = keyval == IBUS_KEY_Control_L || keyval == IBUS_KEY_Control_R;
     if (mods & IBUS_RELEASE_MASK) {
-        if (ctrl_key && e->ctrl_alone && e->buffer->len == 0) {
+        if (ctrl_key && e->ctrl_alone && e->buffer->len == 0 &&
+            g_get_monotonic_time() - e->ctrl_down < CTRL_TAP_MS * G_TIME_SPAN_MILLISECOND) {
             english = !english;
             show_mode(e);
             ibus_engine_update_property(ie, e->mode);
@@ -169,6 +175,7 @@ static gboolean process_key_event(IBusEngine *ie, guint keyval, guint keycode, g
         if (ctrl_key) e->ctrl_alone = FALSE;
         return FALSE;
     }
+    if (ctrl_key && !e->ctrl_alone) e->ctrl_down = g_get_monotonic_time(); /* auto-repeat keeps the first press */
     e->ctrl_alone = ctrl_key; /* any other key: Ctrl was a modifier, not a tap */
     if (ctrl_key || keyval == IBUS_KEY_Shift_L || keyval == IBUS_KEY_Shift_R || english) return FALSE;
 
@@ -251,6 +258,7 @@ static void keep_latin(IBusEngine *ie) {
 /* Focus left the text field (or Typer was switched off): keep the latin, and take a flashing badge with us,
  * or it stays on screen where the caret used to be. */
 static void focus_out(IBusEngine *ie) {
+    ((TyperEngine *)ie)->ctrl_alone = FALSE; /* its release goes elsewhere: don't keep a stale press time */
     keep_latin(ie);
     hide_badge((TyperEngine *)ie);
 }

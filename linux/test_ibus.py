@@ -102,6 +102,24 @@ key(IBus.KEY_Control_L)
 key(IBus.KEY_Control_L, release=True)
 assert press(ord("a")), "back in Khmer mode"
 assert modes[-1:] == ["ខ"], modes
+press(IBus.KEY_Escape)  # drop the "a"
+
+seen = len(modes)
+key(IBus.KEY_Control_L)  # Ctrl held past the 400 ms tap limit (Ctrl-click, Ctrl+scroll): no toggle
+for _ in range(3):
+    pump(0.25)
+    key(IBus.KEY_Control_L)  # auto-repeat while held: the clock keeps the first press
+key(IBus.KEY_Control_L, release=True)
+pump()
+assert modes[seen:] == [], modes
+key(IBus.KEY_Control_L)  # a quick tap right after still toggles
+key(IBus.KEY_Control_L, release=True)
+pump()
+assert modes[-1:] == ["EN"], modes
+key(IBus.KEY_Control_L)
+key(IBus.KEY_Control_L, release=True)
+pump()
+assert modes[-1:] == ["ខ"], modes
 
 typed("knhom")
 ic.focus_out()  # left the text field mid-phrase
