@@ -97,7 +97,7 @@ struct KeyboardView: View {
 
     private var candidateBar: some View {
         HStack(spacing: 6) {
-            if !model.typed.isEmpty {  // idle: the Khmer punctuation keys are drawn with the rest (KeyLayout)
+            if !model.typed.isEmpty {  // idle: the punctuation keys are drawn with the rest (KeyLayout)
                 // only the first Suggestion; head-truncated so the end, where the user types, stays visible
                 Text(model.suggestions.first ?? model.typed)
                     .font(.system(size: 18, weight: .bold))

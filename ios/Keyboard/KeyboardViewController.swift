@@ -42,7 +42,7 @@ final class KeyboardModel: ObservableObject {
     /// The one layout both the drawn keys and the touch layer use; empty while the all-Suggestions panel replaces the keys.
     func keys(width: CGFloat) -> [Key] {
         if showAll && !typed.isEmpty { return [] }
-        return KeyLayout.keys(width: width, page: page, upper: shift != .off, globe: needsGlobe, bar: typed.isEmpty)
+        return KeyLayout.keys(width: width, page: page, upper: shift != .off, globe: needsGlobe, bar: !typed.isEmpty ? [] : mode == "EN" ? KeyLayout.englishPunctuation : KeyLayout.punctuation)
     }
 
     /// Shift once; a quick second tap locks caps; tapping a lock (or a lone shift) turns it off.
