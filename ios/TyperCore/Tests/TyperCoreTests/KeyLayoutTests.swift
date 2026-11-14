@@ -4,7 +4,7 @@ import XCTest
 
 final class KeyLayoutTests: XCTestCase {
     let w: CGFloat = 390
-    var letters: [Key] { KeyLayout.keys(width: w, page: .letters, upper: false, globe: true, bar: false) }
+    var letters: [Key] { KeyLayout.keys(width: w, page: .letters, upper: false, globe: true, bar: []) }
 
     func key(_ a: KeyAction, in keys: [Key]) -> Key { keys.first { $0.action == a }! }
 
@@ -38,7 +38,7 @@ final class KeyLayoutTests: XCTestCase {
 
     func testRowsFitTheWidthAndKeyboardHeight() {
         for page in [KeyPage.letters, .numbers, .symbols] {
-            let ks = KeyLayout.keys(width: w, page: page, upper: false, globe: true, bar: true)
+            let ks = KeyLayout.keys(width: w, page: page, upper: false, globe: true, bar: KeyLayout.punctuation)
             XCTAssertEqual(ks.map(\.rect.maxX).max()!, w - KeyLayout.margin, accuracy: 0.01)
             XCTAssertEqual(ks.map(\.rect.minX).min()!, KeyLayout.margin, accuracy: 0.01)
             XCTAssertLessThanOrEqual(ks.map(\.rect.maxY).max()!, KeyLayout.height)
@@ -46,11 +46,14 @@ final class KeyLayoutTests: XCTestCase {
     }
 
     func testShiftShowsUppercaseGlobeIsOptionalBarHasSixPunctuationKeys() {
-        let up = KeyLayout.keys(width: w, page: .letters, upper: true, globe: false, bar: false)
+        let up = KeyLayout.keys(width: w, page: .letters, upper: true, globe: false, bar: [])
         XCTAssertTrue(up.contains { $0.action == .char("Q") })
         XCTAssertFalse(up.contains { $0.action == .globe })
-        let bar = KeyLayout.keys(width: w, page: .letters, upper: false, globe: true, bar: true)
+        let bar = KeyLayout.keys(width: w, page: .letters, upper: false, globe: true, bar: KeyLayout.punctuation)
         XCTAssertEqual(bar.filter { if case .punct = $0.action { true } else { false } }.count, 6)
+        let english = KeyLayout.keys(width: w, page: .letters, upper: false, globe: true, bar: KeyLayout.englishPunctuation)
+        XCTAssertTrue(english.contains { $0.action == .punct(".") })
+        XCTAssertFalse(english.contains { $0.action == .punct("។") })
     }
 }
 

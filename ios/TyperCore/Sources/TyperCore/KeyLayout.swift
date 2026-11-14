@@ -30,10 +30,12 @@ public enum KeyLayout {
     private static let letters = ["qwertyuiop", "asdfghjkl", "zxcvbnm"]
     private static let numbers = ["1234567890", "-/:;()$&@\"", ".,?!'"]
     private static let symbols = ["[]{}#%^*+=", "_\\|~<>€£¥•", ".,?!'"]
+    /// The idle candidate bar's keys: Khmer punctuation in Khmer mode, the 123-page regulars in English mode.
     public static let punctuation = ["។", "៕", "ៗ", "៛", "?", "!"]
+    public static let englishPunctuation = [",", ".", "'", "\"", "@", "-"]
 
-    /// `bar`: include the idle candidate bar's punctuation keys. `upper`: letters page with shift on.
-    public static func keys(width w: CGFloat, page: KeyPage, upper: Bool, globe: Bool, bar: Bool) -> [Key] {
+    /// `bar`: the idle candidate bar's punctuation keys, empty while composing. `upper`: letters page with shift on.
+    public static func keys(width w: CGFloat, page: KeyPage, upper: Bool, globe: Bool, bar: [String]) -> [Key] {
         let inner = w - 2 * margin
         let kw = (inner - 9 * gap) / 10
         let fw = (inner - 7 * kw - 8 * gap) / 2  // function key beside the letters of row 3
@@ -42,9 +44,10 @@ public enum KeyLayout {
             out.append(Key(action: a, rect: CGRect(x: x, y: y, width: width, height: height)))
         }
 
-        if bar {
-            let pw = (inner - 5 * gap) / 6
-            for (j, p) in punctuation.enumerated() { add(.punct(p), margin + CGFloat(j) * (pw + gap), barTop + 2, pw, 36) }
+        if !bar.isEmpty {
+            let n = CGFloat(bar.count)
+            let pw = (inner - (n - 1) * gap) / n
+            for (j, p) in bar.enumerated() { add(.punct(p), margin + CGFloat(j) * (pw + gap), barTop + 2, pw, 36) }
         }
 
         let rows = [letters, numbers, symbols][page.rawValue]
