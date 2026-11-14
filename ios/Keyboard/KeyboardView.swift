@@ -94,27 +94,32 @@ struct KeyboardView: View {
     // MARK: candidate bar
 
     private var candidateBar: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 6) {
             if !model.typed.isEmpty {
                 // only the first Suggestion; head-truncated so the end, where the user types, stays visible
-                Button { onCandidate(0) } label: {
-                    Text(model.suggestions.first ?? model.typed)
-                        .font(.system(size: 18, weight: .bold))
-                        .lineLimit(1).truncationMode(.head)
-                        .padding(.horizontal, 10)
-                        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
-                        .background(Color.accentColor.opacity(0.25))
-                        .cornerRadius(6)
-                }.foregroundColor(.primary)
-                Button { model.showAll.toggle() } label: {
-                    Image(systemName: model.showAll ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 16, weight: .semibold))
-                        .frame(width: 44, height: 40)
-                        .contentShape(Rectangle())
-                }.foregroundColor(.primary)
+                Text(model.suggestions.first ?? model.typed)
+                    .font(.system(size: 18, weight: .bold))
+                    .lineLimit(1).truncationMode(.head)
+                    .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+                    .background(Color.accentColor.opacity(0.25))
+                    .cornerRadius(8)
+                    .onTouchUp { onCandidate(0) }
+                barButton(Text("abc").font(.system(size: 16, weight: .semibold))) { onLatin() }  // keep the Latin
+                barButton(Image(systemName: model.showAll ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 17, weight: .bold))) { model.showAll.toggle() }
             }
         }
         .frame(height: 40)
+    }
+
+    /// A bar button with a full-height hit area that, like the keys, fires on touch-up.
+    private func barButton<Label: View>(_ label: Label, _ action: @escaping () -> Void) -> some View {
+        label.foregroundColor(.primary)
+            .frame(width: 52, height: 36)
+            .background(KeyStyle.function.background)
+            .cornerRadius(8)
+            .onTouchUp(action)
     }
 
     // MARK: all-Suggestions panel
@@ -286,5 +291,15 @@ private extension View {
     /// iOS 26+ blurs scroll view edges, which smears the whole short candidate bar; turn it off.
     @ViewBuilder func noScrollEdgeBlur() -> some View {
         if #available(iOS 26, *) { scrollEdgeEffectHidden() } else { self }
+    }
+}
+
+private extension View {
+    /// Fires on touch-up unless the finger slid away. A plain Button drops fast taps in a keyboard extension.
+    func onTouchUp(_ action: @escaping () -> Void) -> some View {
+        contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0).onEnded { v in
+                if abs(v.translation.width) < 30 && abs(v.translation.height) < 30 { action() }
+            })
     }
 }
