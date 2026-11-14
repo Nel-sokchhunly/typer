@@ -110,6 +110,11 @@ fn is_punct(w: &str) -> bool {
     !w.is_empty() && w.chars().all(|c| c.is_ascii_punctuation() && c != '\'')
 }
 
+/// Tokens that are never spelled into Khmer: punctuation and numbers ("2", "10") come out as typed.
+fn is_kept(w: &str) -> bool {
+    is_punct(w) || (!w.is_empty() && w.bytes().all(|b| b.is_ascii_digit()))
+}
+
 /// LM context for a word: latin tokens look like the corpus's "foreign word here" marker;
 /// punctuation starts over like a new sentence.
 fn ctx(w: &str) -> &str {
@@ -486,13 +491,13 @@ impl Engine {
             here.sort_by(|a, b| b.score.total_cmp(&a.score));
             here.truncate(BEAM);
             for len in 1..=MAX_JOIN.min(n - i) {
-                if len > 1 && toks[i..i + len].iter().any(|t| is_punct(t)) {
-                    break; // a word never spans punctuation
+                if len > 1 && toks[i..i + len].iter().any(|t| is_kept(t)) {
+                    break; // a word never spans punctuation or a number
                 }
                 if i + len <= keep {
                     continue;
                 }
-                let cands = if is_punct(toks[i]) {
+                let cands = if is_kept(toks[i]) {
                     vec![(toks[i].to_string(), 0.0)] // kept as typed
                 } else if len == 1 {
                     let mut c = self.candidates(toks[i], MAX_DIST);
@@ -508,7 +513,7 @@ impl Engine {
                     let v = &p.last.word;
                     let u = &p.last.prev.as_ref().expect("two <s> start").word;
                     for (w, spell) in &cands {
-                        let lm = if *spell == RAW_PENALTY || is_punct(w) {
+                        let lm = if *spell == RAW_PENALTY || is_kept(w) {
                             0.0
                         } else if is_latin(w) {
                             let switch = if self.is_english(v) { 0.0 } else { EN_SWITCH };
@@ -517,7 +522,7 @@ impl Engine {
                             LM_WEIGHT * self.lm(ctx(u), ctx(v), w)
                         };
                         let closes = p.neg && w == NEG_CLOSE;
-                        let neg = (p.neg || NEGATIONS.contains(&w.as_str())) && !closes && !is_punct(w);
+                        let neg = (p.neg || NEGATIONS.contains(&w.as_str())) && !closes && !is_kept(w);
                         let bonus = if closes { NEG_BONUS } else { 0.0 };
                         let last = Arc::new(Node { word: w.clone(), prev: Some(p.last.clone()) });
                         beams[i + len].push(Path_ { last, score: p.score + lm + spell + bonus, neg });
@@ -597,6 +602,9 @@ mod tests {
         // punctuation stays as typed and doesn't break the words around it
         assert_eq!(tokens("knhom, tov te?!"), ["knhom", ",", "tov", "te", "?!"]);
         assert_eq!(e.suggest("knhom, tov sala rean?", 1)[0].text, "ខ្ញុំ, ទៅសាលារៀន?");
+        // so do numbers, even one digit (it used to fuzzy-match a word and vanish)
+        assert!(e.suggest("tov 2 dong", 1)[0].text.contains('2'));
+        assert!(e.suggest("tinh 10 dollar", 1)[0].text.contains("10"));
         // negation frame closes with ទេ, however far back the negation is; plain តែ stays
         assert_eq!(e.suggest("ot mean luy te", 1)[0].text, "អត់មានលុយទេ");
         assert_eq!(e.suggest("knhom mean te muoy", 1)[0].text, "ខ្ញុំមានតែមួយ");

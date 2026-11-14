@@ -166,14 +166,22 @@ final class ComposerTests: XCTestCase {
         XCTAssertFalse(composer.backspace(), "idle backspace passes through")
     }
 
-    func testDigitCommitsTopThenPassesThrough() {
+    func testDigitStaysInThePhrase() {
+        type("knhom mean 3")
+        XCTAssertEqual(composer.typed, "knhom mean 3", "a number is part of the phrase, like punctuation")
+        XCTAssertTrue(composer.isComposing)
+        type(" nak")
+        XCTAssertEqual(composer.typed, "knhom mean 3 nak")
+    }
+
+    func testEmojiCommitsTopThenPassesThrough() {
         type("knhom")
         let top = composer.suggestions[0]
-        type("2")
-        XCTAssertEqual(proxy.doc, top + "2")
-        XCTAssertEqual(proxy.marked, 0)
         type("😀")
-        XCTAssertEqual(proxy.doc, top + "2😀", "idle: other keys pass through")
+        XCTAssertEqual(proxy.doc, top + "😀")
+        XCTAssertEqual(proxy.marked, 0)
+        type("2")
+        XCTAssertEqual(proxy.doc, top + "😀2", "idle: a digit passes through")
     }
 
     func testRawLatinLearnsNothing() {
