@@ -34,7 +34,7 @@ struct EmojiPanel: View {
                                 Text(s.title).font(.system(size: 12, weight: .semibold)).foregroundColor(.secondary).fixedSize()
                                     .frame(height: titleHeight)
                                 // explicit columns, not a LazyHGrid: the width is exactly columns * cell, so sections never overlap
-                                LazyHStack(spacing: 0) {
+                                LazyHStack(alignment: .top, spacing: 0) {
                                     ForEach(0..<(s.emoji.count + rows - 1) / rows, id: \.self) { col in
                                         VStack(spacing: 0) {
                                             ForEach(s.emoji[col * rows..<min(s.emoji.count, (col + 1) * rows)], id: \.self) { e in
