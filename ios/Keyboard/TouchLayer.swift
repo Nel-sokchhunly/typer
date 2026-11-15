@@ -28,8 +28,9 @@ final class TouchLayer: UIView {
     deinit { repeater?.cancel(); hold?.timer.cancel() }
 
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        guard bounds.contains(point), let top = keys(bounds.width).map(\.rect.minY).min() else { return false }
-        return point.y >= top - 3
+        let rects = keys(bounds.width).map(\.rect)
+        guard bounds.contains(point), let top = rects.map(\.minY).min(), let bottom = rects.map(\.maxY).max() else { return false }
+        return point.y >= top - 3 && point.y <= bottom + 4  // not below the strip while the Clipboard panel is open
     }
 
     override func willMove(toWindow newWindow: UIWindow?) {

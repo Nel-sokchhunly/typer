@@ -56,6 +56,25 @@ final class KeyLayoutTests: XCTestCase {
         XCTAssertFalse(english.contains { $0.action == .punct("។") })
     }
 
+    func testClipboardButtonIsFirstOnTheIdleBarOnBothLayoutsAndTheBarStillFits() {
+        for (bar, khmer) in [(KeyLayout.punctuation, false), (KeyLayout.englishPunctuation, false), (KeyLayout.khmerPunctuation, true)] {
+            let ks = KeyLayout.keys(width: w, page: .letters, upper: false, globe: true, bar: bar, khmer: khmer, clipboard: true)
+            let strip = ks.filter { $0.rect.minY < KeyLayout.rowsTop }.sorted { $0.rect.minX < $1.rect.minX }
+            XCTAssertEqual(strip.first?.action, .clipboard)
+            XCTAssertEqual(strip.first?.rect.minX ?? 0, KeyLayout.margin, accuracy: 0.01)
+            XCTAssertEqual(strip.last?.action, .slot)
+            XCTAssertEqual(strip.count, bar.count + 2)
+            for (a, b) in zip(strip, strip.dropFirst()) { XCTAssertEqual(b.rect.minX - a.rect.maxX, KeyLayout.gap, accuracy: 0.01) }
+        }
+    }
+
+    func testNoClipboardButtonByDefaultOrWhenTheBarIsEmpty() {  // empty bar: composing or the English word bar
+        let off = KeyLayout.keys(width: w, page: .letters, upper: false, globe: true, bar: KeyLayout.punctuation)
+        XCTAssertFalse(off.contains { $0.action == .clipboard })
+        let hidden = KeyLayout.keys(width: w, page: .letters, upper: false, globe: true, bar: [], clipboard: true)
+        XCTAssertFalse(hidden.contains { $0.action == .clipboard })
+    }
+
     func testKhmerLayoutHasFourRowsOfTwelveNoModeKeyAndFitsItsHeight() {
         let ks = KeyLayout.keys(width: w, page: .letters, upper: false, globe: true, bar: KeyLayout.khmerPunctuation, khmer: true)
         let rows = Dictionary(grouping: ks.filter { $0.rect.minY >= KeyLayout.rowsTop }, by: \.rect.minY).sorted { $0.key < $1.key }

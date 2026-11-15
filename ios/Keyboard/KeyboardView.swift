@@ -7,6 +7,8 @@ struct KeyboardView: View {
     let onEnglishWord: (Int) -> Void
     let onSlot: () -> Void
     let onEmoji: (String) -> Void
+    let onClip: (String) -> Void
+    let onClearClips: () -> Void
     let onHold: (EmojiHold) -> Void
     let onSearch: () -> Void
     let onGlobe: () -> Void
@@ -43,6 +45,7 @@ struct KeyboardView: View {
                     } else if !model.englishWords.isEmpty {
                         englishBar.padding(.horizontal, margin).padding(.top, KeyLayout.barTop)
                     }
+                    if model.showClipboard { clipboardPanel.padding(.horizontal, margin).offset(y: KeyLayout.rowsTop) }
                     let keys = model.keys(width: geo.size.width)
                     ZStack(alignment: .topLeading) {
                         ForEach(keys, id: \.action) { key in
@@ -62,7 +65,7 @@ struct KeyboardView: View {
 
     // MARK: keys
 
-    private struct Look { var text: String? = nil; var image: String? = nil; var style = KeyStyle.function; var fontSize: CGFloat = 22 }
+    private struct Look { var text: String? = nil; var image: String? = nil; var style = KeyStyle.function; var fontSize: CGFloat = 22; var label: String? = nil }
 
     private func look(_ a: KeyAction) -> Look {
         switch a {
@@ -75,6 +78,7 @@ struct KeyboardView: View {
         case .symbols: return Look(text: model.page == .numbers ? "#+=" : "123", fontSize: 16)
         case .page: return Look(text: model.emojiSearching ? "ABC" : model.page == .letters ? "123" : model.layout == .khmer ? "កខគ" : "ABC", fontSize: 16)
         case .emoji: return Look(image: "face.smiling")
+        case .clipboard: return Look(image: "doc.on.clipboard", style: model.showClipboard ? .mode : .function, label: "Clipboard")  // yellow while its panel is open
         case .backspace: return Look(image: "delete.left")
         case .globe: return Look(image: "globe")
         case .mode: return Look(text: model.mode, style: .mode, fontSize: 16)
@@ -101,7 +105,10 @@ struct KeyboardView: View {
             if let text = l.text {
                 Text(text).font(.system(size: l.fontSize)).foregroundColor(l.style.foreground)
                     .lineLimit(1).minimumScaleFactor(0.4).padding(.horizontal, 2)  // shrinks to fit: េះ draws as េ◌◌ះ
-            } else if let image = l.image { Image(systemName: image).font(.system(size: 18)).foregroundColor(l.style.foreground) }
+            } else if let image = l.image {
+                let icon = Image(systemName: image).font(.system(size: 18)).foregroundColor(l.style.foreground)
+                if let label = l.label { icon.accessibilityLabel(label) } else { icon }
+            }
             else { Color.clear }  // a blank key (space) still needs a view to draw its background on
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -214,19 +221,40 @@ struct KeyboardView: View {
     // MARK: all-Suggestions panel
 
     private var panel: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                ForEach(Array(model.suggestions.enumerated()), id: \.offset) { i, s in
-                    panelRow(AttributedString(s), number: i + 1, bold: i == 0) {
-                        model.showAll = false
-                        onCandidate(i)
-                    }
-                }
-                panelRow(AttributedString(model.typed), tag: "abc") {
+        scrollPanel {
+            ForEach(Array(model.suggestions.enumerated()), id: \.offset) { i, s in
+                panelRow(AttributedString(s), number: i + 1, bold: i == 0) {
                     model.showAll = false
-                    onLatin()
+                    onCandidate(i)
                 }
             }
+            panelRow(AttributedString(model.typed), tag: "abc") {
+                model.showAll = false
+                onLatin()
+            }
+        }
+    }
+
+    /// The Clipboard panel: one line per Clip, newest first, then Clear all; or a note while there are none.
+    private var clipboardPanel: some View {
+        scrollPanel {
+            ForEach(Array(model.clips.enumerated()), id: \.offset) { _, c in
+                panelRow(AttributedString(c.line), plain: true) { onClip(c.text) }
+            }
+            if model.clips.isEmpty {
+                Text("Text you copy shows here for an hour").font(.system(size: 16)).foregroundColor(.secondary)
+                    .multilineTextAlignment(.center).padding(.horizontal, 12).padding(.vertical, 20)
+                    .frame(maxWidth: .infinity)
+            } else {
+                panelRow(AttributedString("Clear all"), plain: true, onClearClips)
+            }
+        }
+        .frame(height: model.height - KeyLayout.rowsTop - 4)
+    }
+
+    private func scrollPanel<Rows: View>(@ViewBuilder _ rows: () -> Rows) -> some View {
+        ScrollView {
+            VStack(spacing: 0) { rows() }
         }
         .contentMargins(.vertical, 4, for: .scrollContent)
         .noScrollEdgeBlur()
@@ -235,13 +263,15 @@ struct KeyboardView: View {
     }
 
     private func panelRow(_ text: AttributedString, number: Int? = nil, bold: Bool = false, tag: String? = nil,
-                          _ action: @escaping () -> Void) -> some View {
+                          plain: Bool = false, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(number.map(String.init) ?? "").font(.system(size: 14, weight: .semibold).monospacedDigit())
-                    .foregroundColor(.secondary).frame(width: 20, alignment: .trailing)  // the abc row keeps the space, so text lines up
+                if !plain {  // a Clip row is one line with no number column
+                    Text(number.map(String.init) ?? "").font(.system(size: 14, weight: .semibold).monospacedDigit())
+                        .foregroundColor(.secondary).frame(width: 20, alignment: .trailing)  // the abc row keeps the space, so text lines up
+                }
                 Text(text).font(.system(size: 20, weight: bold ? .bold : .regular)).lineSpacing(6)
-                    .multilineTextAlignment(.leading)
+                    .multilineTextAlignment(.leading).lineLimit(plain ? 1 : nil)  // tail ellipsis
                 Spacer(minLength: 0)
                 if let tag {
                     Text(tag).font(.system(size: 12)).foregroundColor(.secondary)
