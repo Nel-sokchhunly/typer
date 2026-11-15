@@ -66,7 +66,8 @@ struct KeyboardView: View {
 
     private func look(_ a: KeyAction) -> Look {
         switch a {
-        case .char(let c): return Look(text: c, style: .letter)  // iOS draws ◌ under a bare combining mark itself
+        // iOS draws ◌ under a bare combining mark itself. Khmer keys (12 a row): 20 pt, as Apple's Khmer keyboard.
+        case .char(let c): return Look(text: c, style: .letter, fontSize: model.layout == .khmer && model.page == .letters ? 20 : 22)
         case .punct(let p): return Look(text: p, fontSize: 20)
         case .shift:
             return Look(image: model.shift == .lock ? "capslock.fill" : model.shift == .once ? "shift.fill" : "shift",
@@ -77,9 +78,10 @@ struct KeyboardView: View {
         case .backspace: return Look(image: "delete.left")
         case .globe: return Look(image: "globe")
         case .mode: return Look(text: model.mode, style: .mode, fontSize: 16)
-        case .space: return Look(text: "space", style: .letter, fontSize: 16)
+        case .space: return Look(style: .letter)  // blank, as on iOS
         case .returnKey where model.emojiSearching: return Look(text: "done", fontSize: 16)
-        case .returnKey: return Look(text: model.returnLabel, style: model.returnProminent ? .prominent : .function, fontSize: 16)
+        case .returnKey where !model.returnProminent: return Look(image: "return.left")  // plain return: the arrow, as on iOS
+        case .returnKey: return Look(text: model.returnLabel, style: .prominent, fontSize: 16)  // go, search, send: named
         case .slot: return Look(text: model.slotLabel, style: .switcher, fontSize: 16)  // the layout switch, unlike the punctuation
         }
     }
@@ -93,10 +95,12 @@ struct KeyboardView: View {
     private func keyView(_ key: Key) -> some View {
         let l = look(key.action)
         let previewed = isPreviewed(key)
-        let pressedBackground = l.style == .letter ? KeyStyle.function.background : KeyStyle.letter.background
+        // light: letters press grey, function keys white; dark (every key one grey): any key presses lighter
+        let pressedBackground = dynamic(light: l.style == .letter ? KeyStyle.functionLight : .white, dark: UIColor(white: 0.42, alpha: 1))
         return Group {
             if let text = l.text { Text(text).font(.system(size: l.fontSize)).foregroundColor(l.style.foreground) }
             else if let image = l.image { Image(systemName: image).font(.system(size: 18)).foregroundColor(l.style.foreground) }
+            else { Color.clear }  // a blank key (space) still needs a view to draw its background on
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(isPressed(key) && !previewed ? pressedBackground : l.style.background)
@@ -252,7 +256,10 @@ struct KeyboardView: View {
     }
 }
 
-enum KeyStyle { case letter, function, prominent, mode, switcher }
+enum KeyStyle {
+    case letter, function, prominent, mode, switcher
+    static let functionLight = UIColor(red: 0.68, green: 0.71, blue: 0.75, alpha: 1)
+}
 
 private func dynamic(light: UIColor, dark: UIColor) -> Color {
     Color(UIColor { $0.userInterfaceStyle == .dark ? dark : light })
@@ -261,8 +268,8 @@ private func dynamic(light: UIColor, dark: UIColor) -> Color {
 extension KeyStyle {
     var background: Color {
         switch self {
-        case .letter: return dynamic(light: .white, dark: UIColor(white: 0.42, alpha: 1))
-        case .function: return dynamic(light: UIColor(red: 0.68, green: 0.71, blue: 0.75, alpha: 1), dark: UIColor(white: 0.27, alpha: 1))
+        case .letter: return dynamic(light: .white, dark: UIColor(white: 0.27, alpha: 1))  // iOS 26 dark: every key one grey
+        case .function: return dynamic(light: Self.functionLight, dark: UIColor(white: 0.27, alpha: 1))
         case .prominent: return .accentColor
         case .mode: return Color(red: 0xf5 / 255, green: 0xc8 / 255, blue: 0x42 / 255)  // #f5c842, Typer's yellow (macOS mode badge)
         case .switcher: return Color(white: 0.1)  // the app icon's ink, in both modes: a yellow fill would look like the ខ/EN key
