@@ -20,6 +20,9 @@ _Avoid_: Latin page, QWERTY page
 **Khmer layout**: Khmer letter keys in the standard Khmer arrangement. Each key types its character straight into the text field: no Phrase, no Suggestions, no Learning. Used to type or fix Khmer directly. Modes do not apply.
 _Avoid_: Khmer mode, Khmer page
 
+**Emoji panel**: The view that replaces the keys so the user can pick emoji, reached from the emoji key on either layout. Not a layout: it has no Phrase and no modes, and closing it returns to the layout the user came from.
+_Avoid_: emoji keyboard, emoji page, emoji layout
+
 **Keyboard**: The typing surface the user installs (iOS keyboard extension, Android input method, macOS input method).
 
 **Companion app**: The app installed alongside the Keyboard. Its only job is to explain how to enable the Keyboard.
