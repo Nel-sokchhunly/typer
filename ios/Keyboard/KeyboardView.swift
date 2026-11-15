@@ -263,7 +263,10 @@ struct KeyboardView: View {
                     .multilineTextAlignment(.center).padding(.horizontal, 12).padding(.vertical, 20)
                     .frame(maxWidth: .infinity)
             } else if model.clips.contains(where: { !$0.isPinned }) {
-                panelRow(AttributedString("Clear all"), plain: true, onClearClips)
+                Button(action: onClearClips) {  // an action, not a Clip: red and centred, like iOS's destructive buttons
+                    Text("Clear all").font(.system(size: 17, weight: .semibold)).foregroundColor(.red)
+                        .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+                }
             }
         }
         .frame(height: model.height - KeyLayout.rowsTop - 4)
