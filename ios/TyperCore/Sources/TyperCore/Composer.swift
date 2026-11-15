@@ -36,7 +36,7 @@ public struct Scheduler {
 }
 
 /// How a field wants its keys. Everything but `.text` passes straight through, like English mode.
-public enum FieldType { case text, email, url, number }
+public enum FieldType { case text, email, number }
 
 /// Sing Khmer typing rules from the macOS input method (macos/InputController.swift), adapted to touch.
 /// Letters, `'`, spaces and ASCII punctuation build a Latin phrase shown as marked text; `suggestions`
@@ -49,7 +49,19 @@ public final class Composer {
     /// The phrase as typed, for the candidate bar's Latin chip.
     public private(set) var typed = ""
     public var isComposing: Bool { !typed.isEmpty }
-    /// "ខ" or "EN"; a secure, email or number field shows EN, and a URL field starts EN.
+
+    /// Sing layout: Latin keys, typed as Sing (Khmer mode) or as is (English mode). Khmer layout: Khmer letters,
+    /// typed straight into the field.
+    public enum Layout: String { case sing, khmer }
+    /// The layout the user last picked; a field that forces Sing never overwrites it.
+    public private(set) var chosen: Layout
+    /// The layout in use: Sing in a secure, email or number field, else `chosen`.
+    public var layout: Layout { layoutForced ? .sing : chosen }
+    public var layoutForced: Bool { secure || field != .text }
+    /// Whether the bar's rightmost slot switches layouts now; while a Phrase is open it keeps the Latin instead.
+    public var canSwitchLayout: Bool { !isComposing && !layoutForced }
+
+    /// "ខ" or "EN"; a secure, email or number field shows EN.
     public var mode: String { passthrough ? "EN" : "ខ" }
 
     /// Called on the main thread when new suggestions arrive after a key (they are computed off-thread).
@@ -64,14 +76,14 @@ public final class Composer {
     private let usesMarkedText: Bool
     private var secure = false
     private var field = FieldType.text
-    private var urlKhmer = false  // ខ tapped in this URL field (a search in Khmer); the global mode stays as it was
     private var anchor: String?  // marked text: the context before the caret when the phrase began
     private var shown = ""  // without marked text: the phrase as plain text in the document (ASCII)
 
     /// `usesMarkedText: false` is the fallback for hosts that mishandle marked text: the phrase is
     /// typed as plain text, and a commit deletes its length and inserts the choice.
     public init(engine: Suggester, proxy: TextProxy, usesMarkedText: Bool = true,
-                scheduler: Scheduler = .background()) {
+                scheduler: Scheduler = .background(), layout: Layout = .sing) {
+        chosen = layout
         self.engine = engine
         self.scheduler = scheduler
         self.proxy = proxy
@@ -81,12 +93,11 @@ public final class Composer {
     private var passthrough: Bool {
         switch field {
         case .text: Self.english || secure
-        case .url: !urlKhmer || secure
         case .email, .number: true
         }
     }
 
-    /// Passthrough is on (EN, a secure/email/number field, or a URL field left in EN). If it came on mid-phrase
+    /// Passthrough is on (EN, or a secure/email/number field). If it came on mid-phrase
     /// (EN toggled in another keyboard instance), keep the phrase as typed.
     private func passingThrough() -> Bool {
         guard passthrough else { return false }
@@ -96,6 +107,10 @@ public final class Composer {
 
     /// A typed character: letter, `'`, space, punctuation, digit, emoji, ...
     public func key(_ text: String) -> Bool {
+        if layout == .khmer {  // no Phrase, no Marked text, no engine
+            proxy.insertText(text)
+            return true
+        }
         if passingThrough() { return false }
         guard text.count == 1, let c = text.first else { return otherKey() }
         let starting = !isComposing
@@ -120,9 +135,24 @@ public final class Composer {
     }
 
     public func backspace() -> Bool {
+        if layout == .khmer { return khmerBackspace() }
         guard !passingThrough(), isComposing else { return false }
         typed.removeLast()
         update()
+        return true
+    }
+
+    /// Khmer layout: one backspace removes one Unicode scalar, even inside a stacked cluster. Hosts differ on
+    /// what deleteBackward removes (cluster or scalar), so re-read the context and restore only what's missing.
+    private func khmerBackspace() -> Bool {
+        guard let ctx = proxy.documentContextBeforeInput, let cluster = ctx.last,
+            cluster.unicodeScalars.count > 1  // one scalar (or no context): plain deleteBackward
+        else { return false }
+        let keep = String(String.UnicodeScalarView(cluster.unicodeScalars.dropLast()))
+        let want = ctx.unicodeScalars.count - 1
+        proxy.deleteBackward()
+        let now = (proxy.documentContextBeforeInput ?? "").unicodeScalars.count
+        if want > now { proxy.insertText(String(String.UnicodeScalarView(keep.unicodeScalars.suffix(want - now)))) }
         return true
     }
 
@@ -146,13 +176,19 @@ public final class Composer {
     }
 
     /// Whether the ខ/EN key does anything right now; the keyboard dims it otherwise.
-    public var canToggle: Bool { !isComposing && !secure && (field == .text || field == .url) }
+    public var canToggle: Bool { !isComposing && !secure && field == .text }
 
     /// Khmer <-> English. Ignored mid-phrase (a stray tap) and in fields that are English anyway.
-    /// In a URL field it switches only that field, so typing a search in Khmer leaves the global mode alone.
     public func toggleMode() -> Bool {
         guard canToggle else { return false }
-        if field == .url { urlKhmer.toggle() } else { Self.english.toggle() }
+        Self.english.toggle()
+        return true
+    }
+
+    /// Sing <-> Khmer layout. Refused while a Phrase is open.
+    public func switchLayout() -> Bool {
+        guard canSwitchLayout else { return false }
+        chosen = chosen == .sing ? .khmer : .sing
         return true
     }
 
@@ -180,7 +216,6 @@ public final class Composer {
         let kept = keepLatin()
         self.secure = secure
         field = type
-        urlKhmer = false
         return kept
     }
 

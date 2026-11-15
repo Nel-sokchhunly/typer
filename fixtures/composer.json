@@ -306,17 +306,6 @@
       ]
     },
     {
-      "name": "a URL field starts in English but can switch to Khmer, for that field only",
-      "steps": [
-        {"op": "traits", "secure": false, "field": "url", "expect": {"mode": "EN", "canToggle": true}},
-        {"op": "toggle", "consumed": true, "expect": {"mode": "ខ"}},
-        {"op": "type", "text": "knhom", "expect": {"typed": "knhom"}},
-        {"op": "rawLatin"},
-        {"op": "traits", "secure": false, "field": "text", "expect": {"mode": "ខ"}},
-        {"op": "traits", "secure": false, "field": "url", "expect": {"mode": "EN"}}
-      ]
-    },
-    {
       "name": "the English choice survives a forced field",
       "steps": [
         {"op": "toggle", "consumed": true},
@@ -354,11 +343,9 @@
       ]
     },
     {
-      "name": "email, URL and number fields pass keys through",
+      "name": "email and number fields pass keys through",
       "steps": [
         {"op": "traits", "secure": false, "field": "email"},
-        {"op": "key", "text": "a", "consumed": false},
-        {"op": "traits", "secure": false, "field": "url"},
         {"op": "key", "text": "a", "consumed": false},
         {"op": "traits", "secure": false, "field": "number"},
         {"op": "key", "text": "a", "consumed": false, "expect": {"suggests": 0}}
