@@ -86,12 +86,6 @@ object KeyLayout {
     private val numbers = listOf(digits, "@#\$_&-+()/", "*\"':;!?")
     private val symbols = listOf("~`|•√π÷×¶∆", "£¢€¥^°={}\\", "%©®™✓[]")
 
-    /** Long press on rows 2 and 3 of the letters: Gboard's symbol for each key. */
-    private val SYMBOLS = mapOf(
-        'a' to "@", 's' to "#", 'd' to "$", 'f' to "%", 'g' to "&", 'h' to "-", 'j' to "+", 'k' to "(", 'l' to ")",
-        'z' to "*", 'x' to "\"", 'c' to "'", 'v' to ":", 'b' to ";", 'n' to "!", 'm' to "?",
-    )
-
     /** Long press on a letter: its accented forms, after the digit or symbol. */
     private val ACCENTS = mapOf(
         'a' to listOf("à", "á", "â", "ä", "æ", "ã", "å", "ā"),
@@ -152,8 +146,8 @@ object KeyLayout {
                 val s = c.toString()
                 val label = if (page == KeyPage.LETTERS && upper) s.uppercase() else s
                 if (page == KeyPage.LETTERS) {
-                    // long press: the digit (top row) or Gboard's symbol (rows 2 and 3) first, then accents
-                    val first = if (i == 0) (if (digitsRow) null else digits[j].toString()) else SYMBOLS[c]
+                    // long press, as on Gboard: the digit (top row, shown as a hint) first, then the accents
+                    val first = if (i == 0 && !digitsRow) digits[j].toString() else null
                     val accents = ACCENTS[c].orEmpty().mapNotNull { a -> if (upper) a.uppercase().takeIf { it.length == 1 } else a }
                     val options = listOfNotNull(first) + accents
                     add(KeyAction.Text(label), x, i, k, KeyStyle.LETTER, options.firstOrNull(), if (options.size > 1) options else emptyList())

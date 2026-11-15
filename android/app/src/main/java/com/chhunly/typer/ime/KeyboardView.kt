@@ -609,7 +609,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                 }
                 drawLabel(canvas, label, cx, cy, size, fg, alpha, onBaseline = a.text.length == 1 && !khmerPage)
                 if (key.long == KeyAction.Settings) drawIcon(canvas, R.drawable.ic_settings, r.right - px(9f), r.top + px(9f), theme.onSurfaceVariant, 11f)
-                key.hint?.let { hint ->
+                // hints drawn as on Gboard: the top row's digits, and every alternate on the Khmer layout (not accents)
+                key.hint?.takeIf { khmerPage || it[0].isDigit() }?.let { hint ->
                     val it = KeyLayout.label(hint).removePrefix("\u25CC")
                     font(false)
                     text.textSize = (if (it.length > 2) 8f else 12f) * sp
@@ -734,7 +735,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             val a = slot.action
             val yellow = emphasised(a)
             val (bg, fg) = when {
-                a == StripAction.Layout -> LAYOUT_INK to LAYOUT_YELLOW  // its own look in light and dark: not a punctuation key, not ខ
+                a == StripAction.Layout -> theme.layout to theme.onLayout  // its own look: not a punctuation key, not ខ
                 a == StripAction.Clipboard && state.clipboard -> theme.mode to theme.onMode  // open: yellow, like a selected tab
                 yellow -> theme.mode to theme.onMode
                 else -> theme.functionKey to theme.onFunction
@@ -1315,9 +1316,6 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         const val LONG_PRESS = 300L
         /** The bar's last slot ignores taps this long after its meaning changes (abc -> កខគ), so a double tap can't jump layouts. */
         const val SLOT_SETTLE = 300L
-        /** The layout switch: ink with Typer yellow, in light and dark. */
-        const val LAYOUT_INK = 0xFF1A1A1A.toInt()
-        const val LAYOUT_YELLOW = 0xFFF5C842.toInt()
         const val LAYOUT_KHMER = "កខគ"
         private const val KEYS = 1
         private const val STRIP = 1000
