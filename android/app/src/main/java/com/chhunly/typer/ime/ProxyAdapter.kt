@@ -30,6 +30,19 @@ class ProxyAdapter(private val connection: () -> InputConnection?) : TextProxy {
         connection()?.setComposingText(text, 1)
     }
 
+    /** Composing text with the caret inside it: write it caret-at-end, then step the caret back into it. */
+    override fun setMarkedText(text: String, caret: Int) {
+        val ic = connection() ?: return
+        if (caret >= text.length) return setMarkedText(text)
+        ic.beginBatchEdit()
+        ic.setComposingText(text, 1)
+        ic.getExtractedText(ExtractedTextRequest(), 0)?.let { t ->
+            val at = t.startOffset + t.selectionEnd - (text.length - caret)
+            ic.setSelection(at, at)
+        }
+        ic.endBatchEdit()
+    }
+
     override fun unmarkText() {
         connection()?.finishComposingText()
     }

@@ -75,7 +75,7 @@ if cmd == "first":  # the strip's first slot: the first node after the Keyboard'
             print(labels[i + 1]); sys.exit(0)
     sys.exit(1)
 if cmd == "rect":
-    hit = [n for n in nodes if n.get("content-desc") == args[0]]
+    hit = [n for n in nodes if n.get("content-desc") == args[0]] or [n for n in nodes if n.get("resource-id") == args[0]]
     if hit:
         print(*re.findall(r"\d+", hit[-1].get("bounds"))); sys.exit(0)
     sys.exit(1)
@@ -234,6 +234,27 @@ scenario_phrase() { # a whole Phrase, committed by return: knhom tov sala rean -
     sleep 0.5
     check phrase "ខ្ញុំទៅសាលារៀន" "$(field_text)"
     shot phrase
+}
+
+scenario_caret() { # mid-Phrase caret: a space-bar drag or a tap inside the Phrase keeps it; keys go where the caret is
+    open_app || { FAILED=1; return; }
+    type_keys "knhm tov"
+    set -- $(key_at space)
+    "$ADB" shell input motionevent DOWN $1 $2
+    sleep 0.5  # hold: the caret follows the finger, inside the Phrase
+    for i in 1 2 3 4 5; do "$ADB" shell input motionevent MOVE $(($1 - 30 * i)) $2; done
+    "$ADB" shell input motionevent UP $(($1 - 150)) $2
+    check "caret: a space-bar drag keeps the Phrase" "|abc, keep Latin|" "|$(ui labels | tr '\n' '|')"
+    type_keys o
+    check "caret: a key goes where the drag left the caret" "knhom tov" "$(field_text)"
+    shot caret-drag
+    set -- $(ui rect try)
+    tap $(($1 + 24)) $((($2 + $4) / 2))  # the field's left edge: the caret lands at the Phrase's start
+    sleep 0.5
+    check "caret: a tap inside the Phrase keeps it" "|abc, keep Latin|" "|$(ui labels | tr '\n' '|')"
+    tap $(return_key); sleep 0.5
+    check "caret: return puts the whole Phrase in as Khmer" "ខ្ញុំទៅ" "$(field_text)"
+    shot caret
 }
 
 scenario_learn() { # Pick a non-first Suggestion from the panel; after a Keyboard restart it ranks first
@@ -895,7 +916,7 @@ scenario_compare() {
 }
 
 log "Typer Android e2e $(date)  device: $("$ADB" shell getprop ro.product.model | tr -d '\r') API $("$ADB" shell getprop ro.build.version.sdk | tr -d '\r')"
-for s in ${*:-tracer phrase learn reset password english glide clipboard next emojisuggest settings longpress keys emoji font khmer talkback}; do
+for s in ${*:-tracer phrase caret learn reset password english glide clipboard next emojisuggest settings longpress keys emoji font khmer talkback}; do
     log "-- $s"
     "scenario_$s"
 done

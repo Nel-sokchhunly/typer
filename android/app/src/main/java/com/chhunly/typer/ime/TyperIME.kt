@@ -13,6 +13,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.WindowInsetsController
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.ExtractedTextRequest
 import com.chhunly.typer.core.FieldKind
 import com.chhunly.typer.core.NextWords
 import com.chhunly.typer.core.ClipHistory
@@ -334,8 +335,35 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         proxy.selection(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         if (dragCaret >= 0) return  // our own caret moves while dragging on the space bar
         if (glided != null && (newSelStart != newSelEnd || newSelEnd != glideEnd)) glided = null  // the caret moved away
-        composer.textChanged()
+        // A tap inside the Phrase: it stays a Phrase, with the caret there (Composer.caretMoved). Anywhere else ends it.
+        if (!caretInPhrase(newSelStart, newSelEnd, candidatesStart, candidatesEnd)) composer.textChanged()
         refresh()
+    }
+
+    /**
+     * The caret sits inside the Phrase's composing span: tell the Composer where. The span must be the whole current
+     * Phrase (a late echo of an earlier key has a shorter or longer one), and a caret off the Phrase's end must be
+     * where the editor has it now, so a stale update can't drop the next key into the middle of the word.
+     */
+    private fun caretInPhrase(selStart: Int, selEnd: Int, spanStart: Int, spanEnd: Int): Boolean {
+        if (!composer.isComposing) return false
+        val inSpan = spanStart >= 0 && selStart == selEnd && selStart in spanStart..spanEnd &&
+            spanEnd - spanStart == composer.typed.length
+        val at = selStart - spanStart
+        val live = inSpan && (at == composer.caret || currentInputConnection?.getExtractedText(ExtractedTextRequest(), 0)
+            ?.let { t -> t.selectionStart == t.selectionEnd && t.startOffset + t.selectionStart == selStart } == true)
+        if (live) return composer.caretMoved(at)
+        return composer.caret < composer.typed.length && editorCaretInPhrase()  // a late echo: still where we left it?
+    }
+
+    /** Mid-Phrase caret: the editor still has the Phrase around its caret, as the Composer left it (a late echo). */
+    private fun editorCaretInPhrase(): Boolean {
+        val ic = currentInputConnection ?: return false
+        val typed = composer.typed
+        val caret = composer.caret
+        if (!ic.getSelectedText(0).isNullOrEmpty()) return false
+        return ic.getTextBeforeCursor(caret, 0)?.toString() == typed.substring(0, caret) &&
+            ic.getTextAfterCursor(typed.length - caret, 0)?.toString() == typed.substring(caret)
     }
 
     // ---- state -> view ----
@@ -683,15 +711,19 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         if (emojiSearch) searchKey(KeyAction.Text(text)) else type(text)
     }
 
-    /** Hold or slide on the space bar: the caret follows, cluster by cluster. Mid-Phrase, the Phrase stays Latin. */
+    /** Hold or slide on the space bar: the caret follows, cluster by cluster. Mid-Phrase, it moves inside the Phrase. */
     override fun onDragStart() {
-        composer.fieldEnded()
+        if (composer.isComposing) return  // onCaret moves the Composer's caret; the Phrase and its Suggestions stay
         dragCaret = proxy.selEnd
         refresh()
     }
 
     override fun onCaret(clusters: Int) {
         val ic = currentInputConnection ?: return
+        if (composer.isComposing) {
+            if (composer.moveCaret(clusters)) refresh()
+            return
+        }
         if (dragCaret < 0) return
         val before = ic.getTextBeforeCursor(64, 0)?.toString()
         val after = ic.getTextAfterCursor(64, 0)?.toString()
