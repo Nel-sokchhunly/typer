@@ -348,7 +348,9 @@ scenario_keys() { # long-press digit, key preview, pages, shift and caps lock, s
     check "keys: numbers and symbols pages" "25€" "$(ui desctext search)"
 
     open_fields url || { FAILED=1; return; }
-    check "keys: URL field starts English" "English mode" "$(ui labels | tr '\n' '|')"
+    check "keys: a URL field follows the mode like any text field (Khmer)" "Khmer mode" "$(ui labels | tr '\n' '|')"
+    check "keys: a URL field offers the Khmer layout" "|Khmer layout|" "|$(ui labels | tr '\n' '|')"
+    tap $(key_at "Khmer mode"); sleep 0.4; read_keys  # English for the Latin checks below
     type_keys abcd
     set -- $(key_at space)
     "$ADB" shell input motionevent DOWN $1 $2
@@ -365,13 +367,19 @@ scenario_keys() { # long-press digit, key preview, pages, shift and caps lock, s
     tap $(key_at "caps lock"); read_keys; type_keys d
     check "keys: shift once, caps lock, off (typed where the drag left the caret)" "abxABCdcd" "$(ui desctext url)"
     tap $(key_at "English mode"); sleep 0.4
-    check "keys: a URL field can switch to Khmer" "Khmer mode" "$(ui labels | tr '\n' '|')"
+    check "keys: back to Khmer mode" "Khmer mode" "$(ui labels | tr '\n' '|')"
 
     open_fields email || { FAILED=1; return; }
     tap $(key_at "English mode"); sleep 0.4
     check "keys: email stays English" "English mode" "$(ui labels | tr '\n' '|')"
     type_keys knhom
     check "keys: email types Latin" "knhom" "$(ui desctext email)"
+    tap $(key_at delete); tap $(key_at delete); tap $(key_at delete); tap $(key_at delete); tap $(key_at delete)
+    tap $(ui bounds "Khmer layout, not in this field") || { FAILED=1; return; }
+    sleep 0.4; read_keys
+    key_at q >/dev/null && ! key_at ១ >/dev/null && log "PASS keys: email keeps the Sing layout, its កខគ does nothing" ||
+        { log "FAIL keys: the Khmer layout opened in an email field"; FAILED=1; }
+    shot keys-email
 }
 
 scenario_companion() { # the Companion app: setup steps report Done, Open Settings works, light/dark, Khmer/English
@@ -603,13 +611,14 @@ sys.exit(0 if diff > 200 else 1)
 PY
 }
 
-scenario_khmer() { # the Khmer page: long press ខ, type ខ្មែរ key by key (shift for ែ), delete, a long-press popup, back to Sing
+scenario_khmer() { # the Khmer layout: កខគ in the bar, ខ្មែរ key by key, delete one code point inside a stack, popup, 123 and back, remembered across a restart, abc back to Sing
     open_app || { FAILED=1; return; }
-    read_keys
-    set -- $(key_at "Khmer mode"); hold $1 $2 0.7
-    wait_for "Khmer letters, back to Sing" 10 >/dev/null || { log "FAIL khmer: long press on ខ did not open the Khmer page"; FAILED=1; shot khmer-fail; return; }
+    tap $(wait_for "Khmer layout" 10) || { log "FAIL khmer: no កខគ in the bar"; FAILED=1; shot khmer-fail; return; }
+    wait_for ១ 10 >/dev/null || { log "FAIL khmer: កខគ did not open the Khmer layout"; FAILED=1; shot khmer-fail; return; }
     read_keys
     shot khmer-page
+    key_at "Khmer mode" >/dev/null && { log "FAIL khmer: the ខ/EN key shows on the Khmer layout"; FAILED=1; } || log "PASS khmer: no ខ/EN key on the Khmer layout"
+    check "khmer: the bar ends with abc back to Sing" "Sing layout" "$(ui labels | tr '\n' '|')"
     for k in ខ ្ ម; do tap $(key_at "$k"); done
     tap $(key_at shift); sleep 0.3; read_keys
     shot khmer-shift
@@ -617,17 +626,28 @@ scenario_khmer() { # the Khmer page: long press ខ, type ខ្មែរ key by
     tap $(key_at រ)
     sleep 0.5
     check "khmer: ខ្មែរ typed key by key" "ខ្មែរ" "$(field_text)"
-    tap $(key_at delete); sleep 0.4
+    tap $(key_at delete); sleep 0.3
     check "khmer: delete removes the last character" "ខ្មែ" "$(field_text)"
+    tap $(key_at delete); sleep 0.3
+    tap $(key_at delete); sleep 0.3
+    check "khmer: delete inside a stack removes one code point at a time (ខ្មែ -> ខ្ម -> ខ្)" "ខ្" "$(field_text)"
+    [ "$(field_text)" = "ខ្" ] || { log "FAIL khmer: wanted exactly ខ្, got '$(field_text)'"; FAILED=1; }
     set -- $(key_at ១)
     "$ADB" shell "input motionevent DOWN $1 $2; sleep 0.7"
     shot khmer-popup
     w=$(( ($(screen_width) - 20) / 12 ))
     "$ADB" shell "input motionevent MOVE $(($1 + w)) $2; sleep 0.2; input motionevent UP $(($1 + w)) $2"
     sleep 0.5
-    check "khmer: long press and slide picks an alternate" "ខ្មែ៱" "$(field_text)"
-    tap $(key_at "Khmer letters, back to Sing")
-    wait_for "Khmer mode" 10 >/dev/null && read_keys && key_at q >/dev/null && log "PASS khmer: ខ goes back to the Sing letters" || { log "FAIL khmer: not back on the Sing letters"; FAILED=1; }
+    check "khmer: long press and slide picks an alternate" "ខ្៱" "$(field_text)"
+    tap $(key_at "numbers and symbols"); sleep 0.4; read_keys
+    shot khmer-numbers
+    tap $(key_at "Khmer letters") || { log "FAIL khmer: no កខគ way back on the 123 page"; FAILED=1; return; }
+    wait_for ១ 10 >/dev/null && log "PASS khmer: 123 page's កខគ goes back to the Khmer layout" || { log "FAIL khmer: 123 did not go back to the Khmer layout"; FAILED=1; }
+    restart_keyboard
+    open_app || { FAILED=1; return; }
+    wait_for ១ 10 >/dev/null && log "PASS khmer: the Khmer layout is remembered after the Keyboard restarts" || { log "FAIL khmer: layout not remembered"; FAILED=1; shot khmer-fail; }
+    tap $(ui bounds "Sing layout")
+    wait_for "Khmer mode" 10 >/dev/null && read_keys && key_at q >/dev/null && log "PASS khmer: abc goes back to the Sing layout" || { log "FAIL khmer: not back on the Sing layout"; FAILED=1; }
 }
 
 # Screenshots of Typer in the same field the Gboard reference used (Contacts, First name; android/docs/reference.md),
