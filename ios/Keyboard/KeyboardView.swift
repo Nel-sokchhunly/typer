@@ -6,6 +6,11 @@ struct KeyboardView: View {
     let onLatin: () -> Void
     let onEnglishWord: (Int) -> Void
     let onSlot: () -> Void
+    let onEmoji: (String) -> Void
+    let onSearch: () -> Void
+    let onGlobe: () -> Void
+    let onLetters: () -> Void
+    let onDelete: () -> Void
 
     private let margin = KeyLayout.margin
     private let keyHeight = KeyLayout.keyHeight
@@ -15,7 +20,11 @@ struct KeyboardView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
-                if model.showAll && !model.typed.isEmpty {
+                if model.showEmoji && !model.emojiSearching {
+                    EmojiPanel(sections: model.emojiSections, onPick: onEmoji, tones: model.emojiTones, display: model.emojiDisplay, onSearch: onSearch,
+                               globe: model.needsGlobe, onGlobe: onGlobe, onLetters: onLetters, onDelete: onDelete)
+                        .frame(height: model.height)
+                } else if model.showAll && !model.typed.isEmpty {
                     VStack(spacing: 0) {
                         candidateBar
                         Spacer().frame(height: 6)
@@ -24,7 +33,10 @@ struct KeyboardView: View {
                     .padding(.horizontal, margin)
                     .padding(.top, KeyLayout.barTop)
                 } else {
-                    if !model.typed.isEmpty {
+                    if model.emojiSearching {
+                        EmojiSearchBar(query: model.emojiQuery, results: model.emojiResults, onPick: onEmoji)
+                            .padding(.horizontal, margin).padding(.top, KeyLayout.barTop)
+                    } else if !model.typed.isEmpty {
                         candidateBar.padding(.horizontal, margin).padding(.top, KeyLayout.barTop)
                     } else if !model.englishWords.isEmpty {
                         englishBar.padding(.horizontal, margin).padding(.top, KeyLayout.barTop)
@@ -58,11 +70,13 @@ struct KeyboardView: View {
             return Look(image: model.shift == .lock ? "capslock.fill" : model.shift == .once ? "shift.fill" : "shift",
                         style: model.shift == .off ? .function : .letter)
         case .symbols: return Look(text: model.page == .numbers ? "#+=" : "123", fontSize: 16)
-        case .page: return Look(text: model.page == .letters ? "123" : model.layout == .khmer ? "កខគ" : "ABC", fontSize: 16)
+        case .page: return Look(text: model.emojiSearching ? "ABC" : model.page == .letters ? "123" : model.layout == .khmer ? "កខគ" : "ABC", fontSize: 16)
+        case .emoji: return Look(image: "face.smiling")
         case .backspace: return Look(image: "delete.left")
         case .globe: return Look(image: "globe")
         case .mode: return Look(text: model.mode, style: .mode, fontSize: 16)
         case .space: return Look(text: "space", style: .letter, fontSize: 16)
+        case .returnKey where model.emojiSearching: return Look(text: "done", fontSize: 16)
         case .returnKey: return Look(text: model.returnLabel, style: model.returnProminent ? .prominent : .function, fontSize: 16)
         case .slot: return Look(text: model.slotLabel, style: .switcher, fontSize: 16)  // the layout switch, unlike the punctuation
         }
@@ -260,7 +274,7 @@ private extension View {
     }
 }
 
-private extension View {
+extension View {
     /// Fires on touch-up unless the finger slid away. A plain Button drops fast taps in a keyboard extension.
     func onTouchUp(_ action: @escaping () -> Void) -> some View {
         contentShape(Rectangle())

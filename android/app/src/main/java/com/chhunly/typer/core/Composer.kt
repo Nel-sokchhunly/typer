@@ -132,7 +132,7 @@ class Composer(
 
     /** Emoji, non-ASCII, ...: insert the top Suggestion, then let the key through. */
     private fun otherKey(): Boolean {
-        if (isComposing) commit(0)
+        if (isComposing) commit(0, learn = false)
         return false
     }
 
@@ -143,9 +143,12 @@ class Composer(
         return true
     }
 
-    fun returnKey(): Boolean {
+    fun returnKey(): Boolean = commitTop()
+
+    /** Commit the top Suggestion, learn nothing (only a tap is a Pick). False when there's nothing to commit. */
+    fun commitTop(): Boolean {
         if (passingThrough() || !isComposing) return false
-        commit(0)
+        commit(0, learn = false)
         return true
     }
 
@@ -234,7 +237,7 @@ class Composer(
     }
 
     /** A Pick must come from the current Phrase: if its result hasn't landed, compute it now. */
-    private fun commit(index: Int) {
+    private fun commit(index: Int, learn: Boolean = true) {
         val input = typed
         if (suggestionsFor != input) {
             scheduler.sync { suggestions = engine.suggest(input, 9) }
@@ -244,7 +247,7 @@ class Composer(
             write(input, final = true)
             return
         }
-        if (write(suggestions[index], final = true)) scheduler.async { engine.pick(input, index) }
+        if (write(suggestions[index], final = true) && learn) scheduler.async { engine.pick(input, index) }
     }
 
     /** Leave the Phrase in the document as it stands (Latin), no learning. */

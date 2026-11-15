@@ -23,6 +23,22 @@ final class KeyboardModel: ObservableObject {
     @Published var englishWords: [String] = []
     /// The all-Suggestions panel is open in place of the keys.
     @Published var showAll = false
+    /// The Emoji panel is open in place of the keys; `emojiSections` is what it shows, fixed while open.
+    @Published var showEmoji = false
+    var emojiSections: [EmojiSection] = []
+    var emojiTones: (String) -> [String] = { _ in [] }
+    var emojiDisplay: (String) -> String = { $0 }
+    var emojiSearch: (String) -> [String] = { _ in [] }
+    /// Search mode: the Sing letter keys under a field and a results row. Keys edit `emojiQuery`, never the Host app.
+    @Published var emojiSearching = false
+    @Published var emojiQuery = ""
+    /// Recents (as of opening) for an empty query, else the matches.
+    var emojiResults: [String] {
+        emojiQuery.trimmingCharacters(in: .whitespaces).isEmpty
+            ? emojiSections.first { $0.title == "Recently Used" }?.emoji ?? [] : emojiSearch(emojiQuery)
+    }
+    /// The results row sits between the field and the keys.
+    static let searchExtra = EmojiSearchBar.fieldHeight + EmojiSearchBar.resultsHeight + 4 - KeyLayout.barHeight
     @Published var needsGlobe = false
     @Published var shift = Shift.off
     @Published var page = Page.letters
@@ -49,14 +65,26 @@ final class KeyboardModel: ObservableObject {
 
     /// The one layout both the drawn keys and the touch layer use; empty while the all-Suggestions panel replaces the keys.
     func keys(width: CGFloat) -> [Key] {
-        if showAll && !typed.isEmpty { return [] }
+        if emojiSearching { return searchKeys(width: width) }
+        if showEmoji || showAll && !typed.isEmpty { return [] }
         let bar = !typed.isEmpty || !englishWords.isEmpty ? []
             : layout == .khmer ? KeyLayout.khmerPunctuation : mode == "EN" ? KeyLayout.englishPunctuation : KeyLayout.punctuation
         return KeyLayout.keys(width: width, page: page, upper: shift != .off, globe: needsGlobe, bar: bar, khmer: layout == .khmer)
     }
 
+    /// English letters, lowercase, below the results row; no emoji or ខ/EN key, so space grows over their place.
+    private func searchKeys(width: CGFloat) -> [Key] {
+        let keys = KeyLayout.keys(width: width, page: .letters, upper: false, globe: false, bar: [])
+        guard let page = keys.first(where: { $0.action == .page }) else { return [] }
+        return keys.filter { $0.action != .emoji && $0.action != .mode }.map { k in
+            var r = k.rect.offsetBy(dx: 0, dy: Self.searchExtra)
+            if k.action == .space { r = CGRect(x: page.rect.maxX + KeyLayout.gap, y: r.minY, width: r.maxX - page.rect.maxX - KeyLayout.gap, height: r.height) }
+            return Key(action: k.action, rect: r)
+        }
+    }
+
     /// The Khmer layout's letters take one row more.
-    var height: CGFloat { layout == .khmer && page == .letters ? KeyLayout.khmerHeight : KeyLayout.height }
+    var height: CGFloat { emojiSearching ? KeyLayout.height + Self.searchExtra : layout == .khmer && page == .letters ? KeyLayout.khmerHeight : KeyLayout.height }
 
     /// The bar's rightmost slot: abc keeps the Latin while composing; idle, it switches layouts.
     var slotLabel: String { typed.isEmpty && layout == .sing ? "កខគ" : "abc" }
@@ -107,6 +135,13 @@ final class KeyboardViewController: UIInputViewController {
         return c
     }()
 
+    /// nil if the bundled data won't load: the emoji key then does nothing.
+    private lazy var emojiCatalog: EmojiCatalog? = {
+        let url = URL(fileURLWithPath: Bundle.main.resourcePath! + "/data/emoji.json")
+        let max = EmojiCatalog.maxEmojiVersion(iOS: ProcessInfo.processInfo.operatingSystemVersion)
+        return (try? Data(contentsOf: url)).flatMap { try? EmojiCatalog(data: $0, maxVersion: max, store: UserDefaultsEmojiStore(.standard)) }
+    }()
+
     override func loadView() { view = ClickInputView(frame: .zero, inputViewStyle: .keyboard) }
 
     /// Key touch-down feedback. Both need Full Access; without it we stay silent.
@@ -124,7 +159,12 @@ final class KeyboardViewController: UIInputViewController {
                 onCandidate: { [unowned self] in handle(composer.candidateTapped($0)) },
                 onLatin: { [unowned self] in handle(composer.rawLatin()) },
                 onEnglishWord: { [unowned self] in englishWordTapped($0) },
-                onSlot: { [unowned self] in slotTapped() }))
+                onSlot: { [unowned self] in slotTapped() },
+                onEmoji: { [unowned self] in emojiPicked($0) },
+                onSearch: { [unowned self] in keyFeedback(); model.emojiQuery = ""; model.emojiSearching = true; heightConstraint.constant = model.height },
+                onGlobe: { [unowned self] in advanceToNextInputMode() },
+                onLetters: { [unowned self] in keyFeedback(); model.showEmoji = false; model.page = .letters },
+                onDelete: { [unowned self] in keyFeedback(); textDocumentProxy.deleteBackward() }))  // a grapheme, ZWJ emoji included
         hosting.view.translatesAutoresizingMaskIntoConstraints = false
         hosting.view.backgroundColor = .clear
         hosting.view.isMultipleTouchEnabled = true
@@ -175,7 +215,8 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         _ = composer.fieldEnded()
-        refresh()
+        model.showEmoji = false; model.emojiSearching = false; model.emojiQuery = ""  // reopens on the letters
+        refresh()  // also restores the height
     }
 
     override func textDidChange(_ textInput: UITextInput?) {
@@ -218,6 +259,7 @@ final class KeyboardViewController: UIInputViewController {
 
     /// A key fired by the touch layer.
     private func fire(_ action: KeyAction) {
+        if model.emojiSearching { return searchKey(action) }
         func type(_ c: String) { handle(composer.key(c), else: { textDocumentProxy.insertText(c) }) }
         switch action {
         case .char(let c), .punct(let c): type(c)
@@ -227,11 +269,42 @@ final class KeyboardViewController: UIInputViewController {
         case .shift: model.shiftTapped()
         case .symbols: model.page = model.page == .numbers ? .symbols : .numbers
         case .page: model.page = model.page == .letters ? .numbers : .letters
+        case .emoji: openEmoji()
         case .globe: advanceToNextInputMode()
         case .mode: modeTapped()
         case .slot: slotTapped()
         }
         heightConstraint.constant = model.height
+    }
+
+    /// While searching, keys edit the query only; return and ABC go back to the grid.
+    private func searchKey(_ action: KeyAction) {
+        switch action {
+        case .char(let c): model.emojiQuery += c
+        case .space: model.emojiQuery += " "
+        case .backspace: model.emojiQuery = String(model.emojiQuery.dropLast())
+        case .returnKey, .page: model.emojiSearching = false
+        default: break
+        }
+        heightConstraint.constant = model.height
+    }
+
+    /// Commits the top Suggestion (no learning) and swaps the keys for the Emoji panel.
+    private func openEmoji() {
+        guard let catalog = emojiCatalog else { return }
+        _ = composer.commitTop()
+        model.emojiSections = catalog.sections
+        model.emojiTones = { [unowned catalog] in catalog.tones(for: $0) }
+        model.emojiDisplay = { [unowned catalog] in catalog.display($0) }
+        model.emojiSearch = { [unowned catalog] in catalog.search($0) }
+        model.showEmoji = true
+        refresh(afterKey: true)
+    }
+
+    private func emojiPicked(_ e: String) {
+        keyFeedback()
+        handle(composer.key(e), else: { textDocumentProxy.insertText(e) })
+        emojiCatalog?.pick(e)
     }
 
     /// While a Phrase is open the slot keeps the Latin; idle, it switches layouts and shows the letters.

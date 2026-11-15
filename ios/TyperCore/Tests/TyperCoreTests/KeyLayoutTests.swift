@@ -59,7 +59,7 @@ final class KeyLayoutTests: XCTestCase {
     func testKhmerLayoutHasFourRowsOfTwelveNoModeKeyAndFitsItsHeight() {
         let ks = KeyLayout.keys(width: w, page: .letters, upper: false, globe: true, bar: KeyLayout.khmerPunctuation, khmer: true)
         let rows = Dictionary(grouping: ks.filter { $0.rect.minY >= KeyLayout.rowsTop }, by: \.rect.minY).sorted { $0.key < $1.key }
-        XCTAssertEqual(rows.map(\.value.count), [12, 12, 12, 12, 4])  // page, globe, space, return
+        XCTAssertEqual(rows.map(\.value.count), [12, 12, 12, 12, 5])  // page, emoji, globe, space, return
         XCTAssertEqual(rows[3].value.first?.action, .shift)
         XCTAssertEqual(rows[3].value.last?.action, .backspace)
         XCTAssertEqual(rows[0].value.map(\.action), KhmerKeys.base[0].map { .char($0) })
@@ -71,11 +71,24 @@ final class KeyLayoutTests: XCTestCase {
         XCTAssertGreaterThan(ks.map(\.rect.maxY).max()!, KeyLayout.height)
     }
 
+    func testEmojiKeyFollowsPageOnBothLayoutsAndSpaceStaysUsable() {
+        for khmer in [false, true] {
+            for globe in [false, true] {
+                let ks = KeyLayout.keys(width: 375, page: .letters, upper: false, globe: globe, bar: [], khmer: khmer)
+                let row = ks.filter { $0.rect.minY == ks.map(\.rect.minY).max()! }.sorted { $0.rect.minX < $1.rect.minX }
+                XCTAssertEqual(row.prefix(2).map(\.action), [.page, .emoji])
+                XCTAssertEqual(row.map(\.action), [.page, .emoji] + (globe ? [.globe] : []) + (khmer ? [] : [.mode]) + [.space, .returnKey])
+                for (a, b) in zip(row, row.dropFirst()) { XCTAssertLessThan(a.rect.maxX, b.rect.minX) }
+                XCTAssertGreaterThanOrEqual(row.first { $0.action == .space }!.rect.width, 100)
+            }
+        }
+    }
+
     func testKhmerShiftShowsTheShiftLayerInTheSameShape() {
         XCTAssertEqual(KhmerKeys.shift.map(\.count), KhmerKeys.base.map(\.count))
         let ks = KeyLayout.keys(width: w, page: .letters, upper: true, globe: true, bar: [], khmer: true)
         let rows = Dictionary(grouping: ks, by: \.rect.minY).sorted { $0.key < $1.key }
-        XCTAssertEqual(rows.map(\.value.count), [12, 12, 12, 12, 4])
+        XCTAssertEqual(rows.map(\.value.count), [12, 12, 12, 12, 5])
         for i in 0..<4 {
             let chars = rows[i].value.map(\.action).filter { $0 != .shift && $0 != .backspace }
             XCTAssertEqual(chars, KhmerKeys.shift[i].map { .char($0) })
