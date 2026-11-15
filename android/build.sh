@@ -27,7 +27,7 @@ mkdir -p "$OUT/jniLibs" "$OUT/assets/data"
 # cargo-ndk reads the crate from the current directory
 (cd android/jni && cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -P 24 -o ../app/build/rust/jniLibs build --release)
 for f in lexicon ngrams english generated; do cp "data/out/$f.tsv" "$OUT/assets/data/"; done
-for f in emoji.json emoji-variants.json emoji-names.tsv; do cp "data/out/$f" "$OUT/assets/data/"; done
+for f in emoji.json emoji-names.tsv; do cp "data/out/$f" "$OUT/assets/data/"; done
 
 case "${1:-}" in host | check) cargo build --release --manifest-path android/jni/Cargo.toml ;; esac
 

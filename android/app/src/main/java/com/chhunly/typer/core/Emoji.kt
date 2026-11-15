@@ -1,11 +1,10 @@
 package com.chhunly.typer.core
 
 import org.json.JSONArray
-import org.json.JSONObject
 
 /**
- * The emoji keyboard's data, from data/emoji.py: Unicode's emoji list in order (emoji.json), skin-tone variants
- * (emoji-variants.json) and CLDR names in English and Khmer (emoji-names.tsv) for search and TalkBack.
+ * The emoji keyboard's data, from data/emoji.py: Unicode's emoji list in order with each one's five skin tones
+ * (emoji.json, shared with iOS) and CLDR names in English and Khmer (emoji-names.tsv) for search and TalkBack.
  */
 class EmojiData(
     val groups: List<Group>,
@@ -96,17 +95,19 @@ class EmojiData(
             "🥴", "👈", "💩", "✅",
         )
 
-        fun load(groupsJson: String, variantsJson: String, namesTsv: String): EmojiData {
+        /** emoji.json: [{"group": name, "emoji": [{"e": emoji, "t": [five tones]?, ...}]}], groups in Unicode order. */
+        fun load(groupsJson: String, namesTsv: String): EmojiData {
             val g = JSONArray(groupsJson)
+            val variants = HashMap<String, List<String>>()
             val groups = (0 until g.length()).map { i ->
-                val pair = g.getJSONArray(i)
-                val es = pair.getJSONArray(1)
-                Group(pair.getString(0), (0 until es.length()).map { es.getString(it) })
-            }
-            val v = JSONObject(variantsJson)
-            val variants = v.keys().asSequence().associateWith { k ->
-                val a = v.getJSONArray(k)
-                (0 until a.length()).map { a.getString(it) }
+                val group = g.getJSONObject(i)
+                val items = group.getJSONArray("emoji")
+                Group(group.getString("group"), (0 until items.length()).map { j ->
+                    val item = items.getJSONObject(j)
+                    val e = item.getString("e")
+                    item.optJSONArray("t")?.let { t -> variants[e] = (0 until t.length()).map { t.getString(it) } }
+                    e
+                })
             }
             val names = HashMap<String, Names>(4096)
             for (line in namesTsv.lineSequence()) {

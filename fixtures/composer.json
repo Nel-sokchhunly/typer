@@ -13,7 +13,7 @@
     "  type {text}             each character to key(); what isn't consumed is inserted as the keyboard would",
     "  key {text}              key() alone",
     "  backspace / return      the keyboard's backspace / return: the Composer first, else delete / insert \\n",
-    "  composerBackspace, returnKey, rawLatin, toggle, textChanged, fieldEnded   the Composer event alone",
+    "  composerBackspace, returnKey, commitTop, rawLatin, toggle, textChanged, fieldEnded   the Composer event alone",
     "  tap {index | text | saved}   candidateTapped(index); `text` taps that Suggestion's index",
     "  traits {secure, field}  fieldTraitsChanged; field is text | email | url | number",
     "  moveCaretLeft {n}       the user moves the caret n characters left; the host keeps marked text as plain text",
@@ -71,6 +71,23 @@
         {"op": "saveFirst", "as": "top"},
         {"op": "returnKey", "consumed": true, "expect": {"doc": "{top}", "marked": 0}},
         {"op": "returnKey", "consumed": false}
+      ]
+    },
+    {
+      "name": "an emoji mid-Phrase commits the top Suggestion without learning",
+      "steps": [
+        {"op": "type", "text": "knhom"},
+        {"op": "saveFirst", "as": "top"},
+        {"op": "type", "text": "😀", "expect": {"doc": "{top}😀", "marked": 0, "picks": []}}
+      ]
+    },
+    {
+      "name": "commitTop commits the top Suggestion without learning; idle it does nothing",
+      "steps": [
+        {"op": "type", "text": "knhom"},
+        {"op": "saveFirst", "as": "top"},
+        {"op": "commitTop", "consumed": true, "expect": {"doc": "{top}", "marked": 0, "isComposing": false, "picks": []}},
+        {"op": "commitTop", "consumed": false, "expect": {"doc": "{top}"}}
       ]
     },
     {
@@ -306,17 +323,6 @@
       ]
     },
     {
-      "name": "a URL field starts in English but can switch to Khmer, for that field only",
-      "steps": [
-        {"op": "traits", "secure": false, "field": "url", "expect": {"mode": "EN", "canToggle": true}},
-        {"op": "toggle", "consumed": true, "expect": {"mode": "ខ"}},
-        {"op": "type", "text": "knhom", "expect": {"typed": "knhom"}},
-        {"op": "rawLatin"},
-        {"op": "traits", "secure": false, "field": "text", "expect": {"mode": "ខ"}},
-        {"op": "traits", "secure": false, "field": "url", "expect": {"mode": "EN"}}
-      ]
-    },
-    {
       "name": "the English choice survives a forced field",
       "steps": [
         {"op": "toggle", "consumed": true},
@@ -354,11 +360,9 @@
       ]
     },
     {
-      "name": "email, URL and number fields pass keys through",
+      "name": "email and number fields pass keys through",
       "steps": [
         {"op": "traits", "secure": false, "field": "email"},
-        {"op": "key", "text": "a", "consumed": false},
-        {"op": "traits", "secure": false, "field": "url"},
         {"op": "key", "text": "a", "consumed": false},
         {"op": "traits", "secure": false, "field": "number"},
         {"op": "key", "text": "a", "consumed": false, "expect": {"suggests": 0}}
@@ -421,7 +425,7 @@
         {"op": "return"},
         {"op": "saveEngine", "input": "knhom", "as": "knhom"},
         {"op": "check", "expect": {"doc": "{knhom}", "marked": 0}},
-        {"op": "runAll", "expect": {"suggestions": [], "isComposing": false, "picks": ["knhom"]}}
+        {"op": "runAll", "expect": {"suggestions": [], "isComposing": false, "picks": []}}
       ]
     },
     {

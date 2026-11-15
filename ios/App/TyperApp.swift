@@ -46,7 +46,8 @@ private struct Copy {
             ("វាយដូចពេលឆាត", "វាយអក្សរឡាតាំងទាំងឃ្លា ហើយ Typer ប្តូរវាជាខ្មែរ។"),
             ("សរសេរតាមរបៀបអ្នក", "គ្មានច្បាប់តឹងរ៉ឹងទេ៖ nh, knh ឬ knhom សុទ្ធតែបាន ខ្ញុំ។"),
             ("ចាំអ្វីដែលអ្នកជ្រើស", "ពាក្យដែលអ្នកជ្រើសញឹកញាប់ នឹងឡើងមកមុនគេ។"),
-            ("របារពាក្យស្នើ", "ពណ៌លឿង៖ ពាក្យស្នើល្អបំផុត។ abc៖ រក្សាអក្សរឡាតាំង។ លេខ៖ មើលពាក្យស្នើទាំងអស់។"),
+            ("របារពាក្យស្នើ", "ពណ៌លឿង៖ ពាក្យស្នើល្អបំផុត។ លេខ៖ មើលពាក្យស្នើទាំងអស់។ abc៖ រក្សាអក្សរឡាតាំង។"),
+            ("វាយអក្សរខ្មែរផ្ទាល់", "ចុច កខគ លើរបារ ដើម្បីវាយអក្សរខ្មែរផ្ទាល់ ដូចជាកែអក្សរមួយ។ ចុច abc ដើម្បីត្រឡប់វិញ។"),
             ("ខ្មែរ ឬ អង់គ្លេស", "ចុចគ្រាប់ ខ ដើម្បីប្តូរទៅវាយអង់គ្លេសធម្មតា។"),
         ],
         setup: "ការរៀបចំ",
@@ -69,7 +70,8 @@ private struct Copy {
             ("Type how you chat", "Type a whole phrase in Latin letters and Typer turns it into Khmer."),
             ("Spell it your way", "No strict rules: nh, knh or knhom all give ខ្ញុំ."),
             ("Learns your picks", "Words you pick often come up first."),
-            ("The Suggestion bar", "Yellow: the top Suggestion. abc: keep the Latin. The number: see every Suggestion."),
+            ("The Suggestion bar", "Yellow: the top Suggestion. The number: see every Suggestion. abc: keep the Latin."),
+            ("Khmer letters", "Tap កខគ in the bar to type Khmer letters directly, like fixing one letter. abc goes back."),
             ("Khmer or English", "Tap the ខ key to switch to plain English typing."),
         ],
         setup: "Setup",
@@ -206,8 +208,14 @@ struct SetupView: View {
         case 3:
             HStack(spacing: 6) {
                 chip("ខ្ញុំទៅសាលារៀន", yellow: true).frame(maxWidth: .infinity, alignment: .leading)
-                chip("abc")
                 chip("5 ⌄")
+                chip("abc")
+            }
+        case 4:
+            HStack(spacing: 6) {
+                chip("កខគ", ink: true)  // the keyboard's layout switch
+                arrow
+                chip("គ្រូ")
             }
         default:
             HStack(spacing: 6) { chip("ខ", yellow: true); arrow; chip("EN") }
@@ -218,12 +226,12 @@ struct SetupView: View {
         Image(systemName: "arrow.right").font(.system(size: 13, weight: .bold)).foregroundColor(.muted)
     }
 
-    private func chip(_ text: String, yellow: Bool = false, latin: Bool = false) -> some View {
+    private func chip(_ text: String, yellow: Bool = false, latin: Bool = false, ink: Bool = false) -> some View {
         Text(text).font(.system(size: 16, weight: .semibold, design: latin ? .monospaced : .default))
-            .foregroundColor(yellow ? .ink : .primary)
+            .foregroundColor(ink ? .yellow : yellow ? .ink : .primary)
             .padding(.horizontal, 10).frame(height: 34)
             .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(yellow ? Color.yellow : Color.primary.opacity(0.08)))
+                .fill(ink ? Color.ink : yellow ? Color.yellow : Color.primary.opacity(0.08)))
     }
 
     private func steps(_ copy: Copy) -> some View {

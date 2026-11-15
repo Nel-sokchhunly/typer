@@ -5,17 +5,26 @@ struct KeyboardView: View {
     let onCandidate: (Int) -> Void
     let onLatin: () -> Void
     let onEnglishWord: (Int) -> Void
+    let onSlot: () -> Void
+    let onEmoji: (String) -> Void
+    let onSearch: () -> Void
+    let onGlobe: () -> Void
+    let onLetters: () -> Void
+    let onDelete: () -> Void
 
     private let margin = KeyLayout.margin
     private let keyHeight = KeyLayout.keyHeight
     private let rowGap = KeyLayout.rowGap
-    static let height = KeyLayout.height
 
     /// Keys are drawn only; the UIKit TouchLayer above this view takes every touch on them (see TouchLayer).
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
-                if model.showAll && !model.typed.isEmpty {
+                if model.showEmoji && !model.emojiSearching {
+                    EmojiPanel(sections: model.emojiSections, onPick: onEmoji, tones: model.emojiTones, display: model.emojiDisplay, onSearch: onSearch,
+                               globe: model.needsGlobe, onGlobe: onGlobe, onLetters: onLetters, onDelete: onDelete)
+                        .frame(height: model.height)
+                } else if model.showAll && !model.typed.isEmpty {
                     VStack(spacing: 0) {
                         candidateBar
                         Spacer().frame(height: 6)
@@ -24,7 +33,10 @@ struct KeyboardView: View {
                     .padding(.horizontal, margin)
                     .padding(.top, KeyLayout.barTop)
                 } else {
-                    if !model.typed.isEmpty {
+                    if model.emojiSearching {
+                        EmojiSearchBar(query: model.emojiQuery, results: model.emojiResults, onPick: onEmoji)
+                            .padding(.horizontal, margin).padding(.top, KeyLayout.barTop)
+                    } else if !model.typed.isEmpty {
                         candidateBar.padding(.horizontal, margin).padding(.top, KeyLayout.barTop)
                     } else if !model.englishWords.isEmpty {
                         englishBar.padding(.horizontal, margin).padding(.top, KeyLayout.barTop)
@@ -36,6 +48,7 @@ struct KeyboardView: View {
                                 .offset(x: key.rect.minX, y: key.rect.minY)
                         }
                         ForEach(keys.filter(isPreviewed), id: \.action) { key in preview(key) }
+                        if let p = model.panel { longPressPanel(p) }
                     }
                     .allowsHitTesting(false)
                 }
@@ -51,18 +64,21 @@ struct KeyboardView: View {
 
     private func look(_ a: KeyAction) -> Look {
         switch a {
-        case .char(let c): return Look(text: c, style: .letter)
+        case .char(let c): return Look(text: c, style: .letter)  // iOS draws ◌ under a bare combining mark itself
         case .punct(let p): return Look(text: p, fontSize: 20)
         case .shift:
             return Look(image: model.shift == .lock ? "capslock.fill" : model.shift == .once ? "shift.fill" : "shift",
                         style: model.shift == .off ? .function : .letter)
         case .symbols: return Look(text: model.page == .numbers ? "#+=" : "123", fontSize: 16)
-        case .page: return Look(text: model.page == .letters ? "123" : "ABC", fontSize: 16)
+        case .page: return Look(text: model.emojiSearching ? "ABC" : model.page == .letters ? "123" : model.layout == .khmer ? "កខគ" : "ABC", fontSize: 16)
+        case .emoji: return Look(image: "face.smiling")
         case .backspace: return Look(image: "delete.left")
         case .globe: return Look(image: "globe")
         case .mode: return Look(text: model.mode, style: .mode, fontSize: 16)
         case .space: return Look(text: "space", style: .letter, fontSize: 16)
+        case .returnKey where model.emojiSearching: return Look(text: "done", fontSize: 16)
         case .returnKey: return Look(text: model.returnLabel, style: model.returnProminent ? .prominent : .function, fontSize: 16)
+        case .slot: return Look(text: model.slotLabel, style: .switcher, fontSize: 16)  // the layout switch, unlike the punctuation
         }
     }
 
@@ -84,16 +100,38 @@ struct KeyboardView: View {
         .background(isPressed(key) && !previewed ? pressedBackground : l.style.background)
         .cornerRadius(5)
         .shadow(color: .black.opacity(0.3), radius: 0, x: 0, y: 1)
-        .opacity(key.action == .mode && !model.canToggle ? 0.4 : 1)  // dimmed when the mode is forced (password, email, URL, number) or a Phrase is open
+        .opacity(key.action == .mode && !model.canToggle || key.action == .slot && model.layoutForced ? 0.4 : 1)  // dimmed when the mode is forced (password, email, number) or a Phrase is open
     }
 
     /// The character above the finger.
     private func preview(_ key: Key) -> some View {
         Text(look(key.action).text ?? "").font(.system(size: 36)).foregroundColor(.primary)
+            .lineLimit(1).minimumScaleFactor(0.5)  // wide Khmer letters (ឈ ឡ ញ) shrink instead of clipping
             .frame(width: key.rect.width + 6, height: 52)
             .background(RoundedRectangle(cornerRadius: 8).fill(KeyStyle.letter.background))
             .shadow(color: .black.opacity(0.35), radius: 2, x: 0, y: 1)
             .offset(x: key.rect.minX - 3, y: key.rect.minY - 46)
+    }
+
+    /// The held key's options; the highlighted one types on release.
+    private func longPressPanel(_ p: LongPressPanel) -> some View {
+        let all = p.cells.reduce(p.cells[0]) { $0.union($1) }
+        return ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 8).fill(KeyStyle.letter.background)
+                .shadow(color: .black.opacity(0.35), radius: 2, x: 0, y: 1)
+                .frame(width: all.width, height: all.height)
+            ForEach(p.cells.indices, id: \.self) { i in
+                let label = KhmerKeys.optionLabel(for: p.options[i])
+                let selected = i == model.panelSelected
+                Text(label).font(.system(size: label.count > 1 ? 12 : 26))  // ZWJ, ZWNJ: small
+                    .lineLimit(1).minimumScaleFactor(0.5)
+                    .foregroundColor(selected ? KeyStyle.mode.foreground : .primary)  // Typer's yellow, like the ខ/EN key
+                    .frame(width: p.cells[i].width, height: p.cells[i].height)
+                    .background(selected ? RoundedRectangle(cornerRadius: 6).fill(KeyStyle.mode.background) : nil)
+                    .offset(x: p.cells[i].minX - all.minX, y: 0)
+            }
+        }
+        .offset(x: all.minX, y: all.minY)
     }
 
     // MARK: candidate bar
@@ -111,11 +149,11 @@ struct KeyboardView: View {
                     .background(KeyStyle.mode.background)  // Typer's yellow, like the ខ/EN key
                     .cornerRadius(8)
                     .onTouchUp { onCandidate(0) }
-                barButton(Text("abc").font(.system(size: 16, weight: .semibold))) { onLatin() }  // keep the Latin
                 barButton(HStack(spacing: 3) {  // how many Suggestions the panel holds
                     Text("\(model.suggestions.count)").font(.system(size: 16, weight: .semibold))
                     Image(systemName: model.showAll ? "chevron.up" : "chevron.down").font(.system(size: 13, weight: .bold))
                 }) { model.showAll.toggle() }
+                slot  // abc: keep the Latin
             }
         }
         .frame(height: 40)
@@ -136,15 +174,22 @@ struct KeyboardView: View {
                     .cornerRadius(8)
                     .onTouchUp { onEnglishWord(i) }
             }
+            slot
         }
         .frame(height: 40)
     }
 
+    /// The bar's rightmost slot when the bar is drawn here; the idle punctuation bar draws it as a key (KeyLayout).
+    private var slot: some View {
+        // while composing it is keep-Latin, styled like the chevron; only the layout switch gets the switcher look
+        barButton(Text(model.slotLabel).font(.system(size: 16, weight: .semibold)), style: model.typed.isEmpty ? .switcher : .function, onSlot)
+    }
+
     /// A bar button with a full-height hit area that, like the keys, fires on touch-up.
-    private func barButton<Label: View>(_ label: Label, _ action: @escaping () -> Void) -> some View {
-        label.foregroundColor(.primary)
-            .frame(width: 52, height: 36)
-            .background(KeyStyle.function.background)
+    private func barButton<Label: View>(_ label: Label, style: KeyStyle = .function, _ action: @escaping () -> Void) -> some View {
+        label.foregroundColor(style.foreground)
+            .frame(width: KeyLayout.slotWidth, height: 36)
+            .background(style.background)
             .cornerRadius(8)
             .onTouchUp(action)
     }
@@ -196,7 +241,7 @@ struct KeyboardView: View {
     }
 }
 
-enum KeyStyle { case letter, function, prominent, mode }
+enum KeyStyle { case letter, function, prominent, mode, switcher }
 
 private func dynamic(light: UIColor, dark: UIColor) -> Color {
     Color(UIColor { $0.userInterfaceStyle == .dark ? dark : light })
@@ -209,12 +254,14 @@ extension KeyStyle {
         case .function: return dynamic(light: UIColor(red: 0.68, green: 0.71, blue: 0.75, alpha: 1), dark: UIColor(white: 0.27, alpha: 1))
         case .prominent: return .accentColor
         case .mode: return Color(red: 0xf5 / 255, green: 0xc8 / 255, blue: 0x42 / 255)  // #f5c842, Typer's yellow (macOS mode badge)
+        case .switcher: return Color(white: 0.1)  // the app icon's ink, in both modes: a yellow fill would look like the ខ/EN key
         }
     }
     var foreground: Color {
         switch self {
         case .prominent: return .white
         case .mode: return Color(white: 0.1)  // dark on yellow in light and dark mode
+        case .switcher: return KeyStyle.mode.background  // Typer's yellow text
         default: return .primary
         }
     }
@@ -227,7 +274,7 @@ private extension View {
     }
 }
 
-private extension View {
+extension View {
     /// Fires on touch-up unless the finger slid away. A plain Button drops fast taps in a keyboard extension.
     func onTouchUp(_ action: @escaping () -> Void) -> some View {
         contentShape(Rectangle())

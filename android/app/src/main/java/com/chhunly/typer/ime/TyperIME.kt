@@ -112,7 +112,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         }
         loader.execute {
             val data = try {
-                EmojiData.load(asset("data/emoji.json"), asset("data/emoji-variants.json"), asset("data/emoji-names.tsv"))
+                EmojiData.load(asset("data/emoji.json"), asset("data/emoji-names.tsv"))
             } catch (e: Exception) {  // missing or broken data: the emoji key does nothing
                 null
             }

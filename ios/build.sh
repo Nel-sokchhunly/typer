@@ -7,6 +7,7 @@ cd "$(dirname "$0")/.."
 export PATH="$HOME/.cargo/bin:$PATH"
 
 python3 data/build.py >/dev/null
+python3 data/emoji.py >/dev/null
 
 for t in aarch64-apple-ios aarch64-apple-ios-sim; do
     rustup target list --installed | grep -qx "$t" || rustup target add "$t"
@@ -31,6 +32,7 @@ xcodebuild -create-xcframework \
 rm -rf "$OUT/data"
 mkdir -p "$OUT/data"
 for f in lexicon ngrams english generated; do cp "data/out/$f.tsv" "$OUT/data/"; done
+cp data/out/emoji.json "$OUT/data/"
 echo "built: $OUT/Typer.xcframework"
 
 if [ "${1:-}" = ipa ]; then

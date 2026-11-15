@@ -162,6 +162,7 @@ class ComposerFixtureTest(private val name: String, private val case: JSONObject
             "return" -> { if (!composer.returnKey()) proxy.insertText("\n"); null }
             "composerBackspace" -> composer.backspace()
             "returnKey" -> composer.returnKey()
+            "commitTop" -> composer.commitTop()
             "rawLatin" -> composer.rawLatin()
             "toggle" -> composer.toggleMode()
             "textChanged" -> composer.textChanged()
