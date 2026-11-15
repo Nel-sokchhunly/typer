@@ -111,9 +111,9 @@ struct KeyboardView: View {
                 let selected = i == model.panelSelected
                 Text(label).font(.system(size: label.count > 1 ? 12 : 26))  // ZWJ, ZWNJ: small
                     .lineLimit(1).minimumScaleFactor(0.5)
-                    .foregroundColor(selected ? .white : .primary)
+                    .foregroundColor(selected ? KeyStyle.mode.foreground : .primary)  // Typer's yellow, like the ខ/EN key
                     .frame(width: p.cells[i].width, height: p.cells[i].height)
-                    .background(selected ? RoundedRectangle(cornerRadius: 6).fill(Color.accentColor) : nil)
+                    .background(selected ? RoundedRectangle(cornerRadius: 6).fill(KeyStyle.mode.background) : nil)
                     .offset(x: p.cells[i].minX - all.minX, y: 0)
             }
         }
