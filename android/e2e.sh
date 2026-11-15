@@ -161,6 +161,15 @@ open_app() {
         [ $n -lt 4 ] || { log "  Keyboard did not open"; return 1; }
     done
     read_keys
+    sing_layout
+}
+
+# The scenarios start on the Sing layout. A device left on the Khmer layout is switched to Sing once, and back at the end.
+WAS_KHMER=0
+KEEP_LAYOUT=0
+sing_layout() {
+    [ $KEEP_LAYOUT = 1 ] && return 0
+    if xy=$(ui bounds "Sing layout"); then tap $xy; WAS_KHMER=1; sleep 0.5; read_keys; fi
 }
 
 check() { # check <name> <expected substring> <actual>
@@ -200,6 +209,7 @@ open_fields() { # the debug fields screen; tap the field with this label
         [ $n -lt 4 ] || { log "  Keyboard did not open"; return 1; }
     done
     read_keys
+    sing_layout
 }
 
 # ---- scenarios ----
@@ -694,7 +704,7 @@ scenario_khmer() { # the Khmer layout: កខគ in the bar, ខ្មែរ key
     tap $(key_at "Khmer letters") || { log "FAIL khmer: no កខគ way back on the 123 page"; FAILED=1; return; }
     wait_for ១ 10 >/dev/null && log "PASS khmer: 123 page's កខគ goes back to the Khmer layout" || { log "FAIL khmer: 123 did not go back to the Khmer layout"; FAILED=1; }
     restart_keyboard
-    open_app || { FAILED=1; return; }
+    KEEP_LAYOUT=1; open_app || { FAILED=1; return; }; KEEP_LAYOUT=0
     wait_for ១ 10 >/dev/null && log "PASS khmer: the Khmer layout is remembered after the Keyboard restarts" || { log "FAIL khmer: layout not remembered"; FAILED=1; shot khmer-fail; }
     tap $(ui bounds "Sing layout")
     wait_for "Khmer mode" 10 >/dev/null && read_keys && key_at q >/dev/null && log "PASS khmer: abc goes back to the Sing layout" || { log "FAIL khmer: not back on the Sing layout"; FAILED=1; }
@@ -862,6 +872,9 @@ for s in ${*:-tracer phrase learn reset password english glide clipboard next em
     log "-- $s"
     "scenario_$s"
 done
+if [ $WAS_KHMER = 1 ] && open_app >/dev/null 2>&1; then  # leave the device on the layout it had
+    WAS_KHMER=0; xy=$(ui bounds "Khmer layout") && tap $xy && log "back on the Khmer layout, as the device had it"
+fi
 "$ADB" logcat -d >"$OUT/logcat.txt" 2>/dev/null || true
 log "artifacts: $OUT"
 [ $FAILED = 0 ] && log "ALL PASSED" || log "FAILED"
