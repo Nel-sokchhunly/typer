@@ -669,6 +669,27 @@ PY2
     sleep 0.6
 }
 
+scenario_next() { # after a word the bar offers next words: Khmer after ខ្ញុំ (with ។ kept), English after "of "
+    open_app || { FAILED=1; return; }
+    type_keys knhom; sleep 1
+    tap $(ui bounds "$(ui first)"); sleep 0.8
+    labels=$(ui labels | tr '\n' '|')
+    log "  bar after $(field_text): $labels" | cut -c1-200
+    w=$(ui labels | sed -n '/^clipboard$/{n;p;q;}')
+    [ -n "$w" ] && [ "$w" != "។" ] || { log "FAIL next: no Khmer next word after $(field_text)"; FAILED=1; shot next-fail; return; }
+    check "next: Khmer keeps ។ beside the next words" "|។|Khmer layout|" "$labels"
+    shot next-khmer
+    tap $(ui bounds "$w"); sleep 0.5
+    check "next: a Khmer next word goes in as it is" "ខ្ញុំ$w" "$(field_text)"
+    tap $(key_at "Khmer mode"); wait_for "English mode" 10 >/dev/null; read_keys
+    type_keys " of "; sleep 0.8
+    check "next: English after 'of '" "|the|" "|$(ui labels | tr '\n' '|')"
+    shot next-english
+    tap $(ui bounds the); sleep 0.5
+    check "next: an English next word goes in with a space" " of the " "$(field_text)"
+    tap $(key_at "English mode")
+}
+
 scenario_clipboard() { # copy: the bar offers a one-tap paste; the clipboard button lists the clips newest first; tap pastes; Clear all
     open_fields search || { FAILED=1; return; }
     tap $(ui bounds "copy sample"); sleep 0.8
@@ -735,7 +756,7 @@ scenario_compare() {
 }
 
 log "Typer Android e2e $(date)  device: $("$ADB" shell getprop ro.product.model | tr -d '\r') API $("$ADB" shell getprop ro.build.version.sdk | tr -d '\r')"
-for s in ${*:-tracer phrase learn reset password english glide clipboard keys emoji font khmer talkback}; do
+for s in ${*:-tracer phrase learn reset password english glide clipboard next keys emoji font khmer talkback}; do
     log "-- $s"
     "scenario_$s"
 done
