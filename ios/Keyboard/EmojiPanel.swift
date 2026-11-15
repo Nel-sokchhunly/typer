@@ -28,7 +28,7 @@ struct EmojiPanel: View {
             VStack(spacing: 6) {
                 EmojiSearchBar.field(query: "").onTouchUp(onSearch).accessibilityLabel("Search Emoji").accessibilityAddTraits(.isButton)
                 ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(alignment: .top, spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {  // not lazy: section widths are exact, so jumps land (the cells are lazy)
                         ForEach(sections, id: \.title) { s in
                             VStack(alignment: .leading, spacing: 0) {
                                 Text(s.title).font(.system(size: 12, weight: .semibold)).foregroundColor(.secondary)
@@ -39,6 +39,7 @@ struct EmojiPanel: View {
                                     }
                                 }
                             }
+                            .frame(width: CGFloat((s.emoji.count + rows - 1) / rows) * cell, alignment: .leading)
                             .id(s.title)
                         }
                     }
@@ -129,7 +130,7 @@ private struct EmojiCell: View {
 
     var body: some View {
         let shown = picked ?? emoji
-        Text(shown).font(.system(size: size * 0.72)).frame(width: size, height: size)
+        Text(shown).font(.system(size: size * 0.64)).frame(width: size, height: size)
             .contentShape(Rectangle())
             .simultaneousGesture(DragGesture(minimumDistance: 0, coordinateSpace: .named(EmojiPanel.space))
                 .onChanged { v in
