@@ -236,7 +236,13 @@ object KeyLayout {
             }
             if (i == 3) out.add(Key(KeyAction.Backspace, Box(x, top, m.width - m.margin - x, m.keyHeight), KeyStyle.FUNCTION))
         }
-        bottomRow(m, out, mode = false, punctuation = false)
+        // the bottom row on the same 12-key grid, so its edges line up with the keys above: ?123 2, emoji 1, space 7, return 2
+        val top = m.rowsTop + m.bottomRow * m.pitch
+        fun span(from: Int, n: Int) = Box(m.margin + from * (k + g), top, n * k + (n - 1) * g, m.keyHeight)
+        out.add(Key(KeyAction.Page, span(0, 2), KeyStyle.FUNCTION))
+        out.add(Key(KeyAction.Emoji, span(2, 1), KeyStyle.FUNCTION))
+        out.add(Key(KeyAction.Space, span(3, 7), KeyStyle.LETTER))
+        out.add(Key(KeyAction.Return, span(10, 2), KeyStyle.ACTION))
         return out
     }
 
