@@ -371,8 +371,10 @@ final class KeyboardViewController: UIInputViewController {
         guard clipboardOn else { return }
         let board = UIPasteboard.general
         let count = board.changeCount
-        guard count != UserDefaults.standard.integer(forKey: "clip.changeCount") else { return }  // the process may be new
+        let seen = UserDefaults.standard.object(forKey: "clip.changeCount") as? Int  // the process may be new
+        guard count != seen else { return }
         UserDefaults.standard.set(count, forKey: "clip.changeCount")
+        guard seen != nil else { return }  // first run: whatever is on the clipboard was copied before Typer was looking
         let hidden: Set = ["org.nspasteboard.ConcealedType", "org.nspasteboard.TransientType"]  // password managers
         guard board.hasStrings, textDocumentProxy.isSecureTextEntry != true, hidden.isDisjoint(with: board.types) else { return }
         pendingAt = Date()
@@ -403,7 +405,7 @@ final class KeyboardViewController: UIInputViewController {
         if let c { age = now.timeIntervalSince(c.at) }
         freshTimer?.cancel()
         guard let age, model.freshPending || c != nil else { return }
-        let t = DispatchWorkItem { [weak self] in self?.updateFresh() }
+        let t = DispatchWorkItem { [weak self] in self?.updateFresh(); self?.refresh() }  // refresh redraws the strip without it
         freshTimer = t
         DispatchQueue.main.asyncAfter(deadline: .now() + max(0, ClipList.freshFor - age) + 0.1, execute: t)
     }
