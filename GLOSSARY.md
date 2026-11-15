@@ -23,9 +23,20 @@ _Avoid_: Khmer mode, Khmer page
 **Emoji panel**: The view that replaces the keys so the user can pick emoji, reached from the emoji key on either layout. Not a layout: it has no Phrase and no modes, and closing it returns to the layout the user came from.
 _Avoid_: emoji keyboard, emoji page, emoji layout
 
+**Clipboard panel**: The view that replaces the keys so the user can paste a recent Clip. Not a layout: it has no Phrase and no modes, and closing it returns to the layout the user came from.
+_Avoid_: clipboard keyboard, clipboard page
+
+**Clip**: One piece of copied text the Keyboard keeps for the Clipboard panel. Only text: anything else copied is not kept.
+_Avoid_: clipboard item, clipboard history item
+
+**Pinned clip**: A Clip the user chose to keep; it does not expire and stays until the user unpins or deletes it.
+
+**Fresh clip**: The newest Clip, offered in the strip as a one-tap paste for a minute after the Keyboard first notices it, until pasted.
+_Avoid_: paste pill, paste suggestion
+
 **Keyboard**: The typing surface the user installs (iOS keyboard extension, Android input method, macOS input method).
 
-**Companion app**: The app installed alongside the Keyboard. Its only job is to explain how to enable the Keyboard.
+**Companion app**: The app installed alongside the Keyboard. It explains how to enable the Keyboard and holds the few Keyboard settings the user can change, such as turning clipboard history off.
 _Avoid_: host app, container app
 
 **Host app**: Any app the user is typing into with the Keyboard (Messages, Telegram, Notes).

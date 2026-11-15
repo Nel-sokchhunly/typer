@@ -33,6 +33,8 @@ private struct Copy {
     let features: [(title: String, detail: String)]
     let setup: String
     let steps: [(title: String, detail: String)]
+    let clipTitle: String
+    let clipDetail: String
     let aboutTitle: String
     let about: String
     let openSettings: String
@@ -54,11 +56,13 @@ private struct Copy {
         steps: [
             ("បើក Keyboards", "Settings › General › Keyboard › Keyboards"),
             ("បន្ថែម Typer", "ចុច Add New Keyboard ហើយជ្រើស Typer (សរសេរ)"),
-            ("Allow Full Access", "ស្រេចចិត្ត៖ ចុច Typer (សរសេរ) ហើយបើកវា ដើម្បីមានការញ័រ និងសំឡេង"),
+            ("Allow Full Access", "ស្រេចចិត្ត៖ ចុច Typer (សរសេរ) ហើយបើកវា ដើម្បីមានការញ័រ សំឡេង និងប្រវត្តិក្ដារតម្បៀតខ្ទាស់"),
             ("ចាប់ផ្តើមវាយ", "ចុចជាប់គ្រាប់ចុចរូបផែនដី ហើយជ្រើស Typer (សរសេរ)"),
         ],
+        clipTitle: "ប្រវត្តិក្ដារតម្បៀតខ្ទាស់",
+        clipDetail: "ត្រូវការ Full Access។ ការបិទវា នឹងលុបអ្វីដែលបានរក្សាទុកទាំងអស់។ ដើម្បីកុំឱ្យសួរ Allow Paste រាល់ពេល សូមកំណត់ Settings › សរសេរ › Paste from Other Apps ទៅ Allow។",
         aboutTitle: "ទូរស័ព្ទរបស់អ្នក ទិន្នន័យរបស់អ្នក",
-        about: "Full Access សម្រាប់តែការញ័រ និងសំឡេងចុចប៉ុណ្ណោះ។ Typer មិនប្រើអ៊ីនធឺណិតទេ ហើយអ្វីដែលអ្នកវាយ មិនចេញពីទូរស័ព្ទរបស់អ្នកឡើយ។ ក្តារចុចនៅតែដំណើរការពេញលេញ ទោះបីអ្នកមិនបើកក៏ដោយ។",
+        about: "Full Access សម្រាប់តែការញ័រ សំឡេងចុច និងប្រវត្តិក្ដារតម្បៀតខ្ទាស់ប៉ុណ្ណោះ។ Typer មិនប្រើអ៊ីនធឺណិតទេ ហើយអ្វីដែលអ្នកវាយ មិនចេញពីទូរស័ព្ទរបស់អ្នកឡើយ។ ក្តារចុចនៅតែដំណើរការពេញលេញ ទោះបីអ្នកមិនបើកក៏ដោយ។",
         openSettings: "បើក Settings",
         tryTitle: "សាកវាយ",
         tryHere: "knhom tov sala rean")
@@ -78,11 +82,13 @@ private struct Copy {
         steps: [
             ("Open Keyboards", "Settings › General › Keyboard › Keyboards"),
             ("Add Typer", "Tap Add New Keyboard and pick Typer (សរសេរ)"),
-            ("Allow Full Access", "Optional: tap Typer (សរសេរ) and turn it on for haptics and key sounds"),
+            ("Allow Full Access", "Optional: tap Typer (សរសេរ) and turn it on for haptics, key sounds and clipboard history"),
             ("Start typing", "Hold the globe key and choose Typer (សរសេរ)"),
         ],
+        clipTitle: "Clipboard history",
+        clipDetail: "Needs Full Access. Turning it off deletes saved Clips. To skip the Allow Paste alert, set Settings › សរសេរ › Paste from Other Apps to Allow.",
         aboutTitle: "Your phone, your words",
-        about: "Full Access is only for haptics and key clicks. Typer has no internet access, and nothing you type leaves your phone. The keyboard works fully without it.",
+        about: "Full Access is only for haptics, key clicks and clipboard history. Typer has no internet access, and nothing you type leaves your phone. The keyboard works fully without it.",
         openSettings: "Open Settings",
         tryTitle: "Try it",
         tryHere: "knhom tov sala rean")
@@ -92,6 +98,8 @@ struct SetupView: View {
     @State private var text = ""
     @FocusState private var typing: Bool
     @AppStorage("khmer") private var khmer = true
+    /// Shared with the Keyboard (settings only, same key as TyperCore's ClipSettings); on unless turned off.
+    @AppStorage("clipboardHistory", store: UserDefaults(suiteName: "group.com.chhunly.typer")) private var clipOn = true
     /// Khmer stacks vowels and subscripts above and below the line, so wrapped Khmer needs more air.
     private var lineGap: CGFloat { khmer ? 7 : 2 }
 
@@ -104,6 +112,7 @@ struct SetupView: View {
                 VStack(alignment: .leading, spacing: 28) {
                     features(copy)
                     steps(copy)
+                    clipboardSwitch(copy)
                     privacy(copy)
                     openSettings(copy)
                     tryIt(copy).id("try")
@@ -252,6 +261,17 @@ struct SetupView: View {
                 .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.card))
             }
         }
+    }
+
+    private func clipboardSwitch(_ copy: Copy) -> some View {
+        Toggle(isOn: $clipOn) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(copy.clipTitle).font(.system(size: 17, weight: .semibold))
+                Text(copy.clipDetail).font(.system(size: 15)).foregroundColor(.muted).lineSpacing(lineGap)
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.card))
     }
 
     private func privacy(_ copy: Copy) -> some View {

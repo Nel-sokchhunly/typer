@@ -7,6 +7,9 @@ struct KeyboardView: View {
     let onEnglishWord: (Int) -> Void
     let onSlot: () -> Void
     let onEmoji: (String) -> Void
+    let onClip: (String) -> Void
+    let onClearClips: () -> Void
+    let onPinClip: (Clip) -> Void  // pins, or unpins when already Pinned
     let onHold: (EmojiHold) -> Void
     let onSearch: () -> Void
     let onGlobe: () -> Void
@@ -43,6 +46,7 @@ struct KeyboardView: View {
                     } else if !model.englishWords.isEmpty {
                         englishBar.padding(.horizontal, margin).padding(.top, KeyLayout.barTop)
                     }
+                    if model.showClipboard { clipboardPanel.padding(.horizontal, margin).offset(y: KeyLayout.rowsTop) }
                     let keys = model.keys(width: geo.size.width)
                     ZStack(alignment: .topLeading) {
                         ForEach(keys, id: \.action) { key in
@@ -62,7 +66,7 @@ struct KeyboardView: View {
 
     // MARK: keys
 
-    private struct Look { var text: String? = nil; var image: String? = nil; var style = KeyStyle.function; var fontSize: CGFloat = 22 }
+    private struct Look { var text: String? = nil; var image: String? = nil; var style = KeyStyle.function; var fontSize: CGFloat = 22; var label: String? = nil }
 
     private func look(_ a: KeyAction) -> Look {
         switch a {
@@ -75,6 +79,8 @@ struct KeyboardView: View {
         case .symbols: return Look(text: model.page == .numbers ? "#+=" : "123", fontSize: 16)
         case .page: return Look(text: model.emojiSearching ? "ABC" : model.page == .letters ? "123" : model.layout == .khmer ? "កខគ" : "ABC", fontSize: 16)
         case .emoji: return Look(image: "face.smiling")
+        case .clipboard: return Look(image: "clipboard", style: model.showClipboard ? .mode : .switcher, label: "Clipboard")  // a utility key like the layout switch; yellow while its panel is open
+        case .fresh: return Look(image: "clipboard", style: .letter, label: "Paste \(model.fresh ?? "")")  // drawn in keyView: icon and text
         case .backspace: return Look(image: "delete.left")
         case .globe: return Look(image: "globe")
         case .mode: return Look(text: model.mode, style: .mode, fontSize: 16)
@@ -95,21 +101,38 @@ struct KeyboardView: View {
     private func keyView(_ key: Key) -> some View {
         let l = look(key.action)
         let previewed = isPreviewed(key)
+        let bar = key.action == .fresh
         // light: letters press grey, function keys white; dark (every key one grey): any key presses lighter
-        let pressedBackground = dynamic(light: l.style == .letter ? KeyStyle.functionLight : .white, dark: UIColor(white: 0.42, alpha: 1))
+        let pressedBackground = dynamic(light: KeyStyle.functionLight, dark: UIColor(white: 0.42, alpha: 1))
         return Group {
-            if let text = l.text {
+            if key.action == .fresh {
+                HStack(spacing: 6) {
+                    Image(systemName: "clipboard").font(.system(size: 16))
+                    Text(model.fresh == nil ? "Paste" : (model.fresh ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")).font(.system(size: 16)).lineLimit(1).truncationMode(.tail)
+                }
+                .foregroundColor(l.style.foreground).padding(.horizontal, 8)
+                .accessibilityElement(children: .ignore).accessibilityLabel(l.label ?? "")
+            } else if let text = l.text {
                 Text(text).font(.system(size: l.fontSize)).foregroundColor(l.style.foreground)
                     .lineLimit(1).minimumScaleFactor(0.4).padding(.horizontal, 2)  // shrinks to fit: េះ draws as េ◌◌ះ
-            } else if let image = l.image { Image(systemName: image).font(.system(size: 18)).foregroundColor(l.style.foreground) }
+            } else if let image = l.image {
+                let icon = Image(systemName: image).font(.system(size: 18)).foregroundColor(l.style.foreground)
+                if let label = l.label { icon.accessibilityLabel(label) } else { icon }
+            }
             else { Color.clear }  // a blank key (space) still needs a view to draw its background on
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(isPressed(key) && !previewed ? pressedBackground : l.style.background)
+        .background(isPressed(key) && !previewed ? pressedBackground : bar ? Color.clear : l.style.background)
         .cornerRadius(5)
-        .shadow(color: .black.opacity(0.3), radius: 0, x: 0, y: 1)
+        .overlay {  // the Fresh clip reads like an iOS QuickType suggestion: plain text between thin dividers
+            if bar {
+                HStack { divider; Spacer(); divider }
+            }
+        }
         .opacity(key.action == .mode && !model.canToggle || key.action == .slot && model.layoutForced ? 0.4 : 1)  // dimmed when the mode is forced (password, email, number) or a Phrase is open
     }
+
+    private var divider: some View { Rectangle().fill(Color.secondary.opacity(0.4)).frame(width: 0.5).padding(.vertical, 8) }
 
     /// The character above the finger.
     private func preview(_ key: Key) -> some View {
@@ -180,18 +203,19 @@ struct KeyboardView: View {
     private var englishBar: some View {
         let w = model.englishWords
         let order = Array(w.indices.dropFirst()) + [0]
-        return HStack(spacing: 6) {
-            ForEach(order, id: \.self) { i in
+        // like iOS QuickType: plain words between thin dividers; the best one in Typer's yellow (darker on light, to stay readable)
+        return HStack(spacing: 0) {
+            ForEach(Array(order.enumerated()), id: \.element) { n, i in
+                if n > 0 { divider.frame(height: 36) }
                 Text(i == 0 ? "\u{201C}\(w[0])\u{201D}" : w[i])
-                    .font(.system(size: 17, weight: i == 1 ? .bold : .regular))
+                    .font(.system(size: 17, weight: i == 1 ? .semibold : .regular))
                     .lineLimit(1).minimumScaleFactor(0.7)
-                    .foregroundColor(i == 1 ? KeyStyle.mode.foreground : .primary)
+                    .foregroundColor(i == 1 ? KeyStyle.amber : .primary)
                     .frame(maxWidth: .infinity, minHeight: 36)
-                    .background(i == 1 ? KeyStyle.mode.background : KeyStyle.function.background)
-                    .cornerRadius(8)
+                    .contentShape(Rectangle())
                     .onTouchUp { onEnglishWord(i) }
             }
-            slot
+            slot.padding(.leading, 6)
         }
         .frame(height: 40)
     }
@@ -214,19 +238,51 @@ struct KeyboardView: View {
     // MARK: all-Suggestions panel
 
     private var panel: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                ForEach(Array(model.suggestions.enumerated()), id: \.offset) { i, s in
-                    panelRow(AttributedString(s), number: i + 1, bold: i == 0) {
-                        model.showAll = false
-                        onCandidate(i)
-                    }
-                }
-                panelRow(AttributedString(model.typed), tag: "abc") {
+        scrollPanel {
+            ForEach(Array(model.suggestions.enumerated()), id: \.offset) { i, s in
+                panelRow(AttributedString(s), number: i + 1, bold: i == 0) {
                     model.showAll = false
-                    onLatin()
+                    onCandidate(i)
                 }
             }
+            panelRow(AttributedString(model.typed), tag: "abc") {
+                model.showAll = false
+                onLatin()
+            }
+        }
+    }
+
+    /// The Clipboard panel: one line per Clip, newest first, then Clear all; or a note while there are none.
+    private var clipboardPanel: some View {
+        scrollPanel {
+            ForEach(Array(model.clips.enumerated()), id: \.offset) { _, c in
+                panelRow(AttributedString(c.line), plain: true, pinButton: true) { onClip(c.text) }
+                    .overlay(alignment: .trailing) {  // on top of the row, so its taps pin instead of paste
+                        Button { onPinClip(c) } label: {
+                            Image(systemName: c.isPinned ? "pin.fill" : "pin").font(.system(size: 16))
+                                .foregroundColor(c.isPinned ? .primary : .secondary)
+                                .frame(width: 44, height: 44).contentShape(Rectangle())
+                        }
+                        .accessibilityLabel(c.isPinned ? "Unpin" : "Pin")
+                    }
+            }
+            if model.clips.isEmpty {
+                Text("Text you copy shows here for an hour").font(.system(size: 16)).foregroundColor(.secondary)
+                    .multilineTextAlignment(.center).padding(.horizontal, 12).padding(.vertical, 20)
+                    .frame(maxWidth: .infinity)
+            } else if model.clips.contains(where: { !$0.isPinned }) {
+                Button(action: onClearClips) {  // an action, not a Clip: red and centred, like iOS's destructive buttons
+                    Text("Clear all").font(.system(size: 17, weight: .semibold)).foregroundColor(.red)
+                        .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+                }
+            }
+        }
+        .frame(height: model.height - KeyLayout.rowsTop - 4)
+    }
+
+    private func scrollPanel<Rows: View>(@ViewBuilder _ rows: () -> Rows) -> some View {
+        ScrollView {
+            VStack(spacing: 0) { rows() }
         }
         .contentMargins(.vertical, 4, for: .scrollContent)
         .noScrollEdgeBlur()
@@ -235,14 +291,17 @@ struct KeyboardView: View {
     }
 
     private func panelRow(_ text: AttributedString, number: Int? = nil, bold: Bool = false, tag: String? = nil,
-                          _ action: @escaping () -> Void) -> some View {
+                          plain: Bool = false, pinButton: Bool = false, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(number.map(String.init) ?? "").font(.system(size: 14, weight: .semibold).monospacedDigit())
-                    .foregroundColor(.secondary).frame(width: 20, alignment: .trailing)  // the abc row keeps the space, so text lines up
+                if !plain {  // a Clip row is one line with no number column
+                    Text(number.map(String.init) ?? "").font(.system(size: 14, weight: .semibold).monospacedDigit())
+                        .foregroundColor(.secondary).frame(width: 20, alignment: .trailing)  // the abc row keeps the space, so text lines up
+                }
                 Text(text).font(.system(size: 20, weight: bold ? .bold : .regular)).lineSpacing(6)
-                    .multilineTextAlignment(.leading)
+                    .multilineTextAlignment(.leading).lineLimit(plain ? 1 : nil)  // tail ellipsis
                 Spacer(minLength: 0)
+                if pinButton { Color.clear.frame(width: 32) }  // room for the pin button laid over the row
                 if let tag {
                     Text(tag).font(.system(size: 12)).foregroundColor(.secondary)
                         .padding(.horizontal, 6).padding(.vertical, 2)
@@ -261,6 +320,8 @@ struct KeyboardView: View {
 enum KeyStyle {
     case letter, function, prominent, mode, switcher
     static let functionLight = UIColor(red: 0.68, green: 0.71, blue: 0.75, alpha: 1)
+    /// Typer's yellow as text: #f5c842 on dark keys, a darker amber on white ones.
+    static let amber = dynamic(light: UIColor(red: 0.65, green: 0.47, blue: 0, alpha: 1), dark: UIColor(red: 0xf5 / 255, green: 0xc8 / 255, blue: 0x42 / 255, alpha: 1))
 }
 
 private func dynamic(light: UIColor, dark: UIColor) -> Color {
@@ -271,17 +332,17 @@ extension KeyStyle {
     var background: Color {
         switch self {
         case .letter: return dynamic(light: .white, dark: UIColor(white: 0.27, alpha: 1))  // iOS 26 dark: every key one grey
-        case .function: return dynamic(light: Self.functionLight, dark: UIColor(white: 0.27, alpha: 1))
+        case .function: return dynamic(light: .white, dark: UIColor(white: 0.27, alpha: 1))  // iOS 26 light: every key white too
         case .prominent: return .accentColor
         case .mode: return Color(red: 0xf5 / 255, green: 0xc8 / 255, blue: 0x42 / 255)  // #f5c842, Typer's yellow (macOS mode badge)
-        case .switcher: return Color(white: 0.1)  // the app icon's ink, in both modes: a yellow fill would look like the ខ/EN key
+        case .switcher: return KeyStyle.mode.background.opacity(0.5)  // a tint of Typer's yellow: the secondary of the solid ខ/EN key
         }
     }
     var foreground: Color {
         switch self {
         case .prominent: return .white
         case .mode: return Color(white: 0.1)  // dark on yellow in light and dark mode
-        case .switcher: return KeyStyle.mode.background  // Typer's yellow text
+        case .switcher: return KeyStyle.amber  // darker on light, to stay readable on the tint
         default: return .primary
         }
     }

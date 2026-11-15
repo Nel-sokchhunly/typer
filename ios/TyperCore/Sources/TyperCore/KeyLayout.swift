@@ -5,7 +5,7 @@ public enum KeyPage: Int { case letters, numbers, symbols }
 
 public enum KeyAction: Hashable {
     case char(String), punct(String)
-    case shift, symbols, page, emoji, backspace, globe, mode, space, returnKey
+    case shift, symbols, page, emoji, clipboard, fresh, backspace, globe, mode, space, returnKey
     case slot  // the idle bar's rightmost slot: switch layouts
 }
 
@@ -45,8 +45,10 @@ public enum KeyLayout {
 
     /// `bar`: the idle candidate bar's punctuation keys, then the slot; empty while composing. `upper`: letters page
     /// with shift on (the Khmer layout: its shift layer). `khmer`: the Khmer layout, 4 rows of 12 letters and no ខ/EN key.
+    /// `fresh`: with the Clipboard button, a Fresh clip key fills the strip between it and the slot, in place of the punctuation.
+    /// `clipboard`: the Clipboard button first on the idle bar (the caller hides it without Full Access and in password fields).
     public static func keys(width w: CGFloat, page: KeyPage, upper: Bool, globe: Bool, bar: [String],
-                            khmer: Bool = false) -> [Key] {
+                            khmer: Bool = false, clipboard: Bool = false, fresh: Bool = false) -> [Key] {
         let inner = w - 2 * margin
         let kw = (inner - 9 * gap) / 10
         let fw = (inner - 7 * kw - 8 * gap) / 2  // function key beside the letters of row 3
@@ -56,10 +58,17 @@ public enum KeyLayout {
             out.append(Key(action: a, rect: CGRect(x: x, y: y, width: width, height: height), longPress: longPress))
         }
 
-        if !bar.isEmpty {
+        if !bar.isEmpty && clipboard && fresh {
+            add(.clipboard, margin, barTop + 2, slotWidth, 36)
+            let x = margin + slotWidth + gap
+            add(.fresh, x, barTop + 2, w - margin - slotWidth - gap - x, 36)
+            add(.slot, w - margin - slotWidth, barTop + 2, slotWidth, 36)
+        } else if !bar.isEmpty {
             let n = CGFloat(bar.count)
-            let pw = (inner - slotWidth - n * gap) / n
-            for (j, p) in bar.enumerated() { add(.punct(p), margin + CGFloat(j) * (pw + gap), barTop + 2, pw, 36) }
+            let lead = clipboard ? slotWidth + gap : 0
+            let pw = (inner - slotWidth - lead - n * gap) / n
+            if clipboard { add(.clipboard, margin, barTop + 2, slotWidth, 36) }
+            for (j, p) in bar.enumerated() { add(.punct(p), margin + lead + CGFloat(j) * (pw + gap), barTop + 2, pw, 36) }
             add(.slot, w - margin - slotWidth, barTop + 2, slotWidth, 36)
         }
 
