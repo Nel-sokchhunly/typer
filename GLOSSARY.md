@@ -36,7 +36,7 @@ _Avoid_: paste pill, paste suggestion
 
 **Keyboard**: The typing surface the user installs (iOS keyboard extension, Android input method, macOS input method).
 
-**Companion app**: The app installed alongside the Keyboard. Its only job is to explain how to enable the Keyboard.
+**Companion app**: The app installed alongside the Keyboard. It explains how to enable the Keyboard and holds the few Keyboard settings the user can change, such as turning clipboard history off.
 _Avoid_: host app, container app
 
 **Host app**: Any app the user is typing into with the Keyboard (Messages, Telegram, Notes).
