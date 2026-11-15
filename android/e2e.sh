@@ -650,6 +650,41 @@ scenario_khmer() { # the Khmer layout: កខគ in the bar, ខ្មែរ key
     wait_for "Khmer mode" 10 >/dev/null && read_keys && key_at q >/dev/null && log "PASS khmer: abc goes back to the Sing layout" || { log "FAIL khmer: not back on the Sing layout"; FAILED=1; }
 }
 
+# glide <word>: one finger down on the first letter, through the centre of each letter key in turn, up on the last
+glide() {
+    pts=""
+    for c in $(printf '%s' "$1" | sed 's/./& /g'); do pts="$pts $(key_at "$c")"; done
+    python3 - $pts >"$OUT/glide.cmd" <<'PY2'
+import sys
+v = list(map(int, sys.argv[1:]))
+pts = list(zip(v[0::2], v[1::2]))
+out = [f"input motionevent DOWN {pts[0][0]} {pts[0][1]}"]
+for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+    for i in range(1, 7):
+        out.append(f"input motionevent MOVE {x0 + (x1 - x0) * i // 6} {y0 + (y1 - y0) * i // 6}")
+out.append(f"input motionevent UP {pts[-1][0]} {pts[-1][1]}")
+print("; ".join(out))
+PY2
+    "$ADB" shell "$(cat "$OUT/glide.cmd")"
+    sleep 0.6
+}
+
+scenario_glide() { # English mode: glide hello and world (a space between), the bar's alternatives, backspace takes the glided word back
+    open_app || { FAILED=1; return; }
+    tap $(key_at "Khmer mode"); wait_for "English mode" 10 >/dev/null; read_keys
+    glide hello
+    check "glide: hello" "hello" "$(field_text)"
+    log "  bar after hello: $(ui labels | sed -n '2,4p' | tr '\n' '|')"
+    glide world
+    shot glide
+    check "glide: a second word gets a space before it" "hello world" "$(field_text)"
+    tap $(key_at delete); sleep 0.4
+    [ "$(field_text)" = "hello " ] && log "PASS glide: backspace takes the glided word back" || { log "FAIL glide: after backspace '$(field_text)'"; FAILED=1; }
+    for w in the keyboard quick; do glide $w; done
+    check "glide: the keyboard quick" "hello the keyboard quick" "$(field_text)"
+    tap $(key_at "English mode")  # back to Khmer mode for later scenarios
+}
+
 # Screenshots of Typer in the same field the Gboard reference used (Contacts, First name; android/docs/reference.md),
 # light and dark, at 411 and 360 dp wide, idle and composing. Not a pass/fail check: for comparing by eye.
 scenario_compare() {
@@ -678,7 +713,7 @@ scenario_compare() {
 }
 
 log "Typer Android e2e $(date)  device: $("$ADB" shell getprop ro.product.model | tr -d '\r') API $("$ADB" shell getprop ro.build.version.sdk | tr -d '\r')"
-for s in ${*:-tracer phrase learn reset password english keys emoji font khmer talkback}; do
+for s in ${*:-tracer phrase learn reset password english glide keys emoji font khmer talkback}; do
     log "-- $s"
     "scenario_$s"
 done
