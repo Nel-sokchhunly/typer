@@ -63,7 +63,7 @@ struct KeyboardView: View {
         case .mode: return Look(text: model.mode, style: .mode, fontSize: 16)
         case .space: return Look(text: "space", style: .letter, fontSize: 16)
         case .returnKey: return Look(text: model.returnLabel, style: model.returnProminent ? .prominent : .function, fontSize: 16)
-        case .slot: return Look(text: model.slotLabel, fontSize: 16)
+        case .slot: return Look(text: model.slotLabel, style: .switcher, fontSize: 16)  // the layout switch, unlike the punctuation
         }
     }
 
@@ -144,14 +144,14 @@ struct KeyboardView: View {
 
     /// The bar's rightmost slot when the bar is drawn here; the idle punctuation bar draws it as a key (KeyLayout).
     private var slot: some View {
-        barButton(Text(model.slotLabel).font(.system(size: 16, weight: .semibold)), onSlot)
+        barButton(Text(model.slotLabel).font(.system(size: 16, weight: .semibold)), style: .switcher, onSlot)
     }
 
     /// A bar button with a full-height hit area that, like the keys, fires on touch-up.
-    private func barButton<Label: View>(_ label: Label, _ action: @escaping () -> Void) -> some View {
-        label.foregroundColor(.primary)
+    private func barButton<Label: View>(_ label: Label, style: KeyStyle = .function, _ action: @escaping () -> Void) -> some View {
+        label.foregroundColor(style.foreground)
             .frame(width: KeyLayout.slotWidth, height: 36)
-            .background(KeyStyle.function.background)
+            .background(style.background)
             .cornerRadius(8)
             .onTouchUp(action)
     }
@@ -203,7 +203,7 @@ struct KeyboardView: View {
     }
 }
 
-enum KeyStyle { case letter, function, prominent, mode }
+enum KeyStyle { case letter, function, prominent, mode, switcher }
 
 private func dynamic(light: UIColor, dark: UIColor) -> Color {
     Color(UIColor { $0.userInterfaceStyle == .dark ? dark : light })
@@ -216,12 +216,14 @@ extension KeyStyle {
         case .function: return dynamic(light: UIColor(red: 0.68, green: 0.71, blue: 0.75, alpha: 1), dark: UIColor(white: 0.27, alpha: 1))
         case .prominent: return .accentColor
         case .mode: return Color(red: 0xf5 / 255, green: 0xc8 / 255, blue: 0x42 / 255)  // #f5c842, Typer's yellow (macOS mode badge)
+        case .switcher: return dynamic(light: UIColor(white: 0.1, alpha: 1), dark: UIColor(red: 0xf5 / 255, green: 0xc8 / 255, blue: 0x42 / 255, alpha: 1))  // the app icon's ink and yellow
         }
     }
     var foreground: Color {
         switch self {
         case .prominent: return .white
         case .mode: return Color(white: 0.1)  // dark on yellow in light and dark mode
+        case .switcher: return dynamic(light: UIColor(red: 0xf5 / 255, green: 0xc8 / 255, blue: 0x42 / 255, alpha: 1), dark: UIColor(white: 0.1, alpha: 1))
         default: return .primary
         }
     }
