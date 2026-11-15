@@ -119,10 +119,10 @@ public final class EmojiCatalog {
             let w = text.flatMap(words)
             return q.allSatisfy { t in w.contains { $0.hasPrefix(t) } }
         }
-        let items = groups.flatMap(\.emoji).filter(supported)
+        let items = groups.lazy.flatMap(\.emoji).filter(supported)  // no copy of the catalog per search
         let byName = items.filter { hit([$0.n]) }
         let byKeyword = items.filter { !hit([$0.n]) && hit([$0.n] + ($0.k ?? [])) }
-        return (byName + byKeyword).map { shown($0.e) }
+        return (Array(byName) + Array(byKeyword)).map { shown($0.e) }
     }
 
     private func supported(_ item: Item) -> Bool { (Double(item.v) ?? 0) <= maxVersion }

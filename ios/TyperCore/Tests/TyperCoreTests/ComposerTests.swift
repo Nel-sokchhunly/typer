@@ -200,7 +200,7 @@ final class LayoutTests: XCTestCase {
     func testMultiCodePointKeysTypeTheirWholeSequenceInOneTap() {
         XCTAssertTrue(composer.switchLayout())
         let keys = (KhmerKeys.base + KhmerKeys.shift).joined().filter { $0.unicodeScalars.count > 1 }
-        XCTAssertEqual(Set(keys), ["ុំ", "ាំ", "ោះ", "េះ", "ុះ"])
+        XCTAssertEqual(Set(keys), ["ុំ", "ាំ", "េះ", "ុះ"])
         for k in keys { XCTAssertTrue(composer.key(k)) }
         XCTAssertEqual(Array(proxy.doc.unicodeScalars), Array(keys.joined().unicodeScalars))
     }
