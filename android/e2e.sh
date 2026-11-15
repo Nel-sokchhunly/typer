@@ -534,7 +534,7 @@ scenario_emoji() { # the emoji page: pick, recently used, skin tones (remembered
     "$ADB" shell run-as $PKG rm -f shared_prefs/typer_emoji.xml
     restart_keyboard
     open_app || { FAILED=1; return; }
-    tap $(key_at emoji)
+    set -- $(key_at comma); hold $1 $2 0.7  # as on Gboard with its globe key: the emoji page is on the comma's long press
     xy=$(wait_for "grinning face" 20) || { log "FAIL emoji: the emoji page did not open"; FAILED=1; shot emoji; return; }
     shot emoji-page
     tap $xy
@@ -807,9 +807,9 @@ scenario_longpress() { # accents, row-2 symbols, the period's punctuation, email
     check "longpress: the period slides to .com in a URL field" "a.com" "$(ui desctext url)"
     ui labels | grep -qx "English mode" && tap $(key_at "English mode")
     open_fields search || { FAILED=1; return; }
-    set -- $(key_at comma); hold $1 $2 0.7
+    set -- $(key_at "Khmer mode"); hold $1 $2 0.7
     sleep 1.5
-    check "longpress: holding the comma opens Typer settings" "MainActivity" "$("$ADB" shell dumpsys window | grep -m1 mCurrentFocus)"
+    check "longpress: holding the globe key opens Typer settings" "MainActivity" "$("$ADB" shell dumpsys window | grep -m1 mCurrentFocus)"
 }
 
 scenario_themes() { # each theme on the keyboard, for the eye (screenshots theme-*.png); ends on THEME_AFTER (default Typer)
