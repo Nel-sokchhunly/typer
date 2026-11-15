@@ -6,6 +6,9 @@ struct KeyboardView: View {
     let onLatin: () -> Void
     let onEnglishWord: (Int) -> Void
     let onSlot: () -> Void
+    let onEmoji: (String) -> Void
+    let onLetters: () -> Void
+    let onDelete: () -> Void
 
     private let margin = KeyLayout.margin
     private let keyHeight = KeyLayout.keyHeight
@@ -15,7 +18,10 @@ struct KeyboardView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
-                if model.showAll && !model.typed.isEmpty {
+                if model.showEmoji {
+                    EmojiPanel(sections: model.emojiSections, onPick: onEmoji, onLetters: onLetters, onDelete: onDelete)
+                        .frame(height: model.height)
+                } else if model.showAll && !model.typed.isEmpty {
                     VStack(spacing: 0) {
                         candidateBar
                         Spacer().frame(height: 6)
@@ -59,6 +65,7 @@ struct KeyboardView: View {
                         style: model.shift == .off ? .function : .letter)
         case .symbols: return Look(text: model.page == .numbers ? "#+=" : "123", fontSize: 16)
         case .page: return Look(text: model.page == .letters ? "123" : model.layout == .khmer ? "កខគ" : "ABC", fontSize: 16)
+        case .emoji: return Look(image: "face.smiling")
         case .backspace: return Look(image: "delete.left")
         case .globe: return Look(image: "globe")
         case .mode: return Look(text: model.mode, style: .mode, fontSize: 16)
@@ -260,7 +267,7 @@ private extension View {
     }
 }
 
-private extension View {
+extension View {
     /// Fires on touch-up unless the finger slid away. A plain Button drops fast taps in a keyboard extension.
     func onTouchUp(_ action: @escaping () -> Void) -> some View {
         contentShape(Rectangle())

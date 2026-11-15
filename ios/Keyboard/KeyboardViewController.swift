@@ -23,6 +23,9 @@ final class KeyboardModel: ObservableObject {
     @Published var englishWords: [String] = []
     /// The all-Suggestions panel is open in place of the keys.
     @Published var showAll = false
+    /// The Emoji panel is open in place of the keys; `emojiSections` is what it shows, fixed while open.
+    @Published var showEmoji = false
+    var emojiSections: [EmojiSection] = []
     @Published var needsGlobe = false
     @Published var shift = Shift.off
     @Published var page = Page.letters
@@ -49,7 +52,7 @@ final class KeyboardModel: ObservableObject {
 
     /// The one layout both the drawn keys and the touch layer use; empty while the all-Suggestions panel replaces the keys.
     func keys(width: CGFloat) -> [Key] {
-        if showAll && !typed.isEmpty { return [] }
+        if showEmoji || showAll && !typed.isEmpty { return [] }
         let bar = !typed.isEmpty || !englishWords.isEmpty ? []
             : layout == .khmer ? KeyLayout.khmerPunctuation : mode == "EN" ? KeyLayout.englishPunctuation : KeyLayout.punctuation
         return KeyLayout.keys(width: width, page: page, upper: shift != .off, globe: needsGlobe, bar: bar, khmer: layout == .khmer)
@@ -107,6 +110,13 @@ final class KeyboardViewController: UIInputViewController {
         return c
     }()
 
+    /// nil if the bundled data won't load: the emoji key then does nothing.
+    private lazy var emojiCatalog: EmojiCatalog? = {
+        let url = URL(fileURLWithPath: Bundle.main.resourcePath! + "/data/emoji.json")
+        let max = EmojiCatalog.maxEmojiVersion(iOS: ProcessInfo.processInfo.operatingSystemVersion)
+        return (try? Data(contentsOf: url)).flatMap { try? EmojiCatalog(data: $0, maxVersion: max, store: UserDefaultsEmojiStore(.standard)) }
+    }()
+
     override func loadView() { view = ClickInputView(frame: .zero, inputViewStyle: .keyboard) }
 
     /// Key touch-down feedback. Both need Full Access; without it we stay silent.
@@ -124,7 +134,10 @@ final class KeyboardViewController: UIInputViewController {
                 onCandidate: { [unowned self] in handle(composer.candidateTapped($0)) },
                 onLatin: { [unowned self] in handle(composer.rawLatin()) },
                 onEnglishWord: { [unowned self] in englishWordTapped($0) },
-                onSlot: { [unowned self] in slotTapped() }))
+                onSlot: { [unowned self] in slotTapped() },
+                onEmoji: { [unowned self] in emojiPicked($0) },
+                onLetters: { [unowned self] in keyFeedback(); model.showEmoji = false; model.page = .letters },
+                onDelete: { [unowned self] in keyFeedback(); textDocumentProxy.deleteBackward() }))  // a grapheme, ZWJ emoji included
         hosting.view.translatesAutoresizingMaskIntoConstraints = false
         hosting.view.backgroundColor = .clear
         hosting.view.isMultipleTouchEnabled = true
@@ -227,11 +240,27 @@ final class KeyboardViewController: UIInputViewController {
         case .shift: model.shiftTapped()
         case .symbols: model.page = model.page == .numbers ? .symbols : .numbers
         case .page: model.page = model.page == .letters ? .numbers : .letters
+        case .emoji: openEmoji()
         case .globe: advanceToNextInputMode()
         case .mode: modeTapped()
         case .slot: slotTapped()
         }
         heightConstraint.constant = model.height
+    }
+
+    /// Commits the top Suggestion (no learning) and swaps the keys for the Emoji panel.
+    private func openEmoji() {
+        guard let catalog = emojiCatalog else { return }
+        _ = composer.commitTop()
+        model.emojiSections = catalog.sections
+        model.showEmoji = true
+        refresh(afterKey: true)
+    }
+
+    private func emojiPicked(_ e: String) {
+        keyFeedback()
+        handle(composer.key(e), else: { textDocumentProxy.insertText(e) })
+        emojiCatalog?.pick(e)
     }
 
     /// While a Phrase is open the slot keeps the Latin; idle, it switches layouts and shows the letters.

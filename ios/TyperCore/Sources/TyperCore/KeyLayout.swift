@@ -5,7 +5,7 @@ public enum KeyPage: Int { case letters, numbers, symbols }
 
 public enum KeyAction: Hashable {
     case char(String), punct(String)
-    case shift, symbols, page, backspace, globe, mode, space, returnKey
+    case shift, symbols, page, emoji, backspace, globe, mode, space, returnKey
     case slot  // the idle bar's rightmost slot: switch layouts
 }
 
@@ -98,6 +98,7 @@ public enum KeyLayout {
         var x = margin
         func fixed(_ a: KeyAction, _ f: CGFloat) { add(a, x, y, kw * f); x += kw * f + gap }
         fixed(.page, 1.35)
+        fixed(.emoji, 1.1)
         if globe { fixed(.globe, 1.1) }
         if !khmer { fixed(.mode, 1.1) }
         let space = w - margin - kw * 2.1 - x - gap  // flexible
