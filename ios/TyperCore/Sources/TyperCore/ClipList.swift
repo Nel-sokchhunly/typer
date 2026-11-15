@@ -6,7 +6,11 @@ public struct Clip: Codable, Equatable {
     public var at: Date
     /// When it was Pinned; nil for a recent Clip. Absent in files written before Pinned clips, which still load.
     public var pinnedAt: Date?
-    public init(text: String, at: Date, pinnedAt: Date? = nil) { self.text = text; self.at = at; self.pinnedAt = pinnedAt }
+    /// When it was pasted as the Fresh clip or from the panel; nil if not yet. Stored so a new process does not offer it again.
+    public var usedAt: Date?
+    public init(text: String, at: Date, pinnedAt: Date? = nil, usedAt: Date? = nil) {
+        self.text = text; self.at = at; self.pinnedAt = pinnedAt; self.usedAt = usedAt
+    }
     public var isPinned: Bool { pinnedAt != nil }
 
     /// How the Clipboard panel shows it: whitespace collapsed to single spaces (one line; the view adds the ellipsis).
@@ -42,6 +46,7 @@ public final class ClipList {
     public static let limit = 10
     public static let maxLength = 5_000
     public static let keep: TimeInterval = 3_600
+    public static let freshFor: TimeInterval = 60
 
     private let store: ClipStore
     public init(store: ClipStore) { self.store = store }
@@ -63,6 +68,17 @@ public final class ClipList {
         let kept = all.filter { $0.isPinned || now.timeIntervalSince($0.at) <= Self.keep }
         if kept.count != all.count { store.clips = kept }
         return kept.filter(\.isPinned).sorted { $0.pinnedAt! > $1.pinnedAt! } + kept.filter { !$0.isPinned }
+    }
+
+    /// The newest recent Clip, if first noticed under a minute ago and not pasted yet. A Pinned clip is never fresh.
+    public func fresh(now: Date) -> Clip? {
+        guard let c = store.clips.first(where: { !$0.isPinned }), c.usedAt == nil, now.timeIntervalSince(c.at) < Self.freshFor else { return nil }
+        return c
+    }
+
+    /// The Clip was pasted (from the strip or the panel): it is no longer fresh.
+    public func markUsed(_ text: String, now: Date) {
+        store.clips = store.clips.map { $0.text == text && $0.usedAt == nil ? Clip(text: $0.text, at: $0.at, pinnedAt: $0.pinnedAt, usedAt: now) : $0 }
     }
 
     public func pin(_ text: String, now: Date) {

@@ -42,6 +42,8 @@ final class KeyboardModel: ObservableObject {
     @Published var clips: [Clip] = []
     /// The Clipboard button may show: Full Access and not a password field (the bar still hides it while composing).
     var clipboardAllowed = false
+    /// The Fresh clip's text while the strip offers it.
+    @Published var fresh: String?
     @Published var needsGlobe = false
     @Published var shift = Shift.off
     @Published var page = Page.letters
@@ -73,7 +75,7 @@ final class KeyboardModel: ObservableObject {
         let bar = !typed.isEmpty || !englishWords.isEmpty ? []
             : layout == .khmer ? KeyLayout.khmerPunctuation : mode == "EN" ? KeyLayout.englishPunctuation : KeyLayout.punctuation
         let all = KeyLayout.keys(width: width, page: page, upper: shift != .off, globe: needsGlobe, bar: bar,
-                                 khmer: layout == .khmer, clipboard: clipboardAllowed)
+                                 khmer: layout == .khmer, clipboard: clipboardAllowed, fresh: fresh != nil)
         return showClipboard ? all.filter { $0.rect.minY < KeyLayout.rowsTop } : all  // the panel replaces the keys, the strip stays
     }
 
@@ -301,6 +303,7 @@ final class KeyboardViewController: UIInputViewController {
         case .page: model.page = model.page == .letters ? .numbers : .letters
         case .emoji: openEmoji()
         case .clipboard: toggleClipboard()
+        case .fresh: if let t = model.fresh { clipPicked(t) }
         case .globe: advanceToNextInputMode()
         case .mode: modeTapped()
         case .slot: slotTapped()
@@ -346,6 +349,8 @@ final class KeyboardViewController: UIInputViewController {
     private func clipPicked(_ text: String) {
         keyFeedback()
         textDocumentProxy.insertText(text)
+        clipList.markUsed(text, now: Date())
+        updateFresh()
         model.showClipboard = false
         refresh(afterKey: true)
     }
@@ -354,6 +359,7 @@ final class KeyboardViewController: UIInputViewController {
     /// copy count changed. Reading text may trigger iOS's "Allow Paste" alert (#144); if so, read only on the user's tap
     /// by changing just this function and its callers.
     private func noticeCopy() {
+        defer { updateFresh() }
         guard hasFullAccess else { return }
         let board = UIPasteboard.general
         let count = board.changeCount
@@ -363,6 +369,16 @@ final class KeyboardViewController: UIInputViewController {
         guard board.hasStrings, textDocumentProxy.isSecureTextEntry != true, hidden.isDisjoint(with: board.types),
               let text = board.string else { return }
         clipList.add(text, now: Date())
+    }
+
+    /// Offers the newest unpasted Clip for its first minute, and goes back to punctuation when the minute ends.
+    private func updateFresh() {
+        let c = model.clipboardAllowed ? clipList.fresh(now: Date()) : nil
+        model.fresh = c?.text
+        guard let c else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, ClipList.freshFor - Date().timeIntervalSince(c.at)) + 0.1) { [weak self] in
+            self?.updateFresh()  // earlier timers for an older Clip just recompute
+        }
     }
 
     /// An emoji's skin tones in the keyboard's long-press panel, as on a Khmer key: the highlighted one goes in on release.

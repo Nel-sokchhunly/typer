@@ -81,6 +81,7 @@ struct KeyboardView: View {
         case .page: return Look(text: model.emojiSearching ? "ABC" : model.page == .letters ? "123" : model.layout == .khmer ? "កខគ" : "ABC", fontSize: 16)
         case .emoji: return Look(image: "face.smiling")
         case .clipboard: return Look(image: "doc.on.clipboard", style: model.showClipboard ? .mode : .function, label: "Clipboard")  // yellow while its panel is open
+        case .fresh: return Look(image: "doc.on.clipboard", label: "Paste \(model.fresh ?? "")")  // drawn in keyView: icon and text
         case .backspace: return Look(image: "delete.left")
         case .globe: return Look(image: "globe")
         case .mode: return Look(text: model.mode, style: .mode, fontSize: 16)
@@ -104,7 +105,14 @@ struct KeyboardView: View {
         // light: letters press grey, function keys white; dark (every key one grey): any key presses lighter
         let pressedBackground = dynamic(light: l.style == .letter ? KeyStyle.functionLight : .white, dark: UIColor(white: 0.42, alpha: 1))
         return Group {
-            if let text = l.text {
+            if key.action == .fresh {
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.on.clipboard").font(.system(size: 16))
+                    Text((model.fresh ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")).font(.system(size: 16)).lineLimit(1).truncationMode(.tail)
+                }
+                .foregroundColor(l.style.foreground).padding(.horizontal, 8)
+                .accessibilityElement(children: .ignore).accessibilityLabel(l.label ?? "")
+            } else if let text = l.text {
                 Text(text).font(.system(size: l.fontSize)).foregroundColor(l.style.foreground)
                     .lineLimit(1).minimumScaleFactor(0.4).padding(.horizontal, 2)  // shrinks to fit: េះ draws as េ◌◌ះ
             } else if let image = l.image {

@@ -109,3 +109,31 @@ final class ClipListTests: XCTestCase {
     }
     private struct OldClip: Codable { let text: String; let at: Date }
 }
+
+extension ClipListTests {
+    func testFreshForAMinuteThenNot() {
+        clips.add("a", now: t0)
+        XCTAssertEqual(clips.fresh(now: t0 + 59)?.text, "a")
+        XCTAssertNil(clips.fresh(now: t0 + 60))
+    }
+
+    func testFreshIsTheNewestAndEndsOncePasted() {
+        clips.add("a", now: t0); clips.add("b", now: t0 + 1)
+        XCTAssertEqual(clips.fresh(now: t0 + 2)?.text, "b")
+        clips.markUsed("b", now: t0 + 3)
+        XCTAssertNil(clips.fresh(now: t0 + 4))  // not the older one either
+        clips.add("b", now: t0 + 5)  // copied again: fresh again
+        XCTAssertEqual(clips.fresh(now: t0 + 6)?.text, "b")
+    }
+
+    func testUsedSurvivesANewListOverTheSameStore() {
+        clips.add("a", now: t0); clips.markUsed("a", now: t0 + 1)
+        XCTAssertNil(ClipList(store: store).fresh(now: t0 + 2))
+    }
+
+    func testPinnedDuplicateIsNotFresh() {
+        clips.add("a", now: t0); clips.pin("a", now: t0 + 1)
+        clips.add("a", now: t0 + 2)
+        XCTAssertNil(clips.fresh(now: t0 + 3))
+    }
+}

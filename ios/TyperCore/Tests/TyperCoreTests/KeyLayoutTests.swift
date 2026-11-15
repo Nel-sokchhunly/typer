@@ -254,3 +254,21 @@ final class KeyTouchesTests: XCTestCase {
         XCTAssertEqual(t.up(1, k("a")), [.fire(.char("a"))])
     }
 }
+
+extension KeyLayoutTests {
+    func testFreshClipReplacesPunctuationBetweenClipboardButtonAndSlot() {
+        let ks = KeyLayout.keys(width: w, page: .letters, upper: false, globe: true, bar: KeyLayout.punctuation, clipboard: true, fresh: true)
+        let strip = ks.filter { $0.rect.minY < KeyLayout.rowsTop }.sorted { $0.rect.minX < $1.rect.minX }
+        XCTAssertEqual(strip.map(\.action), [.clipboard, .fresh, .slot])
+        for (a, b) in zip(strip, strip.dropFirst()) { XCTAssertEqual(b.rect.minX - a.rect.maxX, KeyLayout.gap, accuracy: 0.01) }
+        XCTAssertEqual(strip.last?.rect.maxX ?? 0, w - KeyLayout.margin, accuracy: 0.01)
+    }
+
+    func testNoFreshClipWithoutClipboardButtonOrOnAnEmptyBar() {
+        let noButton = KeyLayout.keys(width: w, page: .letters, upper: false, globe: true, bar: KeyLayout.punctuation, fresh: true)
+        XCTAssertFalse(noButton.contains { $0.action == .fresh })
+        XCTAssertTrue(noButton.contains { $0.action == .punct(KeyLayout.punctuation[0]) })
+        let empty = KeyLayout.keys(width: w, page: .letters, upper: false, globe: true, bar: [], clipboard: true, fresh: true)
+        XCTAssertFalse(empty.contains { $0.action == .fresh })
+    }
+}
