@@ -196,6 +196,14 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(proxy.markedText, "k")
         XCTAssertEqual(proxy.doc, "កk")
     }
+
+    func testMultiCodePointKeysTypeTheirWholeSequenceInOneTap() {
+        XCTAssertTrue(composer.switchLayout())
+        let keys = (KhmerKeys.base + KhmerKeys.shift).joined().filter { $0.unicodeScalars.count > 1 }
+        XCTAssertEqual(Set(keys), ["ុំ", "ាំ", "ោះ", "េះ", "ុះ"])
+        for k in keys { XCTAssertTrue(composer.key(k)) }
+        XCTAssertEqual(Array(proxy.doc.unicodeScalars), Array(keys.joined().unicodeScalars))
+    }
 }
 
 /// One fixture case: a fresh user dir, a fake field, the real engine behind a spy, the Composer in Khmer mode.

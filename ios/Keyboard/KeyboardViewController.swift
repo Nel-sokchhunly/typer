@@ -213,7 +213,7 @@ final class KeyboardViewController: UIInputViewController {
         case .space: type(" ")
         case .backspace: handle(composer.backspace(), else: { textDocumentProxy.deleteBackward() })
         case .returnKey: handle(composer.returnKey(), else: { textDocumentProxy.insertText("\n") })
-        case .shift: if model.layout == .sing { model.shiftTapped() }  // the Khmer layout's shift layer comes later
+        case .shift: model.shiftTapped()
         case .symbols: model.page = model.page == .numbers ? .symbols : .numbers
         case .page: model.page = model.page == .letters ? .numbers : .letters
         case .globe: advanceToNextInputMode()
@@ -261,7 +261,8 @@ final class KeyboardViewController: UIInputViewController {
         model.canToggle = composer.canToggle
         if afterKey { model.shiftChosen = false }
         if model.shift != .lock && !model.shiftChosen {  // a typed key or a field change re-decides shift, like Apple's
-            model.shift = AutoCap.shouldShift(before: before, kind: model.autoCap, khmerMode: !english) ? .once : .off
+            model.shift = composer.layout == .sing  // no auto-cap on the Khmer layout
+                && AutoCap.shouldShift(before: before, kind: model.autoCap, khmerMode: !english) ? .once : .off
         }
         model.slotChecked()
         heightConstraint.constant = model.height

@@ -40,7 +40,7 @@ public enum KeyLayout {
     public static let khmerPunctuation = punctuation + [",", "."]
 
     /// `bar`: the idle candidate bar's punctuation keys, then the slot; empty while composing. `upper`: letters page
-    /// with shift on. `khmer`: the Khmer layout, 4 rows of 12 letters and no ខ/EN key.
+    /// with shift on (the Khmer layout: its shift layer). `khmer`: the Khmer layout, 4 rows of 12 letters and no ខ/EN key.
     public static func keys(width w: CGFloat, page: KeyPage, upper: Bool, globe: Bool, bar: [String],
                             khmer: Bool = false) -> [Key] {
         let inner = w - 2 * margin
@@ -61,10 +61,10 @@ public enum KeyLayout {
         let khmerLetters = khmer && page == .letters
         if khmerLetters {
             let kw = (inner - 11 * gap) / 12
-            for (i, row) in KhmerKeys.base.enumerated() {
+            for (i, row) in (upper ? KhmerKeys.shift : KhmerKeys.base).enumerated() {
                 let y = rowsTop + CGFloat(i) * (keyHeight + rowGap)
                 var x = margin
-                if i == 3 { add(.shift, x, y, kw); x += kw + gap }  // inert until the shift layer
+                if i == 3 { add(.shift, x, y, kw); x += kw + gap }
                 for s in row { add(.char(s), x, y, kw); x += kw + gap }
                 if i == 3 { add(.backspace, x, y, kw) }
             }

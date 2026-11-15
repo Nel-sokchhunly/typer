@@ -70,6 +70,43 @@ final class KeyLayoutTests: XCTestCase {
         XCTAssertLessThanOrEqual(ks.map(\.rect.maxY).max()!, KeyLayout.khmerHeight)
         XCTAssertGreaterThan(ks.map(\.rect.maxY).max()!, KeyLayout.height)
     }
+
+    func testKhmerShiftShowsTheShiftLayerInTheSameShape() {
+        XCTAssertEqual(KhmerKeys.shift.map(\.count), KhmerKeys.base.map(\.count))
+        let ks = KeyLayout.keys(width: w, page: .letters, upper: true, globe: true, bar: [], khmer: true)
+        let rows = Dictionary(grouping: ks, by: \.rect.minY).sorted { $0.key < $1.key }
+        XCTAssertEqual(rows.map(\.value.count), [12, 12, 12, 12, 4])
+        for i in 0..<4 {
+            let chars = rows[i].value.map(\.action).filter { $0 != .shift && $0 != .backspace }
+            XCTAssertEqual(chars, KhmerKeys.shift[i].map { .char($0) })
+        }
+        XCTAssertEqual(rows[3].value.first?.action, .shift)
+        XCTAssertEqual(rows[3].value.last?.action, .backspace)
+    }
+
+    func testDottedCircleExactlyUnderCombiningMarks() {
+        for s in ["ិ", "ុ", "្", "់", "៉", "ា", "ះ", "ៈ", "ុំ", "ាំ", "ោះ", "េះ", "ុះ", "ំ", "៌"] {
+            XCTAssertEqual(KhmerKeys.label(for: s), "\u{25CC}" + s, s)
+        }
+        for s in ["ក", "ឥ", "១", "។", "ៗ", "!", "a", ""] { XCTAssertEqual(KhmerKeys.label(for: s), s, s) }
+        for k in (KhmerKeys.base + KhmerKeys.shift).joined() {
+            let mark = [.nonspacingMark, .spacingMark].contains(k.unicodeScalars.first!.properties.generalCategory)
+            XCTAssertEqual(KhmerKeys.label(for: k).unicodeScalars.first == "\u{25CC}", mark, k)  // ◌ិ is one Character
+        }
+    }
+
+    /// Every consonant (U+1780–17A2), dependent vowel (U+17B6–17C5) and sign (U+17C6–17D3) types from base or shift.
+    func testKhmerLettersAreReachable() {
+        let deferred: Set<UInt32> = [
+            0x179D, 0x179E, 0x17C8,  // ឝ ឞ ៈ: long-press only (on គ ព ះ), #134
+            0x17D1, 0x17D3,  // ៑ ៓: on no key or long-press list in #79's map; rare, #134 decides
+        ]
+        let typed = Set((KhmerKeys.base + KhmerKeys.shift).joined().flatMap(\.unicodeScalars).map(\.value))
+        for v: UInt32 in Array(0x1780...0x17A2) + Array(0x17B6...0x17D3) where !deferred.contains(v) {
+            XCTAssertTrue(typed.contains(v), String(format: "U+%04X", v))
+        }
+        XCTAssertTrue(deferred.isDisjoint(with: typed))  // drop from `deferred` once a layer types it
+    }
 }
 
 final class KeyTouchesTests: XCTestCase {
