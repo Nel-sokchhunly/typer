@@ -159,7 +159,6 @@ final class KeyboardViewController: UIInputViewController {
         let type: FieldType
         switch t.keyboardType {
         case .emailAddress: type = .email
-        case .URL, .webSearch: type = .url
         case .numberPad, .decimalPad, .phonePad, .numbersAndPunctuation, .asciiCapableNumberPad: type = .number
         default: type = .text
         }

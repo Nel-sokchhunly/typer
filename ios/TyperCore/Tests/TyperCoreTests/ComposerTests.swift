@@ -132,7 +132,6 @@ private final class FixtureRun {
     func field(_ s: String) -> FieldType {
         switch s {
         case "email": .email
-        case "url": .url
         case "number": .number
         default: .text
         }

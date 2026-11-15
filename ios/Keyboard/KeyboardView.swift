@@ -84,7 +84,7 @@ struct KeyboardView: View {
         .background(isPressed(key) && !previewed ? pressedBackground : l.style.background)
         .cornerRadius(5)
         .shadow(color: .black.opacity(0.3), radius: 0, x: 0, y: 1)
-        .opacity(key.action == .mode && !model.canToggle ? 0.4 : 1)  // dimmed when the mode is forced (password, email, URL, number) or a Phrase is open
+        .opacity(key.action == .mode && !model.canToggle ? 0.4 : 1)  // dimmed when the mode is forced (password, email, number) or a Phrase is open
     }
 
     /// The character above the finger.
