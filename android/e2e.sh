@@ -572,6 +572,56 @@ set_font() {
     sleep 0.5
 }
 
+# setting <label>: open the Companion app, scroll to the setting with this text and tap it (a switch or an option)
+setting() {
+    "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null
+    wait_for try 30 >/dev/null || return 1
+    n=0
+    until xy=$(ui bounds "$1"); do
+        "$ADB" shell input swipe 540 1700 540 1150 300
+        sleep 0.6
+        n=$((n + 1))
+        [ $n -lt 14 ] || { log "  no setting '$1' on screen"; return 1; }
+    done
+    tap $xy
+    sleep 0.5
+}
+
+# en_fields: the debug search field (it asks for sentence capitals), in English mode
+en_fields() {
+    open_fields search || return 1
+    ui labels | grep -qx "English mode" || tap $(key_at "Khmer mode")
+    wait_for "English mode" 10 >/dev/null; read_keys
+}
+
+scenario_settings() { # double-space period and auto-cap (English), the auto-cap switch, number row, keyboard height
+    open_app || { FAILED=1; return; }
+    set -- $(ui rect "Typer keyboard"); normal=$(($4 - $2))
+    en_fields || { FAILED=1; return; }
+    type_keys hi; tap $(key_at space); tap $(key_at space); sleep 0.5
+    check "settings: double space types a period" "hi. " "$(ui desctext search)"
+    check "settings: auto-cap after the period" "|shift on|" "|$(ui labels | tr '\n' '|')"
+    tap $(key_at "English mode")
+    setting "Auto-capitalisation" || { FAILED=1; return; }
+    en_fields || { FAILED=1; return; }
+    type_keys hi; tap $(key_at space); tap $(key_at space); sleep 0.5
+    check "settings: double space still types a period" "hi. " "$(ui desctext search)"
+    ui labels | grep -qx "shift on" && { log "FAIL settings: auto-cap still on after switching it off"; FAILED=1; } || log "PASS settings: the auto-cap switch turns it off"
+    tap $(key_at "English mode")
+    setting "Auto-capitalisation"
+    setting "Number row" || { FAILED=1; return; }
+    open_app || { FAILED=1; return; }
+    set -- $(key_at 1); one=$2; set -- $(key_at q); q=$2
+    [ "$one" -lt "$q" ] && log "PASS settings: the number row sits above the letters" || { log "FAIL settings: no number row"; FAILED=1; }
+    shot settings-number-row
+    setting "Number row"
+    setting "Tall" || { FAILED=1; return; }
+    open_app || { FAILED=1; return; }
+    set -- $(ui rect "Typer keyboard"); tall=$(($4 - $2))
+    [ "$tall" -gt "$normal" ] && log "PASS settings: Tall makes the keyboard taller ($normal -> $tall px)" || { log "FAIL settings: height $normal -> $tall"; FAILED=1; }
+    setting "Normal"
+}
+
 screen_width() { "$ADB" shell wm size | tail -1 | sed -E 's/.* ([0-9]+)x.*/\1/'; }
 
 scenario_font() { # the font setting changes the Keyboard's letters between Kantumruy Pro and the phone's font
@@ -775,7 +825,7 @@ scenario_compare() {
 }
 
 log "Typer Android e2e $(date)  device: $("$ADB" shell getprop ro.product.model | tr -d '\r') API $("$ADB" shell getprop ro.build.version.sdk | tr -d '\r')"
-for s in ${*:-tracer phrase learn reset password english glide clipboard next emojisuggest keys emoji font khmer talkback}; do
+for s in ${*:-tracer phrase learn reset password english glide clipboard next emojisuggest settings keys emoji font khmer talkback}; do
     log "-- $s"
     "scenario_$s"
 done
