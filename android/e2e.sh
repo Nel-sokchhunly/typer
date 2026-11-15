@@ -759,6 +759,39 @@ scenario_emojisuggest() { # a word with an emoji: English "love" offers one whil
     shot emojisuggest-khmer
 }
 
+# slide_pick <label> <dx>: hold the key, then slide dx px and lift (a long-press popup pick)
+slide_pick() {
+    set -- $(key_at "$1") "$2"
+    "$ADB" shell "input motionevent DOWN $1 $2; sleep 0.7; input motionevent MOVE $(($1 + $3)) $2; sleep 0.2; input motionevent UP $(($1 + $3)) $2"
+    sleep 0.4
+}
+
+scenario_longpress() { # accents, row-2 symbols, the period's punctuation, email @ and URL / with .com, comma opens settings
+    open_app || { FAILED=1; return; }
+    tap $(key_at "Khmer mode"); wait_for "English mode" 10 >/dev/null; read_keys
+    w=$(( ($(screen_width) - 20) / 10 ))
+    slide_pick e $((2 * w))
+    set -- $(key_at a); hold $1 $2 0.7
+    slide_pick period $((-w))
+    sleep 0.3
+    check "longpress: e slides to é, a holds @, period slides to !" "é@!" "$(field_text)"
+    shot longpress
+    tap $(key_at "English mode")
+    open_fields email || { FAILED=1; return; }
+    key_at @ >/dev/null && ! key_at comma >/dev/null && log "PASS longpress: an email field has @ in the comma's place" || { log "FAIL longpress: no @ key in email"; FAILED=1; }
+    open_fields url || { FAILED=1; return; }
+    key_at / >/dev/null && log "PASS longpress: a URL field has / in the comma's place" || { log "FAIL longpress: no / key in url"; FAILED=1; }
+    ui labels | grep -qx "English mode" || { tap $(key_at "Khmer mode"); sleep 0.4; read_keys; }
+    type_keys a
+    slide_pick period $((-w))
+    check "longpress: the period slides to .com in a URL field" "a.com" "$(ui desctext url)"
+    ui labels | grep -qx "English mode" && tap $(key_at "English mode")
+    open_fields search || { FAILED=1; return; }
+    set -- $(key_at comma); hold $1 $2 0.7
+    sleep 1.5
+    check "longpress: holding the comma opens Typer settings" "MainActivity" "$("$ADB" shell dumpsys window | grep -m1 mCurrentFocus)"
+}
+
 scenario_clipboard() { # copy: the bar offers a one-tap paste; the clipboard button lists the clips newest first; tap pastes; Clear all
     open_fields search || { FAILED=1; return; }
     tap $(ui bounds "copy sample"); sleep 0.8
@@ -825,7 +858,7 @@ scenario_compare() {
 }
 
 log "Typer Android e2e $(date)  device: $("$ADB" shell getprop ro.product.model | tr -d '\r') API $("$ADB" shell getprop ro.build.version.sdk | tr -d '\r')"
-for s in ${*:-tracer phrase learn reset password english glide clipboard next emojisuggest settings keys emoji font khmer talkback}; do
+for s in ${*:-tracer phrase learn reset password english glide clipboard next emojisuggest settings longpress keys emoji font khmer talkback}; do
     log "-- $s"
     "scenario_$s"
 done
