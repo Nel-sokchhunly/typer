@@ -497,9 +497,20 @@ impl Engine {
         out
     }
 
+    /// A word typed twice without a space ("hzhz") as its two halves, so it joins as ហើយៗ;
+    /// unless the doubled spelling is itself a word ("haha", "neanea").
+    fn halves<'a>(&self, t: &'a str) -> Vec<&'a str> {
+        let h = t.len() / 2;
+        let doubled = t.len() >= 4 && t.len() % 2 == 0 && is_latin(t) && !is_kept(t) && t[..h].eq_ignore_ascii_case(&t[h..]);
+        let n = normalize(t);
+        let word = self.english.contains_key(&n)
+            || self.by_roman.binary_search_by(|&i| self.spellings[i as usize].0.as_slice().cmp(n.as_bytes())).is_ok();
+        if doubled && !word { vec![&t[..h], &t[h..]] } else { vec![t] }
+    }
+
     /// Top `k` Khmer renderings of a space-separated romanized phrase.
     pub fn suggest(&self, input: &str, k: usize) -> Vec<Suggestion> {
-        let toks = tokens(input);
+        let toks: Vec<&str> = tokens(input).into_iter().flat_map(|t| self.halves(t)).collect();
         let n = toks.len();
         let english_on = self.setting("english"); // before the memo: a change drops it
         self.sync_user(); // same
@@ -576,9 +587,11 @@ impl Engine {
             }
             words.truncate(words.len() - 2); // the two <s>
             words.reverse();
-            let text = join(&words);
-            if !text.is_empty() && !out.iter().any(|s| s.text == text) {
-                out.push(Suggestion { text, words });
+            // ហើយៗ, then ហើយហើយ for the words written out twice
+            for text in [join(&words, true), join(&words, false)] {
+                if out.len() < k && !text.is_empty() && !out.iter().any(|s| s.text == text) {
+                    out.push(Suggestion { text, words: words.clone() });
+                }
             }
             if out.len() == k {
                 break;
@@ -590,9 +603,16 @@ impl Engine {
 
 /// Khmer words join without spaces; latin tokens keep spaces around them;
 /// punctuation sticks to the word before it and has a space after.
-fn join(words: &[String]) -> String {
+/// With `repeat`, a Khmer word right after itself is written as the repetition sign: ហើយ ហើយ -> ហើយៗ.
+fn join(words: &[String], repeat: bool) -> String {
     let mut s = String::new();
     for (i, w) in words.iter().enumerate() {
+        if repeat && i > 0 && w == &words[i - 1] && !is_latin(w) && !is_kept(w) {
+            if !s.ends_with('ៗ') {
+                s.push('ៗ');
+            }
+            continue;
+        }
         if i > 0 && !is_punct(w) && (is_latin(w) || is_latin(&words[i - 1]) || is_punct(&words[i - 1])) {
             s.push(' ');
         }
@@ -639,6 +659,17 @@ mod tests {
         // negation frame closes with ទេ, however far back the negation is; plain តែ stays
         assert_eq!(e.suggest("ot mean luy te", 1)[0].text, "អត់មានលុយទេ");
         assert_eq!(e.suggest("knhom mean te muoy", 1)[0].text, "ខ្ញុំមានតែមួយ");
+        // a repeated word takes the repetition sign, typed with or without a space
+        for typed in ["hz hz", "hzhz", "hz hz hz"] {
+            let top: Vec<String> = e.suggest(typed, 2).into_iter().map(|s| s.text).collect();
+            assert_eq!(top[0], "ហើយៗ", "{typed}");
+            assert!(top[1].starts_with("ហើយហើយ"), "{typed}: written out is second");
+        }
+        assert_eq!(e.suggest("touch touch", 1)[0].text, "តូចៗ");
+        assert_eq!(e.suggest("touchtouch", 1)[0].text, "តូចៗ");
+        // a doubled spelling that is itself a word stays one word
+        assert!(e.suggest("haha", 9).iter().any(|s| s.text == "haha"));
+        assert_eq!(e.suggest("neanea", 1)[0].text, "នានា");
     }
 
     #[test]
