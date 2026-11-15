@@ -335,9 +335,7 @@ extension KeyStyle {
         case .function: return dynamic(light: .white, dark: UIColor(white: 0.27, alpha: 1))  // iOS 26 light: every key white too
         case .prominent: return .accentColor
         case .mode: return Color(red: 0xf5 / 255, green: 0xc8 / 255, blue: 0x42 / 255)  // #f5c842, Typer's yellow (macOS mode badge)
-        case .switcher:  // a tint of Typer's yellow: the secondary of the solid ខ/EN key; stronger on the light keyboard to stand out
-            let y = { (a: CGFloat) in UIColor(red: 0xf5 / 255, green: 0xc8 / 255, blue: 0x42 / 255, alpha: a) }
-            return dynamic(light: y(0.5), dark: y(0.22))
+        case .switcher: return KeyStyle.mode.background.opacity(0.5)  // a tint of Typer's yellow: the secondary of the solid ខ/EN key
         }
     }
     var foreground: Color {
