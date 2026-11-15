@@ -64,7 +64,6 @@ struct EmojiPanel: View {
             .frame(width: KeyLayout.slotWidth, height: 36)
             .background(KeyStyle.function.background)
             .cornerRadius(5)
-            .shadow(color: KeyStyle.shadow, radius: 0, x: 0, y: 1)
             .accessibilityAddTraits(.isButton)
     }
 }

@@ -124,7 +124,6 @@ struct KeyboardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(isPressed(key) && !previewed ? pressedBackground : bar ? Color.clear : l.style.background)
         .cornerRadius(5)
-        .shadow(color: bar ? .clear : KeyStyle.shadow, radius: 0, x: 0, y: 1)
         .overlay {  // the Fresh clip reads like an iOS QuickType suggestion: plain text between thin dividers
             if bar {
                 HStack { divider; Spacer(); divider }
@@ -321,8 +320,6 @@ struct KeyboardView: View {
 enum KeyStyle {
     case letter, function, prominent, mode, switcher
     static let functionLight = UIColor(red: 0.68, green: 0.71, blue: 0.75, alpha: 1)
-    /// iOS 26 light keys have no edge shadow; dark ones keep the faint one.
-    static let shadow = dynamic(light: .clear, dark: UIColor(white: 0, alpha: 0.3))
     /// Typer's yellow as text: #f5c842 on dark keys, a darker amber on white ones.
     static let amber = dynamic(light: UIColor(red: 0.65, green: 0.47, blue: 0, alpha: 1), dark: UIColor(red: 0xf5 / 255, green: 0xc8 / 255, blue: 0x42 / 255, alpha: 1))
 }
