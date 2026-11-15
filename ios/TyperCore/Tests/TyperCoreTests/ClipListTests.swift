@@ -86,10 +86,16 @@ final class ClipListTests: XCTestCase {
 
     func testUnpinReturnsToTopOfRecentWithFreshHour() {
         clips.add("a", now: t0); clips.pin("a", now: t0); clips.add("b", now: t0 + 1)
+        clips.unpin("a", now: t0 + 120)  // b is no longer the Fresh clip
+        XCTAssertEqual(texts(t0 + 123), ["a", "b"])
+        XCTAssertEqual(clips.list(now: t0 + 123).map(\.isPinned), [false, false])
+        XCTAssertEqual(texts(t0 + 120 + 3_601), [])
+    }
+
+    func testUnpinStaysBelowTheFreshClip() {
+        clips.add("a", now: t0); clips.pin("a", now: t0); clips.add("b", now: t0 + 1)
         clips.unpin("a", now: t0 + 2)
-        XCTAssertEqual(texts(t0 + 3), ["a", "b"])
-        XCTAssertEqual(clips.list(now: t0 + 3).map(\.isPinned), [false, false])
-        XCTAssertEqual(texts(t0 + 2 + 3_601), [])
+        XCTAssertEqual(texts(t0 + 3), ["b", "a"])
     }
 
     func testDeleteRemovesPinnedOrRecent() {
@@ -159,5 +165,15 @@ extension ClipListTests {
         XCTAssertTrue(ClipSettings.isOn(nil))
         d.set(false, forKey: ClipSettings.key)
         XCTAssertFalse(ClipSettings.isOn(d))
+    }
+
+    func testUnpinnedClipIsNotFresh() {
+        let l = ClipList(store: InMemoryClipStore())
+        let t0 = Date(timeIntervalSince1970: 1000)
+        l.add("old", now: t0)
+        l.add("new", now: t0.addingTimeInterval(1))
+        l.pin("old", now: t0.addingTimeInterval(2))
+        l.unpin("old", now: t0.addingTimeInterval(3))
+        XCTAssertEqual(l.fresh(now: t0.addingTimeInterval(4))?.text, "new")
     }
 }

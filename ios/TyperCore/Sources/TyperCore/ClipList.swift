@@ -86,15 +86,17 @@ public final class ClipList {
     }
 
     public func pin(_ text: String, now: Date) {
-        store.clips = store.clips.map { $0.text == text && !$0.isPinned ? Clip(text: $0.text, at: $0.at, pinnedAt: now) : $0 }
+        store.clips = store.clips.map { $0.text == text && !$0.isPinned ? Clip(text: $0.text, at: $0.at, pinnedAt: now, usedAt: $0.usedAt) : $0 }
     }
 
-    /// Back among the recent Clips as if just noticed (at the top, a fresh hour); the cap applies again.
+    /// Back among the recent Clips at the top (below the Fresh clip, if any) with a fresh hour; the cap applies again. Never a Fresh clip itself: it is not a new copy.
     public func unpin(_ text: String, now: Date) {
         let all = store.clips
         guard let c = all.first(where: { $0.isPinned && $0.text == text }) else { return }
-        let recent = all.filter { !$0.isPinned }
-        store.clips = all.filter { $0.isPinned && $0.text != text } + Array(([Clip(text: c.text, at: now)] + recent).prefix(Self.limit))
+        let fresh = fresh(now: now)  // stays the Fresh clip: the unpinned one goes just below it
+        var recent = all.filter { !$0.isPinned }
+        recent.insert(Clip(text: c.text, at: now, usedAt: now), at: fresh == nil ? 0 : 1)
+        store.clips = all.filter { $0.isPinned && $0.text != text } + Array(recent.prefix(Self.limit))
     }
 
     public func delete(_ text: String) { store.clips = store.clips.filter { $0.text != text } }
