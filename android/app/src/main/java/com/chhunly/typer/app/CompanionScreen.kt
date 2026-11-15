@@ -69,6 +69,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.contentDataType
+import androidx.compose.ui.autofill.ContentDataType
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.TextStyle
@@ -539,6 +541,8 @@ private fun TryIt(copy: Copy, khmer: Boolean) {
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("try")
+                // not an autofill field: focusing it then never waits on the system's autofill service (an ANR on a busy phone)
+                .semantics { contentDataType = ContentDataType.None }
                 .clip(CardShape)
                 .background(colors.surface)
                 .border(2.5.dp, if (focused) TyperYellow else Color.Transparent, CardShape)
