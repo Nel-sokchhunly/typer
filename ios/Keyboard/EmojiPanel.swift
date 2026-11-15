@@ -7,7 +7,11 @@ struct EmojiPanel: View {
     let onPick: (String) -> Void
     /// [] when the emoji has no skin tones, else the default plus five.
     let tones: (String) -> [String]
+    /// an emoji as it shows now, with the remembered tone
+    let display: (String) -> String
     let onSearch: () -> Void
+    let globe: Bool
+    let onGlobe: () -> Void
     let onLetters: () -> Void
     let onDelete: () -> Void
     /// The section at the left edge, which is the highlighted category.
@@ -30,6 +34,7 @@ struct EmojiPanel: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 12) {  // not lazy: section widths are exact, so jumps land (the cells are lazy)
                         ForEach(sections, id: \.title) { s in
+                            let recents = s.symbol == "clock"  // Recents show what was picked, not the current tone
                             VStack(alignment: .leading, spacing: 0) {
                                 Text(s.title).font(.system(size: 12, weight: .semibold)).foregroundColor(.secondary).fixedSize()
                                     .frame(height: titleHeight)
@@ -38,7 +43,8 @@ struct EmojiPanel: View {
                                     ForEach(0..<(s.emoji.count + rows - 1) / rows, id: \.self) { col in
                                         VStack(spacing: 0) {
                                             ForEach(s.emoji[col * rows..<min(s.emoji.count, (col + 1) * rows)], id: \.self) { e in
-                                                EmojiCell(emoji: e, size: cell, width: geo.size.width, tones: tones, picker: $picker, onPick: onPick)
+                                                EmojiCell(emoji: e, size: cell, width: geo.size.width, tones: tones,
+                                                          display: recents ? { e in e } : display, picker: $picker, onPick: onPick)
                                             }
                                         }
                                         .frame(width: cell, alignment: .top)
@@ -88,6 +94,7 @@ struct EmojiPanel: View {
         let shown = current ?? sections.first?.title
         return HStack(spacing: 0) {
             barKey { Text("ABC").font(.system(size: 16)) }.onTouchUp(onLetters).accessibilityLabel("Letters")
+            if globe { barKey { Image(systemName: "globe").font(.system(size: 18)) }.onTouchUp(onGlobe).accessibilityLabel("Next keyboard") }
             ForEach(sections, id: \.title) { s in
                 Image(systemName: s.symbol).font(.system(size: 16))
                     .foregroundColor(s.title == shown ? .primary : .secondary)
@@ -132,14 +139,15 @@ private struct EmojiCell: View {
     let size: CGFloat
     let width: CGFloat
     let tones: (String) -> [String]
+    let display: (String) -> String
     @Binding var picker: TonePicker?
     let onPick: (String) -> Void
-    @State private var picked: String?
+    @State private var tick = 0  // a pick changes what `display` returns: redraw
     /// The release that closes the picker also reads as a tap; ignore it.
     @State private var held = false
 
     var body: some View {
-        let shown = picked ?? emoji
+        let shown = display(emoji)
         GeometryReader { g in
             Text(shown).font(.system(size: size * 0.64)).frame(width: size, height: size)
                 .contentShape(Rectangle())
@@ -160,7 +168,7 @@ private struct EmojiCell: View {
                         if let drag { picker?.selected = picker?.index(at: drag.location) }
                     }
                     .onEnded { _ in
-                        if let p = picker, let i = p.selected { picked = p.options[i]; onPick(p.options[i]) }
+                        if let p = picker, let i = p.selected { onPick(p.options[i]); tick += 1 }
                         picker = nil
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { held = false }
                     })

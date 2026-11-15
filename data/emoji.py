@@ -71,12 +71,14 @@ def parse(text):
     by_base = {}
     for g in groups:
         for item in g["emoji"]:
-            by_base[item["e"]] = item
+            by_base[key(item["e"])] = item
+    parse.toned = len(toned)
     for base, i, e in toned:
-        # base may be stored with FE0F restored (e.g. ❤️ + tone never happens, but 🏃‍♀️ style does)
-        item = by_base.get(base) or by_base.get(base + "️")
+        item = by_base.get(key(base))  # FE0F-insensitive: 🕵️‍♂️ is stored with it, its toned forms have none
         if item:
             item.setdefault("t", [None] * 5)[i] = e
+        else:
+            raise AssertionError(f"toned emoji without a base: {e}")
     return [g for g in groups if g["group"] != "Component"]
 
 
@@ -95,6 +97,7 @@ def check(groups):
         assert not any(ord(c) in TONES for c in i["e"]), f"toned top-level {i['e']}"
         if "t" in i:
             assert len(i["t"]) == 5 and all(i["t"]), f"incomplete tones {i['e']}"
+    assert sum(len(i["t"]) for i in items if "t" in i) == parse.toned, "dropped tones"
     assert len(by["👍"]["t"]) == 5
     assert len(by["🤝"]["t"]) == 5
     assert by["😀"].get("k"), "no keywords"

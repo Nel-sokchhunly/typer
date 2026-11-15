@@ -27,6 +27,7 @@ final class KeyboardModel: ObservableObject {
     @Published var showEmoji = false
     var emojiSections: [EmojiSection] = []
     var emojiTones: (String) -> [String] = { _ in [] }
+    var emojiDisplay: (String) -> String = { $0 }
     var emojiSearch: (String) -> [String] = { _ in [] }
     /// Search mode: the Sing letter keys under a field and a results row. Keys edit `emojiQuery`, never the Host app.
     @Published var emojiSearching = false
@@ -161,6 +162,7 @@ final class KeyboardViewController: UIInputViewController {
                 onSlot: { [unowned self] in slotTapped() },
                 onEmoji: { [unowned self] in emojiPicked($0) },
                 onSearch: { [unowned self] in keyFeedback(); model.emojiQuery = ""; model.emojiSearching = true; heightConstraint.constant = model.height },
+                onGlobe: { [unowned self] in advanceToNextInputMode() },
                 onLetters: { [unowned self] in keyFeedback(); model.showEmoji = false; model.page = .letters },
                 onDelete: { [unowned self] in keyFeedback(); textDocumentProxy.deleteBackward() }))  // a grapheme, ZWJ emoji included
         hosting.view.translatesAutoresizingMaskIntoConstraints = false
@@ -213,7 +215,8 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         _ = composer.fieldEnded()
-        refresh()
+        model.showEmoji = false; model.emojiSearching = false; model.emojiQuery = ""  // reopens on the letters
+        refresh()  // also restores the height
     }
 
     override func textDidChange(_ textInput: UITextInput?) {
@@ -292,6 +295,7 @@ final class KeyboardViewController: UIInputViewController {
         _ = composer.commitTop()
         model.emojiSections = catalog.sections
         model.emojiTones = { [unowned catalog] in catalog.tones(for: $0) }
+        model.emojiDisplay = { [unowned catalog] in catalog.display($0) }
         model.emojiSearch = { [unowned catalog] in catalog.search($0) }
         model.showEmoji = true
         refresh(afterKey: true)

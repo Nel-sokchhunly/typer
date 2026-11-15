@@ -8,6 +8,7 @@ struct KeyboardView: View {
     let onSlot: () -> Void
     let onEmoji: (String) -> Void
     let onSearch: () -> Void
+    let onGlobe: () -> Void
     let onLetters: () -> Void
     let onDelete: () -> Void
 
@@ -20,7 +21,8 @@ struct KeyboardView: View {
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
                 if model.showEmoji && !model.emojiSearching {
-                    EmojiPanel(sections: model.emojiSections, onPick: onEmoji, tones: model.emojiTones, onSearch: onSearch, onLetters: onLetters, onDelete: onDelete)
+                    EmojiPanel(sections: model.emojiSections, onPick: onEmoji, tones: model.emojiTones, display: model.emojiDisplay, onSearch: onSearch,
+                               globe: model.needsGlobe, onGlobe: onGlobe, onLetters: onLetters, onDelete: onDelete)
                         .frame(height: model.height)
                 } else if model.showAll && !model.typed.isEmpty {
                     VStack(spacing: 0) {

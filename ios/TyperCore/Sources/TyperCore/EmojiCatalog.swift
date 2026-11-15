@@ -81,9 +81,9 @@ public final class EmojiCatalog {
             out.append(EmojiSection(title: "Recently Used", symbol: "clock", emoji: store.recents))
         }
         for g in groups {
-            let shown = g.emoji.filter(supported).map { shown($0.e) }
-            if !shown.isEmpty {
-                out.append(EmojiSection(title: g.group, symbol: Self.symbols[g.group] ?? "square", emoji: shown))
+            let visible = g.emoji.filter(supported).map { shown($0.e) }
+            if !visible.isEmpty {
+                out.append(EmojiSection(title: g.group, symbol: Self.symbols[g.group] ?? "square", emoji: visible))
             }
         }
         return out
@@ -107,14 +107,21 @@ public final class EmojiCatalog {
         return tonesOf[base].map { [base] + $0 } ?? []
     }
 
-    /// Emoji whose name or a keyword has a word starting with the query, name matches first.
+    /// The emoji as the grid shows it now: its base with the remembered tone (a toned variant maps to its base).
+    public func display(_ emoji: String) -> String { shown(baseOf[emoji] ?? emoji) }
+
+    /// Emoji where every word of the query starts some word of the name or keywords, name matches first.
     public func search(_ query: String) -> [String] {
-        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        func words(_ s: String) -> [Substring] { s.lowercased().split { !$0.isLetter && !$0.isNumber } }
+        let q = words(query)
         if q.isEmpty { return [] }
-        func hit(_ s: String) -> Bool { s.lowercased().split { !$0.isLetter && !$0.isNumber }.contains { $0.hasPrefix(q) } }
+        func hit(_ text: [String]) -> Bool {
+            let w = text.flatMap(words)
+            return q.allSatisfy { t in w.contains { $0.hasPrefix(t) } }
+        }
         let items = groups.flatMap(\.emoji).filter(supported)
-        let byName = items.filter { hit($0.n) }
-        let byKeyword = items.filter { !hit($0.n) && ($0.k ?? []).contains(where: hit) }
+        let byName = items.filter { hit([$0.n]) }
+        let byKeyword = items.filter { !hit([$0.n]) && hit([$0.n] + ($0.k ?? [])) }
         return (byName + byKeyword).map { shown($0.e) }
     }
 

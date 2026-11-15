@@ -104,6 +104,14 @@ final class EmojiCatalogTests: XCTestCase {
         XCTAssertEqual(c.search("izza"), [])  // prefix of a word, not substring
     }
 
+    func testDisplayFollowsTheStore() {
+        let c = catalog()
+        c.pick("👍🏿")
+        XCTAssertEqual(c.display("👍"), "👍🏿")
+        XCTAssertEqual(c.display("👍🏻"), "👍🏿")  // any variant resolves through its base
+        XCTAssertEqual(c.display("😀"), "😀")
+    }
+
     func testSearchNameMatchesFirstAndShowsTone() {
         let c = catalog()
         XCTAssertEqual(c.search("ha"), ["👋", "🤝", "😀"])  // name hit before keyword hit
@@ -118,6 +126,9 @@ final class EmojiCatalogTests: XCTestCase {
         XCTAssertEqual(c.sections.first?.title, "Smileys & Emotion")
         XCTAssertEqual(c.sections.first?.emoji.first, "😀")
         XCTAssertTrue(c.search("pizza").contains("🍕"))
+        XCTAssertTrue(c.search("red heart").contains("❤️"))
+        XCTAssertTrue(c.search("heart red").contains("❤️"))
+        XCTAssertFalse(c.search("red zzz").contains("❤️"))
         XCTAssertEqual(c.tones(for: "👍").count, 6)
     }
 }
