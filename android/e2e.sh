@@ -669,6 +669,28 @@ PY2
     sleep 0.6
 }
 
+scenario_clipboard() { # copy: the bar offers a one-tap paste; the clipboard button lists the clips newest first; tap pastes; Clear all
+    open_fields search || { FAILED=1; return; }
+    tap $(ui bounds "copy sample"); sleep 0.8
+    shot clipboard-fresh
+    tap $(wait_for "paste, Typer clip 1" 10) || { log "FAIL clipboard: no paste pill after copying"; FAILED=1; return; }
+    sleep 0.4
+    check "clipboard: the paste pill pastes" "Typer clip 1" "$(ui desctext search)"
+    tap $(ui bounds "copy sample"); sleep 0.8
+    tap $(wait_for clipboard 10) || { FAILED=1; return; }
+    sleep 0.4
+    shot clipboard
+    labels=$(ui labels | tr '\n' '|')
+    check "clipboard: newest first" "paste, Typer clip 2|paste, Typer clip 1|clear clipboard history" "$labels"
+    tap $(ui bounds "paste, Typer clip 1")
+    sleep 0.4
+    check "clipboard: a row pastes its clip" "Typer clip 1Typer clip 1" "$(ui desctext search)"
+    tap $(wait_for clipboard 10); sleep 0.3
+    tap $(ui bounds "clear clipboard history"); sleep 0.3
+    ui labels | grep -q "paste, Typer clip" && { log "FAIL clipboard: Clear all left clips"; FAILED=1; } || log "PASS clipboard: Clear all empties it"
+    tap $(ui bounds "close clipboard")
+}
+
 scenario_glide() { # English mode: glide hello and world (a space between), the bar's alternatives, backspace takes the glided word back
     open_app || { FAILED=1; return; }
     tap $(key_at "Khmer mode"); wait_for "English mode" 10 >/dev/null; read_keys
@@ -713,7 +735,7 @@ scenario_compare() {
 }
 
 log "Typer Android e2e $(date)  device: $("$ADB" shell getprop ro.product.model | tr -d '\r') API $("$ADB" shell getprop ro.build.version.sdk | tr -d '\r')"
-for s in ${*:-tracer phrase learn reset password english glide keys emoji font khmer talkback}; do
+for s in ${*:-tracer phrase learn reset password english glide clipboard keys emoji font khmer talkback}; do
     log "-- $s"
     "scenario_$s"
 done
