@@ -583,9 +583,12 @@ set_font() {
 }
 
 # setting <label>: open the Companion app, scroll to the setting with this text and tap it (a switch or an option)
+WAS_KHMER_APP=0
 setting() {
     "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null
     wait_for try 30 >/dev/null || return 1
+    # the cards are found by their English titles: a Companion app in Khmer is switched to English (and back after)
+    if ui labels | grep -qx "ភាសា៖ អង់គ្លេស"; then tap $(ui bounds EN); WAS_KHMER_APP=1; sleep 0.5; fi
     n=0
     until xy=$(ui bounds "$1"); do
         "$ADB" shell input swipe 540 1700 540 1150 300
@@ -630,6 +633,10 @@ scenario_settings() { # double-space period and auto-cap (English), the auto-cap
     set -- $(ui rect "Typer keyboard"); tall=$(($4 - $2))
     [ "$tall" -gt "$normal" ] && log "PASS settings: Tall makes the keyboard taller ($normal -> $tall px)" || { log "FAIL settings: height $normal -> $tall"; FAILED=1; }
     setting "Normal"
+    if [ $WAS_KHMER_APP = 1 ]; then  # the Companion app back in Khmer, as it was
+        "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null
+        tap $(wait_for "ខ្មែរ" 20); WAS_KHMER_APP=0
+    fi
 }
 
 screen_width() { "$ADB" shell wm size | tail -1 | sed -E 's/.* ([0-9]+)x.*/\1/'; }
@@ -715,10 +722,13 @@ glide() {
     pts=""
     for c in $(printf '%s' "$1" | sed 's/./& /g'); do pts="$pts $(key_at "$c")"; done
     python3 - $pts >"$OUT/glide.cmd" <<'PY2'
-import sys
+import os, sys
+slow = os.environ.get("SLOW") == "1"
 v = list(map(int, sys.argv[1:]))
 pts = list(zip(v[0::2], v[1::2]))
 out = [f"input motionevent DOWN {pts[0][0]} {pts[0][1]}"]
+if slow:  # a real thumb: it drifts a little, rests, then sweeps
+    out += [f"input motionevent MOVE {pts[0][0] + 36} {pts[0][1]}", "sleep 0.4"]  # drifts ~12 dp, then rests past the 300 ms long press
 for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
     for i in range(1, 7):
         out.append(f"input motionevent MOVE {x0 + (x1 - x0) * i // 6} {y0 + (y1 - y0) * i // 6}")
@@ -784,7 +794,7 @@ scenario_longpress() { # accents, row-2 symbols, the period's punctuation, email
     set -- $(key_at a); hold $1 $2 0.7
     slide_pick period $((-w))
     sleep 0.3
-    check "longpress: e slides to é, a holds @, period slides to !" "é@!" "$(field_text)"
+    check "longpress: e slides to é, a holds to its first accent à, period slides to !" "éà!" "$(field_text)"
     shot longpress
     tap $(key_at "English mode")
     open_fields email || { FAILED=1; return; }
@@ -800,6 +810,21 @@ scenario_longpress() { # accents, row-2 symbols, the period's punctuation, email
     set -- $(key_at comma); hold $1 $2 0.7
     sleep 1.5
     check "longpress: holding the comma opens Typer settings" "MainActivity" "$("$ADB" shell dumpsys window | grep -m1 mCurrentFocus)"
+}
+
+scenario_themes() { # each theme on the keyboard, for the eye (screenshots theme-*.png); ends on THEME_AFTER (default Typer)
+    for t in Typer "Material You" Light Dark; do
+        ui_t=$(printf '%s' "$t" | tr ' ' '-')
+        setting "$t" || { log "  no theme $t (Material You needs Android 12+)"; continue; }
+        open_app || { FAILED=1; return; }
+        shot "theme-$ui_t"
+        log "PASS themes: $t on screen (theme-$ui_t.png)"
+    done
+    setting "${THEME_AFTER:-Typer}"
+    if [ $WAS_KHMER_APP = 1 ]; then
+        "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null
+        tap $(wait_for "ខ្មែរ" 20); WAS_KHMER_APP=0
+    fi
 }
 
 scenario_clipboard() { # copy: the bar offers a one-tap paste; the clipboard button lists the clips newest first; tap pastes; Clear all
@@ -837,6 +862,8 @@ scenario_glide() { # English mode: glide hello and world (a space between), the 
     [ "$(field_text)" = "hello " ] && log "PASS glide: backspace takes the glided word back" || { log "FAIL glide: after backspace '$(field_text)'"; FAILED=1; }
     for w in the keyboard quick; do glide $w; done
     check "glide: the keyboard quick" "hello the keyboard quick" "$(field_text)"
+    SLOW=1 glide world
+    check "glide: a slow-starting glide is still a glide, not a long press" "quick world" "$(field_text)"
     tap $(key_at "English mode")  # back to Khmer mode for later scenarios
 }
 
