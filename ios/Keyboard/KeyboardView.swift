@@ -52,7 +52,7 @@ struct KeyboardView: View {
 
     private func look(_ a: KeyAction) -> Look {
         switch a {
-        case .char(let c): return Look(text: KhmerKeys.label(for: c), style: .letter)  // ◌ under a bare combining mark
+        case .char(let c): return Look(text: c, style: .letter)  // iOS draws ◌ under a bare combining mark itself
         case .punct(let p): return Look(text: p, fontSize: 20)
         case .shift:
             return Look(image: model.shift == .lock ? "capslock.fill" : model.shift == .once ? "shift.fill" : "shift",

@@ -31,20 +31,13 @@ public enum KhmerKeys {
         return m
     }()
 
-    /// The key face: text starting with a combining mark sits on a dotted circle (◌ិ); the key still types `text`.
-    public static func label(for text: String) -> String {
-        switch text.unicodeScalars.first?.properties.generalCategory {
-        case .nonspacingMark?, .spacingMark?: return "\u{25CC}" + text
-        default: return text
-        }
-    }
-
-    /// A long-press option's face: the invisible joiners get a name.
+    /// A long-press option's face: the invisible joiners get a name. A bare combining mark needs no ◌ of ours:
+    /// iOS text drawing already puts one under it (adding U+25CC showed two).
     public static func optionLabel(for text: String) -> String {
         switch text {
         case "\u{200D}": return "ZWJ"
         case "\u{200C}": return "ZWNJ"
-        default: return label(for: text)
+        default: return text
         }
     }
 }

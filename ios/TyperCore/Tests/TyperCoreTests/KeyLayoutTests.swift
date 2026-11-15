@@ -84,17 +84,6 @@ final class KeyLayoutTests: XCTestCase {
         XCTAssertEqual(rows[3].value.last?.action, .backspace)
     }
 
-    func testDottedCircleExactlyUnderCombiningMarks() {
-        for s in ["ិ", "ុ", "្", "់", "៉", "ា", "ះ", "ៈ", "ុំ", "ាំ", "ោះ", "េះ", "ុះ", "ំ", "៌"] {
-            XCTAssertEqual(KhmerKeys.label(for: s), "\u{25CC}" + s, s)
-        }
-        for s in ["ក", "ឥ", "១", "។", "ៗ", "!", "a", ""] { XCTAssertEqual(KhmerKeys.label(for: s), s, s) }
-        for k in (KhmerKeys.base + KhmerKeys.shift).joined() {
-            let mark = [.nonspacingMark, .spacingMark].contains(k.unicodeScalars.first!.properties.generalCategory)
-            XCTAssertEqual(KhmerKeys.label(for: k).unicodeScalars.first == "\u{25CC}", mark, k)  // ◌ិ is one Character
-        }
-    }
-
     /// Every Khmer character (U+1780–17DD, U+17E0–17E9) types from base, shift or a long-press list.
     func testKhmerLettersAreReachable() {
         let excluded: Set<UInt32> = [
@@ -121,7 +110,7 @@ final class KeyLayoutTests: XCTestCase {
         ])
         XCTAssertEqual(KhmerKeys.optionLabel(for: "\u{200D}"), "ZWJ")
         XCTAssertEqual(KhmerKeys.optionLabel(for: "\u{200C}"), "ZWNJ")
-        XCTAssertEqual(KhmerKeys.optionLabel(for: "៑"), "\u{25CC}៑")
+        XCTAssertEqual(KhmerKeys.optionLabel(for: "៑"), "៑")
     }
 
     func testOnlyKhmerLettersHaveLongPress() {
