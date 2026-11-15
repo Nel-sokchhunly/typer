@@ -46,8 +46,16 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
 
     // layout state (iOS KeyboardModel)
     private var page = KeyPage.LETTERS
-    /** The letters page ?123 goes back to: Sing's letters, or the Khmer page once chosen (kept across fields). */
+    /**
+     * The layout the user chose with the bar's កខគ / abc: Sing's letters or the Khmer layout. Remembered across
+     * launches; only that switch changes it.
+     */
     private var letters = KeyPage.LETTERS
+    /** Password, email and number fields: the Sing layout only, while focused; [letters] is kept for later. */
+    private var layoutLocked = false
+    private val keyboardPrefs by lazy { getSharedPreferences("typer_keyboard", MODE_PRIVATE) }
+    /** The letters page for this field: the chosen layout, or the Sing layout in a locked field. */
+    private fun lettersPage() = if (layoutLocked) KeyPage.LETTERS else letters
     private var shift = Shift.OFF
     /** The user set shift by hand since the last key; auto-cap leaves it alone until a key is typed. */
     private var shiftChosen = false
@@ -87,6 +95,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
 
     override fun onCreate() {
         super.onCreate()
+        letters = if (keyboardPrefs.getString("layout", null) == KeyPage.KHMER.name) KeyPage.KHMER else KeyPage.LETTERS
         scheduler.async {
             val data = EngineData.dataDir(this)
             val e = Engine(data?.path ?: "/nonexistent", EngineData.userDir(this).path)
@@ -137,7 +146,8 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         composer.fieldTraitsChanged(secure, type)
         val variation = attribute.inputType and InputType.TYPE_MASK_VARIATION
         val password = (attribute.inputType and InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_TEXT && variation in PASSWORDS
-        wordsAllowed = type == FieldType.TEXT && !password &&
+        layoutLocked = secure || password || type == FieldType.EMAIL || type == FieldType.NUMBER
+        wordsAllowed = type == FieldType.TEXT && !password && variation != InputType.TYPE_TEXT_VARIATION_URI &&
             (attribute.inputType and InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_TEXT &&
             (attribute.inputType and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS) == 0
         autoCap = when {
@@ -148,11 +158,12 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         }
         returnFor(attribute)
         if (!restarting) {
-            page = if (type == FieldType.NUMBER) KeyPage.NUMBERS else letters
+            page = if (type == FieldType.NUMBER) KeyPage.NUMBERS else lettersPage()
             shift = Shift.OFF
             shiftChosen = false
             showAll = false
         }
+        if (layoutLocked && page == KeyPage.KHMER) page = KeyPage.LETTERS
     }
 
     /** The return key shows the field's action (search, send, go, ...), drawn in primary; else a newline. */
@@ -272,6 +283,8 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             results = results,
             recents = recents,
             tones = tones,
+            letters = lettersPage(),
+            layoutLocked = layoutLocked,
         )
     }
 
@@ -291,19 +304,18 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         when (action) {
             is KeyAction.Text -> type(action.text)
             KeyAction.Space -> type(" ")
-            KeyAction.Backspace -> handle(composer.backspace()) { deleteBackward() }
+            KeyAction.Backspace -> handle(composer.backspace()) { if (page == KeyPage.KHMER) deleteCodePoint() else deleteBackward() }
             KeyAction.Return -> handle(composer.returnKey()) { returnKey() }
             KeyAction.Shift -> shiftTapped()
             KeyAction.Page -> {
-                page = if (page == KeyPage.LETTERS || page == KeyPage.KHMER) KeyPage.NUMBERS else letters
+                page = if (page == KeyPage.LETTERS || page == KeyPage.KHMER) KeyPage.NUMBERS else lettersPage()
                 refresh()
             }
             KeyAction.Symbols -> {
                 page = if (page == KeyPage.NUMBERS) KeyPage.SYMBOLS else KeyPage.NUMBERS
                 render()
             }
-            KeyAction.Mode -> if (page == KeyPage.KHMER) khmerPage(false) else modeTapped()
-            KeyAction.KhmerPage -> khmerPage(page != KeyPage.KHMER)
+            KeyAction.Mode -> modeTapped()
             KeyAction.Emoji -> openEmoji()
         }
     }
@@ -365,6 +377,18 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     /** A DEL key event, not deleteSurroundingText: editors then delete whole emoji and selections themselves. */
     private fun deleteBackward() = sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
 
+    /**
+     * The Khmer layout's backspace: one code point, even inside a stack (គ្រូ -> គ្រ -> គ្), as the keys typed them.
+     * A selection, or an emoji or other surrogate pair before the caret, goes through DEL as usual.
+     */
+    private fun deleteCodePoint() {
+        val ic = currentInputConnection ?: return
+        val before = ic.getTextBeforeCursor(2, 0)
+        val selected = !ic.getSelectedText(0).isNullOrEmpty()
+        if (selected || before.isNullOrEmpty() || Character.isSurrogate(before.last())) return deleteBackward()
+        ic.deleteSurroundingText(1, 0)
+    }
+
     private fun returnKey() {
         val ic = currentInputConnection ?: return
         if (returnAction && editorAction != EditorInfo.IME_ACTION_NONE) ic.performEditorAction(editorAction)
@@ -385,11 +409,13 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     }
 
     /**
-     * The Khmer page on or off; ខ on it goes back to the Sing letters. Shift starts off either way. A Phrase in
-     * progress stays: the first Khmer key inserts its top Suggestion, as any non-Latin key does.
+     * The bar's layout switch (no Phrase open): កខគ to the Khmer layout, abc back to the Sing layout, remembered
+     * across launches. Inert in password, email and number fields. Shift starts off either way.
      */
-    private fun khmerPage(on: Boolean) {
-        letters = if (on) KeyPage.KHMER else KeyPage.LETTERS
+    private fun layoutTapped() {
+        if (layoutLocked || composer.isComposing) return
+        letters = if (letters == KeyPage.KHMER) KeyPage.LETTERS else KeyPage.KHMER
+        keyboardPrefs.edit().putString("layout", letters.name).apply()
         page = letters
         shift = Shift.OFF
         shiftChosen = true
@@ -408,6 +434,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         when (action) {
             is StripAction.Suggestion -> handle(composer.candidateTapped(action.index))
             StripAction.Latin -> handle(composer.rawLatin())
+            StripAction.Layout -> layoutTapped()
             StripAction.Expand -> {
                 showAll = !showAll && composer.isComposing
                 render()
@@ -488,7 +515,8 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
                 cls == InputType.TYPE_CLASS_NUMBER || cls == InputType.TYPE_CLASS_PHONE || cls == InputType.TYPE_CLASS_DATETIME -> FieldType.NUMBER
                 cls != InputType.TYPE_CLASS_TEXT -> FieldType.TEXT
                 v == InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS || v == InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS -> FieldType.EMAIL
-                v == InputType.TYPE_TEXT_VARIATION_URI -> FieldType.URL
+                // URL fields have no special rule on Android: Khmer mode and the Khmer layout work there, as in any
+                // text field (#79). FieldType.URL stays in the shared Composer until every platform drops it together.
                 else -> FieldType.TEXT
             }
         }

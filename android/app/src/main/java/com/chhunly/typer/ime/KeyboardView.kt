@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.text.TextPaint
 import android.text.TextUtils
 import android.view.HapticFeedbackConstants
@@ -96,16 +97,27 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         val recents: List<String> = emptyList(),
         /** Base emoji -> the skin tone last chosen for it. */
         val tones: Map<String, String> = emptyMap(),
+        /** The letters ?123 and the emoji page go back to: the Sing layout (LETTERS) or the Khmer layout (KHMER). */
+        val letters: KeyPage = KeyPage.LETTERS,
+        /** Password, email or number field: the Sing layout only; the bar's កខគ is dimmed and does nothing. */
+        val layoutLocked: Boolean = false,
     ) {
         val composing get() = typed.isNotEmpty()
         val panelOpen get() = showAll && composing
+        val khmerLayout get() = letters == KeyPage.KHMER
+        /** What the bar's last slot is now: keep-Latin abc, or the layout switch (កខគ, or abc back to Sing). */
+        val lastSlot get() = if (composing) "latin" else if (khmerLayout) "abc" else "kkk"
     }
+
+    /** When the bar's last slot last changed its meaning: taps on it are ignored for [SLOT_SETTLE] ms after. */
+    private var lastSlotChanged = 0L
 
     var state = State()
         set(value) {
             if (field == value) return
             val relayout = field.page != value.page || (field.shift != Shift.OFF) != (value.shift != Shift.OFF) ||
-                field.emoji != value.emoji || field.emojiSearch != value.emojiSearch
+                field.emoji != value.emoji || field.emojiSearch != value.emojiSearch || field.letters != value.letters
+            if (field.lastSlot != value.lastSlot) lastSlotChanged = SystemClock.uptimeMillis()
             if (field.panelOpen != value.panelOpen) panelScroll = 0f
             if (field.emoji != value.emoji) { emojiScroll = 0f; tonePopup = null }
             val resize = field.emojiSearch != value.emojiSearch || rowsFor(field) != rowsFor(value)
@@ -188,7 +200,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     private var keysCache: List<Key>? = null
     private val keys: List<Key>
         get() = keysCache ?: (if (state.emoji && !state.emojiSearch) KeyLayout.emojiRow(metrics)
-        else KeyLayout.keys(metrics, if (state.emojiSearch) KeyPage.LETTERS else state.page, state.shift != Shift.OFF)).also { keysCache = it }
+        else KeyLayout.keys(metrics, if (state.emojiSearch) KeyPage.LETTERS else state.page, state.shift != Shift.OFF, state.khmerLayout)).also { keysCache = it }
 
     /** Emoji data, set by the service once loaded off the main thread; the emoji key does nothing until then. */
     var emojiData: com.chhunly.typer.core.EmojiData? = null
@@ -526,9 +538,10 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                     else -> 22f
                 }
                 drawLabel(canvas, label, cx, cy, size, fg, alpha, onBaseline = a.text.length == 1 && !khmerPage)
-                key.hint?.let {
+                key.hint?.let { hint ->
+                    val it = KeyLayout.label(hint).removePrefix("\u25CC")
                     font(false)
-                    text.textSize = 12f * sp
+                    text.textSize = (if (it.length > 2) 8f else 12f) * sp
                     text.color = theme.onSurfaceVariant
                     text.textAlign = Paint.Align.RIGHT
                     canvas.drawText(it, r.right - px(4f), r.top + px(14f), text)
@@ -542,24 +555,10 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             }, cx, cy, fg)
             KeyAction.Backspace -> drawIcon(canvas, R.drawable.ic_backspace, cx, cy, fg)
             KeyAction.Return -> drawIcon(canvas, state.returnKind.icon, cx, cy, fg)
-            KeyAction.Page -> drawLabel(canvas, if ((state.page == KeyPage.LETTERS || state.page == KeyPage.KHMER) && !state.emoji) "?123" else "ABC", cx, cy, 16f, fg, alpha, bold = true)
+            KeyAction.Page -> drawLabel(canvas, pageLabel(), cx, cy, 16f, fg, alpha, bold = true)
             KeyAction.Emoji -> drawIcon(canvas, R.drawable.ic_emoji, cx, cy, fg)
             KeyAction.Symbols -> drawLabel(canvas, if (state.page == KeyPage.NUMBERS) "=\\<" else "?123", cx, cy, 16f, fg, alpha, bold = true)
-            KeyAction.Mode -> {
-                val label = if (state.page == KeyPage.KHMER) KeyLayout.KHMER_HINT else state.mode
-                drawLabel(canvas, label, cx, cy, if (label == "EN") 16f else 20f, fg, alpha, bold = true)
-                key.hint?.let {  // the Khmer page, on long press
-                    font(false)
-                    text.textSize = 11f * sp
-                    text.color = fg
-                    text.alpha = 170
-                    text.textAlign = Paint.Align.RIGHT
-                    canvas.drawText(it, r.right - px(4f), r.top + px(13f), text)
-                    text.alpha = 255
-                    text.textAlign = Paint.Align.CENTER
-                }
-            }
-            KeyAction.KhmerPage -> Unit
+            KeyAction.Mode -> drawLabel(canvas, state.mode, cx, cy, if (state.mode == "EN") 16f else 20f, fg, alpha, bold = true)
             KeyAction.Space -> Unit  // blank, like Gboard
         }
     }
@@ -607,12 +606,20 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     }
 
     /** Long press: the hint digit, selected (primary circle), as Gboard shows it. */
+    /** ?123 on the letters; on the other pages the way back: ABC to the Sing layout, កខគ to the Khmer layout. */
+    private fun pageLabel() = when {
+        (state.page == KeyPage.LETTERS || state.page == KeyPage.KHMER) && !state.emoji -> "?123"
+        state.khmerLayout -> LAYOUT_KHMER
+        else -> "ABC"
+    }
+
     private fun drawLongPress(canvas: Canvas, key: Key, hint: String) {
         val r = bubble(key)
         drawBubbleBackground(canvas, r)
         fill.color = theme.primary
         canvas.drawCircle(r.centerX(), r.centerY(), r.width() * 0.36f, fill)
-        drawLabel(canvas, hint, r.centerX(), r.centerY(), 22f, theme.onAction)
+        val label = KeyLayout.label(hint)
+        drawLabel(canvas, label, r.centerX(), r.centerY(), if (label.length > 2) 14f else 22f, theme.onAction)
     }
 
     // ---- strip ----
@@ -620,12 +627,14 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     private fun stripSlots(): List<StripSlot> = when {
         state.composing -> StripLayout.composing(metrics)
         state.words.isNotEmpty() -> StripLayout.words(metrics, state.words.size)
+        state.khmerLayout -> StripLayout.punctuation(metrics, KeyLayout.khmerLayoutPunctuation)
         else -> StripLayout.punctuation(metrics, if (state.mode == "EN") KeyLayout.englishPunctuation else KeyLayout.punctuation)
     }
 
     private fun stripLabel(a: StripAction): String = when (a) {
         is StripAction.Suggestion -> state.suggestions.getOrNull(a.index) ?: if (a.index == 0) state.typed else ""
         StripAction.Latin -> "abc"
+        StripAction.Layout -> if (state.khmerLayout) "abc" else LAYOUT_KHMER
         StripAction.Expand -> state.suggestions.size.toString()
         is StripAction.Punctuation -> a.text
         is StripAction.Word -> state.words.getOrNull(a.index)?.let { if (a.index == 0) "“$it”" else it } ?: ""
@@ -645,9 +654,16 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             val r = rectOf(slot.box)
             val a = slot.action
             val yellow = emphasised(a)
-            val (bg, fg) = if (yellow) theme.mode to theme.onMode else theme.functionKey to theme.onFunction
+            val (bg, fg) = when {
+                a == StripAction.Layout -> LAYOUT_INK to LAYOUT_YELLOW  // its own look in light and dark: not a punctuation key, not ខ
+                yellow -> theme.mode to theme.onMode
+                else -> theme.functionKey to theme.onFunction
+            }
+            val dim = a == StripAction.Layout && state.layoutLocked && !state.khmerLayout
             fill.color = bg
+            if (dim) fill.alpha = 102
             canvas.drawRoundRect(r, radius, radius, fill)
+            fill.alpha = 255
             if (stripDown == slot) {  // pressed: the state layer, as on the keys
                 fill.color = fg
                 fill.alpha = 26
@@ -660,6 +676,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                     drawIcon(canvas, if (state.showAll) R.drawable.ic_collapse else R.drawable.ic_expand, r.centerX() + px(11f), r.centerY(), fg, 18f)
                 }
                 StripAction.Latin -> drawLabel(canvas, "abc", r.centerX(), r.centerY(), 16f, fg, bold = true)
+                StripAction.Layout -> drawLabel(canvas, stripLabel(a), r.centerX(), r.centerY(), 16f, fg, if (dim) 102 else 255, bold = true)
                 else -> drawStripText(canvas, stripLabel(a), r, false, a is StripAction.Punctuation, fg, start = a is StripAction.Suggestion)  // regular weight: the yellow says it's the top one
             }
         }
@@ -676,11 +693,11 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         font(bold)
         text.color = color
         text.textSize = size * sp
-        val pad = px(12f)
+        val pad = px(if (punct) 4f else 12f)  // a punctuation mark is one glyph: it may use the whole pill
         val avail = r.width() - 2 * pad
         val w = text.measureText(s)
-        if (w > avail) text.textSize = max(size * 0.7f * sp, text.textSize * avail / w)
-        val shown = TextUtils.ellipsize(s, text, avail, TextUtils.TruncateAt.START).toString()
+        if (w > avail) text.textSize = max(size * (if (punct) 0.5f else 0.7f) * sp, text.textSize * avail / w)
+        val shown = if (punct) s else TextUtils.ellipsize(s, text, avail, TextUtils.TruncateAt.START).toString()
         if (start) {
             text.textAlign = Paint.Align.LEFT
             canvas.drawText(shown, r.left + pad, stripBaseline(r, khmer), text)
@@ -811,7 +828,9 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                     owner && strip != null -> {
                         stripDown = null
                         invalidate()
-                        if (strip.box.contains(x, y.coerceAtMost(metrics.stripHeight - 1f).coerceAtLeast(0f)) && y < metrics.rowsTop + 8f) {
+                        val settling = (strip.action == StripAction.Latin || strip.action == StripAction.Layout) &&
+                            SystemClock.uptimeMillis() - lastSlotChanged < SLOT_SETTLE  // a fast double tap on abc keeps Latin once
+                        if (!settling && strip.box.contains(x, y.coerceAtMost(metrics.stripHeight - 1f).coerceAtLeast(0f)) && y < metrics.rowsTop + 8f) {
                             haptic(HapticFeedbackConstants.KEYBOARD_TAP)
                             listener.onStrip(strip.action)
                         }
@@ -898,12 +917,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             }
             is KeyEffect.FireHint -> {
                 haptic(HapticFeedbackConstants.LONG_PRESS)
-                if (fx.key.action == KeyAction.Mode) {
-                    listener.onKey(KeyAction.KhmerPage)
-                } else {
-                    longShown = fx.key to fx.text
-                    listener.onHint(fx.text)
-                }
+                longShown = fx.key to fx.text
+                listener.onHint(fx.text)
             }
             is KeyEffect.ShowMore -> {
                 haptic(HapticFeedbackConstants.LONG_PRESS)
@@ -956,7 +971,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     // ---- accessibility: every key, strip slot and panel row is a virtual node with a label ----
 
     /** `key`: a Keyboard key (TalkBack reads just its label, as on other keyboards), else a strip or panel button. */
-    private class Target(val id: Int, val label: String, val box: Box, val key: Boolean = false, val long: (() -> Unit)? = null, val activate: () -> Unit)
+    private class Target(val id: Int, val label: String, val box: Box, val key: Boolean = false, val activate: () -> Unit)
 
     private fun targets(): List<Target> {
         val out = ArrayList<Target>()
@@ -968,7 +983,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                     out += Target(EMOJI + i, data.label(e), Box(metrics.margin + i * panel.cellWidth(metrics), 0f, panel.cellWidth(metrics), SEARCH_ROW)) { listener.onEmoji(e) }
                 }
                 out += Target(STRIP, "close emoji search", searchClose()) { listener.onEmojiSearch(false) }
-                for ((i, k) in keys.withIndex()) out += Target(KEYS + i, describe(k), k.box, key = true, long = longAction(k)) { listener.onKey(k.action) }
+                for ((i, k) in keys.withIndex()) out += Target(KEYS + i, describe(k), k.box, key = true) { listener.onKey(k.action) }
                 return out
             }
             panel.layout(metrics, state.recents, state.tones)
@@ -983,12 +998,17 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                 }
             }
             panel.visibleCells(metrics, emojiScroll).forEachIndexed { i, (e, b) -> out += Target(EMOJI + i, data.label(e), b) { listener.onEmoji(e) } }
-            for ((i, k) in keys.withIndex()) out += Target(KEYS + i, describe(k), k.box, key = true, long = longAction(k)) { listener.onKey(k.action) }
+            for ((i, k) in keys.withIndex()) out += Target(KEYS + i, describe(k), k.box, key = true) { listener.onKey(k.action) }
             return out
         }
         for ((i, s) in stripSlots().withIndex()) {
             val label = when (val a = s.action) {
                 StripAction.Latin -> "abc, keep Latin"
+                StripAction.Layout -> when {
+                    state.khmerLayout -> "Sing layout"
+                    state.layoutLocked -> "Khmer layout, not in this field"
+                    else -> "Khmer layout"
+                }
                 StripAction.Expand -> "all suggestions, ${state.suggestions.size}"
                 else -> stripLabel(a)
             }
@@ -1005,14 +1025,10 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                 }
             }
         } else {
-            for ((i, k) in keys.withIndex()) out += Target(KEYS + i, describe(k), k.box, key = true, long = longAction(k)) { listener.onKey(k.action) }
+            for ((i, k) in keys.withIndex()) out += Target(KEYS + i, describe(k), k.box, key = true) { listener.onKey(k.action) }
         }
         return out
     }
-
-    /** TalkBack's double-tap-and-hold: the ខ key opens the Khmer page, as a long press does. */
-    private fun longAction(k: Key): (() -> Unit)? =
-        if (k.action == KeyAction.Mode && k.hint != null) ({ listener.onKey(KeyAction.KhmerPage) }) else null
 
     private fun describe(k: Key): String = when (val a = k.action) {
         is KeyAction.Text -> when (a.text) {
@@ -1027,15 +1043,14 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         }
         KeyAction.Backspace -> "delete"
         KeyAction.Return -> state.returnKind.label
-        KeyAction.Page -> if ((state.page == KeyPage.LETTERS || state.page == KeyPage.KHMER) && !state.emoji) "numbers and symbols" else "letters"
+        KeyAction.Page -> when {
+            (state.page == KeyPage.LETTERS || state.page == KeyPage.KHMER) && !state.emoji -> "numbers and symbols"
+            state.khmerLayout -> "Khmer letters"
+            else -> "letters"
+        }
         KeyAction.Emoji -> "emoji"
         KeyAction.Symbols -> if (state.page == KeyPage.NUMBERS) "more symbols" else "numbers"
-        KeyAction.Mode -> when {
-            state.page == KeyPage.KHMER -> "Khmer letters, back to Sing"
-            state.mode == "EN" -> "English mode"
-            else -> "Khmer mode"
-        }
-        KeyAction.KhmerPage -> "Khmer letters"
+        KeyAction.Mode -> if (state.mode == "EN") "English mode" else "Khmer mode"
         KeyAction.Space -> "space"
     }
 
@@ -1071,10 +1086,6 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             info.isVisibleToUser = true
             info.isAccessibilityFocused = a11yFocused == t.id
             info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK)
-            if (t.long != null) {
-                info.isLongClickable = true
-                info.addAction(AccessibilityNodeInfo.AccessibilityAction(AccessibilityNodeInfo.ACTION_LONG_CLICK, "Khmer letters"))
-            }
             info.addAction(
                 if (a11yFocused == t.id) AccessibilityNodeInfo.AccessibilityAction.ACTION_CLEAR_ACCESSIBILITY_FOCUS
                 else AccessibilityNodeInfo.AccessibilityAction.ACTION_ACCESSIBILITY_FOCUS
@@ -1089,12 +1100,6 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                 AccessibilityNodeInfo.ACTION_CLICK -> {
                     t.activate()
                     send(t.id, AccessibilityEvent.TYPE_VIEW_CLICKED)
-                    true
-                }
-                AccessibilityNodeInfo.ACTION_LONG_CLICK -> {
-                    val long = t.long ?: return false
-                    long()
-                    send(t.id, AccessibilityEvent.TYPE_VIEW_LONG_CLICKED)
                     true
                 }
                 AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS -> {
@@ -1158,6 +1163,12 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         const val REPEAT_START = 400L
         const val REPEAT_INTERVAL = 50L
         const val LONG_PRESS = 300L
+        /** The bar's last slot ignores taps this long after its meaning changes (abc -> កខគ), so a double tap can't jump layouts. */
+        const val SLOT_SETTLE = 300L
+        /** The layout switch: ink with Typer yellow, in light and dark. */
+        const val LAYOUT_INK = 0xFF1A1A1A.toInt()
+        const val LAYOUT_YELLOW = 0xFFF5C842.toInt()
+        const val LAYOUT_KHMER = "កខគ"
         private const val KEYS = 1
         private const val STRIP = 1000
         private const val PANEL = 2000

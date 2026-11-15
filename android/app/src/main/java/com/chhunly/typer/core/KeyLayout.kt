@@ -32,8 +32,6 @@ sealed interface KeyAction {
     data object Return : KeyAction
     /** Open the emoji page. */
     data object Emoji : KeyAction
-    /** The Khmer layout page (long press on ខ); ខ on that page goes back to the Sing letters. */
-    data object KhmerPage : KeyAction
 }
 
 /** How a key is drawn: letters and space on the lightest surface, function keys on secondary container. */
@@ -79,9 +77,14 @@ object KeyLayout {
     /** The idle strip's keys: Khmer punctuation in Khmer mode, the common English ones in English mode (as iOS). */
     val punctuation = listOf("។", "៕", "ៗ", "៛", "?", "!")
     val englishPunctuation = listOf(",", ".", "'", "\"", "@", "-")
+    /** The Khmer layout's bar: the Khmer punctuation, plus comma and period (the layout has no keys for them). */
+    val khmerLayoutPunctuation = punctuation + listOf(",", ".")
 
-    /** `upper`: letters page with shift on. */
-    fun keys(m: Metrics, page: KeyPage, upper: Boolean): List<Key> {
+    /**
+     * `upper`: letters page with shift on. `khmerLayout`: the numbers and symbols pages were opened from the Khmer
+     * layout, so they leave out the ខ/EN key (Khmer mode means nothing there) and ?123's way back reads កខគ.
+     */
+    fun keys(m: Metrics, page: KeyPage, upper: Boolean, khmerLayout: Boolean = false): List<Key> {
         if (page == KeyPage.KHMER) return khmer(m, upper)
         val out = ArrayList<Key>(40)
         val k = m.keyWidth
@@ -113,32 +116,34 @@ object KeyLayout {
             if (i == 2) add(KeyAction.Backspace, m.width - m.margin - wide, i, wide, KeyStyle.FUNCTION)
         }
 
-        bottomRow(m, out, KHMER_HINT)
+        bottomRow(m, out, mode = page == KeyPage.LETTERS || !khmerLayout, punctuation = true)
         return out
     }
 
-    /** The bottom row of the letters, numbers and Khmer pages. `modeHint`: the ខ key's long-press (the Khmer page). */
-    private fun bottomRow(m: Metrics, out: MutableList<Key>, modeHint: String?) {
+    /**
+     * The bottom row: ?123, ខ/EN (`mode`), comma, emoji, space, period, return. The Khmer layout has no ខ/EN key and
+     * no comma or period keys (they are in its bar); space takes the room left.
+     */
+    private fun bottomRow(m: Metrics, out: MutableList<Key>, mode: Boolean, punctuation: Boolean) {
         val k = m.keyWidth
         val g = m.gap
         val wide = 1.5f * k + 0.5f * g
         val top = m.rowsTop + m.bottomRow * m.pitch
+        val right = m.width - m.margin - wide  // the return key's left edge
         var x = m.margin
-        fun next(a: KeyAction, w: Float, style: KeyStyle, hint: String? = null) {
-            out.add(Key(a, Box(x, top, w, m.keyHeight), style, hint))
+        fun next(a: KeyAction, w: Float, style: KeyStyle) {
+            out.add(Key(a, Box(x, top, w, m.keyHeight), style))
             x += w + g
         }
         next(KeyAction.Page, wide, KeyStyle.FUNCTION)
-        next(KeyAction.Mode, k, KeyStyle.MODE, modeHint)
-        next(KeyAction.Text(","), k, KeyStyle.FUNCTION)
+        if (mode) next(KeyAction.Mode, k, KeyStyle.MODE)
+        if (punctuation) next(KeyAction.Text(","), k, KeyStyle.FUNCTION)
         next(KeyAction.Emoji, k, KeyStyle.FUNCTION)  // where Gboard has it, after the comma
-        next(KeyAction.Space, 3 * k + 2 * g, KeyStyle.LETTER)
-        next(KeyAction.Text("."), k, KeyStyle.FUNCTION)
-        out.add(Key(KeyAction.Return, Box(m.width - m.margin - wide, top, wide, m.keyHeight), KeyStyle.ACTION))
+        val after = if (punctuation) k + g else 0f  // the period, after space
+        next(KeyAction.Space, right - g - after - x, KeyStyle.LETTER)
+        if (punctuation) next(KeyAction.Text("."), k, KeyStyle.FUNCTION)
+        out.add(Key(KeyAction.Return, Box(right, top, wide, m.keyHeight), KeyStyle.ACTION))
     }
-
-    /** Drawn small on the ខ key: long press it for the Khmer page. */
-    const val KHMER_HINT = "ក"
 
     /**
      * The Khmer page: the standard Khmer keyboard arrangement (as on Gboard's Khmer layout): Khmer digits, three
@@ -152,7 +157,7 @@ object KeyLayout {
         listOf("ឋ", "ខ", "ច", "វ", "ប", "ន", "ម", "ុំ", "។", "៊ ៘"),
     )
     private val khmerShift = listOf(
-        listOf("!", "ៗ", "\" ៑", "៛ $ €", "% ៖", "៍ ៙", "័ ៚", "៏ ៗ", "( { «", ") } »", "៌ ×", "៎"),
+        listOf("! \u200D", "ៗ \u200C", "\" ៑", "៛ $ €", "% ៖", "៍ ៙", "័ ៚", "៏ ៗ", "( { «", ") } »", "៌ ×", "៎"),
         listOf("ឈ ៜ", "ឺ ៝", "ែ", "ឬ ឫ", "ទ", "ួ", "ូ", "ី", "ៅ", "ភ", "ឿ", "ឰ"),
         listOf("ាំ", "ៃ", "ឌ", "ធ", "អ", "ះ ៈ", "ញ", "គ ឝ", "ឡ", "ោះ", "៉", "ឯ"),
         listOf("ឍ", "ឃ", "ជ", "េះ", "ព ឞ", "ណ", "ំ", "ុះ", "៕", "?"),
@@ -177,12 +182,17 @@ object KeyLayout {
             }
             if (i == 3) out.add(Key(KeyAction.Backspace, Box(x, top, m.width - m.margin - x, m.keyHeight), KeyStyle.FUNCTION))
         }
-        bottomRow(m, out, null)
+        bottomRow(m, out, mode = false, punctuation = false)
         return out
     }
 
-    /** How a key's text is drawn: a combining sign (ិ, ្, ុំ) sits on a dotted circle, as in Khmer keyboard charts. */
+    /**
+     * How a key's text is drawn: a combining sign (ិ, ្, ុំ) sits on a dotted circle, as in Khmer keyboard charts;
+     * the invisible joiners (long press on ! and ៗ) by name.
+     */
     fun label(text: String): String {
+        if (text == "\u200D") return "ZWJ"
+        if (text == "\u200C") return "ZWNJ"
         val t = Character.getType(text.codePointAt(0))
         return if (t == Character.NON_SPACING_MARK.toInt() || t == Character.COMBINING_SPACING_MARK.toInt()) "\u25CC$text" else text
     }
@@ -209,6 +219,8 @@ sealed interface StripAction {
     data class Suggestion(val index: Int) : StripAction
     /** Keep the Phrase as typed (Latin), learn nothing. */
     data object Latin : StripAction
+    /** The bar's last slot when no Phrase is open: កខគ to the Khmer layout, abc back to the Sing layout. */
+    data object Layout : StripAction
     /** Open or close the all-Suggestions panel. */
     data object Expand : StripAction
     data class Punctuation(val text: String) : StripAction
@@ -225,32 +237,37 @@ data class StripSlot(val action: StripAction, val box: Box)
 object StripLayout {
     /** Width of the abc and expand controls at the strip's right end. */
     const val CONTROL = 52f
+    /** Width of the layout switch (កខគ / abc), the bar's last slot when no Phrase is open. */
+    const val LAYOUT = 60f
     const val PILL = 40f  // iOS uses 36; Khmer stacks want a little more
     const val GAP = 6f
 
     private fun pill(m: Metrics, left: Float, width: Float) = Box(left, m.stripTop + (m.stripHeight - PILL) / 2, width, PILL)
 
+    /** The top Suggestion, the expand control, then abc (keep Latin) in the last slot. */
     fun composing(m: Metrics): List<StripSlot> {
         val right = m.width - m.margin
-        val expand = StripSlot(StripAction.Expand, pill(m, right - CONTROL, CONTROL))
-        val latin = StripSlot(StripAction.Latin, pill(m, right - 2 * CONTROL - GAP, CONTROL))
+        val latin = StripSlot(StripAction.Latin, pill(m, right - CONTROL, CONTROL))
+        val expand = StripSlot(StripAction.Expand, pill(m, right - 2 * CONTROL - GAP, CONTROL))
         val top = StripSlot(StripAction.Suggestion(0), pill(m, m.margin, right - 2 * CONTROL - 2 * GAP - m.margin))
-        return listOf(top, latin, expand)
+        return listOf(top, expand, latin)
     }
 
-    /** `items` pills of equal width across the strip. */
+    /** `items` pills of equal width, then the layout switch in the last slot. */
     private fun row(m: Metrics, items: Int): List<Box> {
-        val w = (m.width - 2 * m.margin - (items - 1) * GAP) / items
+        val w = (m.width - 2 * m.margin - LAYOUT - items * GAP) / items
         return List(items) { pill(m, m.margin + it * (w + GAP), w) }
     }
 
-    /** Idle: the punctuation row across the whole strip. */
-    fun punctuation(m: Metrics, marks: List<String>): List<StripSlot> =
-        row(m, marks.size).mapIndexed { i, b -> StripSlot(StripAction.Punctuation(marks[i]), b) }
+    private fun layout(m: Metrics) = StripSlot(StripAction.Layout, pill(m, m.width - m.margin - LAYOUT, LAYOUT))
 
-    /** English words in Typer's order: best, second, then the word as typed (index 0) in quotes. */
+    /** Idle: the punctuation row, then the layout switch. */
+    fun punctuation(m: Metrics, marks: List<String>): List<StripSlot> =
+        row(m, marks.size).mapIndexed { i, b -> StripSlot(StripAction.Punctuation(marks[i]), b) } + layout(m)
+
+    /** English words in Typer's order: best, second, then the word as typed (index 0) in quotes; then the layout switch. */
     fun words(m: Metrics, count: Int): List<StripSlot> {
         val order = (1 until count) + 0
-        return row(m, order.size).mapIndexed { i, b -> StripSlot(StripAction.Word(order[i]), b) }
+        return row(m, order.size).mapIndexed { i, b -> StripSlot(StripAction.Word(order[i]), b) } + layout(m)
     }
 }

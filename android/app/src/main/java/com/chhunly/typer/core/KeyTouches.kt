@@ -11,7 +11,7 @@ sealed interface KeyEffect {
     data object StopRepeat : KeyEffect
     /** Arm the long-press timer (300 ms); the caller calls `longPress` when it fires. */
     data object StartLongPress : KeyEffect
-    /** The long-press character of a key (its hint digit), or the ខ key's Khmer page. */
+    /** The long-press character of a key (its hint digit, or a Khmer key's one alternate). */
     data class FireHint(val text: String, val key: Key) : KeyEffect
     /** Long press on a key with several alternates: open its popup; the view tracks the slide and types the pick. */
     data class ShowMore(val key: Key) : KeyEffect
