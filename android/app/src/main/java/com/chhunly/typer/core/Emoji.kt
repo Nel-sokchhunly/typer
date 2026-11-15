@@ -56,6 +56,32 @@ class EmojiData(
 
     private val popular: Map<String, Int> = POPULAR.withIndex().associate { it.value to it.index }
 
+    /**
+     * The emoji to suggest for a whole word as it is typed (English or Khmer): one whose name is the word or that has
+     * it as a keyword, the most used first; null if none. Words under three letters suggest nothing ("a", "i").
+     */
+    fun forWord(word: String): String? {
+        val q = word.trim().lowercase()
+        if (q.length < 3) return null
+        return wordIndex[q]
+    }
+
+    private val wordIndex: Map<String, String> by lazy {
+        val best = HashMap<String, String>()
+        fun rank(e: String) = (popular[e] ?: Int.MAX_VALUE).toLong() * 10_000 + (order[e] ?: 9_999)
+        for ((e, n) in names) {
+            if (e in baseOf) continue
+            val keys = HashSet<String>()
+            keys += n.en.lowercase(); keys += n.km
+            n.enWords.forEach { keys += it.lowercase() }; n.kmWords.forEach { keys += it }
+            for (raw in keys) {
+                val k = raw.replace("\u200B", "").trim()  // some CLDR Khmer keywords carry a zero-width space
+                if (k.isNotEmpty()) best.merge(k, e) { a, b -> if (rank(a) <= rank(b)) a else b }
+            }
+        }
+        best
+    }
+
     companion object {
         /**
          * Roughly the most used emoji, most used first (after the Unicode Consortium's emoji frequency figures), so a

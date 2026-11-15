@@ -116,6 +116,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         val freshClip: String? = null,
         /** Next-word suggestions after a word, idle (they take the punctuation's place; Khmer keeps ។). */
         val next: List<String> = emptyList(),
+        /** An emoji for the word just typed, shown in the bar beside the words. */
+        val emojiSuggestion: String? = null,
     ) {
         val composing get() = typed.isNotEmpty()
         val panelOpen get() = (showAll && composing) || clipboard
@@ -661,9 +663,9 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     private fun stripSlots(): List<StripSlot> = when {
         state.composing -> StripLayout.composing(metrics)
-        state.words.isNotEmpty() && !state.clipboard -> StripLayout.words(metrics, state.words.size, state.glided)
+        state.words.isNotEmpty() && !state.clipboard -> StripLayout.words(metrics, state.words.size, state.glided, state.emojiSuggestion != null)
         state.next.isNotEmpty() && !state.clipboard && state.freshClip == null ->
-            StripLayout.next(metrics, state.next.size, if (state.mode == "EN" || state.khmerLayout) emptyList() else listOf("។"))
+            StripLayout.next(metrics, state.next.size, if (state.mode == "EN" || state.khmerLayout) emptyList() else listOf("។"), state.emojiSuggestion != null)
         state.khmerLayout -> StripLayout.punctuation(metrics, KeyLayout.khmerLayoutPunctuation, state.freshClip != null)
         else -> StripLayout.punctuation(metrics, if (state.mode == "EN") KeyLayout.englishPunctuation else KeyLayout.punctuation, state.freshClip != null)
     }
@@ -675,6 +677,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         StripAction.Clipboard -> ""
         StripAction.Paste -> oneLine(state.freshClip ?: "")
         is StripAction.Next -> state.next.getOrNull(a.index) ?: ""
+        StripAction.Emoji -> state.emojiSuggestion ?: ""
         StripAction.Expand -> state.suggestions.size.toString()
         is StripAction.Punctuation -> a.text
         is StripAction.Word -> state.words.getOrNull(a.index)?.let { if (a.index == 0 && !state.glided) "“$it”" else it } ?: ""
@@ -1104,6 +1107,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             val label = when (val a = s.action) {
                 StripAction.Latin -> "abc, keep Latin"
                 StripAction.Clipboard -> if (state.clipboard) "close clipboard" else "clipboard"
+                StripAction.Emoji -> "emoji, ${state.emojiSuggestion?.let { emojiData?.label(it) } ?: ""}"
                 StripAction.Paste -> "paste, ${stripLabel(StripAction.Paste)}"
                 StripAction.Layout -> when {
                     state.khmerLayout -> "Sing layout"

@@ -227,6 +227,8 @@ sealed interface StripAction {
     data object Paste : StripAction
     /** A next-word suggestion (index into the list). */
     data class Next(val index: Int) : StripAction
+    /** An emoji for the word just typed ("love" -> ❤️). */
+    data object Emoji : StripAction
     /** Open or close the all-Suggestions panel. */
     data object Expand : StripAction
     data class Punctuation(val text: String) : StripAction
@@ -287,15 +289,16 @@ object StripLayout {
      * After a word, idle: the clipboard button, `count` next words, then `marks` (Khmer keeps ។ here), then the
      * layout switch.
      */
-    fun next(m: Metrics, count: Int, marks: List<String>): List<StripSlot> {
+    fun next(m: Metrics, count: Int, marks: List<String>, emoji: Boolean = false): List<StripSlot> {
         val clip = StripSlot(StripAction.Clipboard, pill(m, m.margin, CLIPBOARD))
         val markW = 40f
-        val right = m.width - m.margin - LAYOUT - GAP - marks.size * (markW + GAP)
+        val all = if (emoji) listOf<StripAction>(StripAction.Emoji) + marks.map { StripAction.Punctuation(it) } else marks.map { StripAction.Punctuation(it) }
+        val right = m.width - m.margin - LAYOUT - GAP - all.size * (markW + GAP)
         val left = m.margin + CLIPBOARD + GAP
         val w = (right - left - (count - 1) * GAP) / count
         val out = arrayListOf(clip)
         for (i in 0 until count) out += StripSlot(StripAction.Next(i), pill(m, left + i * (w + GAP), w))
-        for ((i, s) in marks.withIndex()) out += StripSlot(StripAction.Punctuation(s), pill(m, right + GAP + i * (markW + GAP), markW))
+        for ((i, a) in all.withIndex()) out += StripSlot(a, pill(m, right + GAP + i * (markW + GAP), markW))
         return out + layout(m)
     }
 
@@ -303,8 +306,12 @@ object StripLayout {
      * English words in Typer's order: best, second, then the word as typed (index 0) in quotes; then the layout
      * switch. `glided`: the glided word (index 0) first, then its alternatives.
      */
-    fun words(m: Metrics, count: Int, glided: Boolean = false): List<StripSlot> {
+    fun words(m: Metrics, count: Int, glided: Boolean = false, emoji: Boolean = false): List<StripSlot> {
         val order = if (glided) (0 until count).toList() else (1 until count) + 0
-        return row(m, order.size).mapIndexed { i, b -> StripSlot(StripAction.Word(order[i]), b) } + layout(m)
+        if (!emoji) return row(m, order.size).mapIndexed { i, b -> StripSlot(StripAction.Word(order[i]), b) } + layout(m)
+        val e = 44f
+        val w = (m.width - 2 * m.margin - LAYOUT - e - (order.size + 1) * GAP) / order.size
+        return order.mapIndexed { i, o -> StripSlot(StripAction.Word(o), pill(m, m.margin + i * (w + GAP), w)) } +
+            StripSlot(StripAction.Emoji, pill(m, m.width - m.margin - LAYOUT - GAP - e, e)) + layout(m)
     }
 }

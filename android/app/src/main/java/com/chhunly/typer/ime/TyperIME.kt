@@ -172,6 +172,17 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     @Volatile private var nextWords: NextWords? = null
     private var next: List<String> = emptyList()
 
+    private var emojiSuggestion: String? = null
+
+    /** The bar's emoji for the word just typed: it goes after the word, with spaces in English; kept in recents. */
+    private fun emojiSuggested(e: String) {
+        val english = composer.mode == "EN"
+        currentInputConnection?.commitText(if (english) " $e " else e, 1)
+        recents = EmojiRecents.add(EmojiRecents.decode(emojiPrefs.getString("recents", null)), e)
+        emojiPrefs.edit().putString("recents", EmojiRecents.encode(recents)).apply()
+        refresh(afterKey = true)
+    }
+
     /** A next word from the bar: Khmer goes in as it is (no spaces in Khmer), English with a space after. */
     private fun nextTapped(i: Int) {
         val w = next.getOrNull(i) ?: return
@@ -324,6 +335,13 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             if (khmer) nextWords?.khmer(currentInputConnection?.getTextBeforeCursor(48, 0)?.toString()) ?: emptyList()
             else english?.next(before) ?: emptyList()
         } else emptyList()
+        emojiSuggestion = if (composer.isComposing || glided != null) null else emojiData?.let { data ->
+            when {
+                words.isNotEmpty() -> data.forWord(words[0])  // English, typing a word
+                next.isNotEmpty() && khmer -> nextWords?.lastKhmerWord(currentInputConnection?.getTextBeforeCursor(48, 0)?.toString())?.let(data::forWord)
+                else -> null
+            }
+        }
         if (!composer.isComposing) showAll = false
         if (afterKey) shiftChosen = false
         if (shift != Shift.LOCK && !shiftChosen) {
@@ -357,6 +375,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             clipboard = clipboardOpen && !composer.isComposing,
             clips = if (clipboardOpen) clips.list(SystemClock.elapsedRealtime()) else emptyList(),
             next = next,
+            emojiSuggestion = emojiSuggestion,
             freshClip = if (clipboardOpen || composer.isComposing) null else clips.fresh(SystemClock.elapsedRealtime()),
         )
     }
@@ -515,6 +534,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             StripAction.Latin -> handle(composer.rawLatin())
             StripAction.Layout -> layoutTapped()
             is StripAction.Next -> nextTapped(action.index)
+            StripAction.Emoji -> emojiSuggestion?.let { emojiSuggested(it) }
             StripAction.Clipboard -> {
                 clipboardOpen = !clipboardOpen
                 render()

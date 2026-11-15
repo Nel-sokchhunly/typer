@@ -25,6 +25,9 @@ class NextWords private constructor(
         return out.take(k)
     }
 
+    /** The Khmer word just before the caret, if it is a known word. */
+    fun lastKhmerWord(before: String?): String? = before?.takeIf { it.isNotEmpty() && it.last() in KHMER }?.let(::lastWord)
+
     /** The longest known word ending at the end of `s` (Khmer letters only). */
     private fun lastWord(s: String): String? {
         val tail = s.takeLastWhile { it in KHMER }
