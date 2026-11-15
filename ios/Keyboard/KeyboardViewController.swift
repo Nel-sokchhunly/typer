@@ -137,6 +137,8 @@ final class KeyboardViewController: UIInputViewController {
         let dir = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         return ClipList(store: FileClipStore(url: (dir ?? FileManager.default.temporaryDirectory).appendingPathComponent("clips.json")))
     }()
+    /// The Companion app's Clipboard history switch; readable only with Full Access.
+    private var clipboardOn: Bool { hasFullAccess && ClipSettings.isOn(UserDefaults(suiteName: ClipSettings.group)) }
     private var heightConstraint: NSLayoutConstraint!
     private lazy var composer: Composer = {
         let userDir = try? FileManager.default.url(
@@ -276,7 +278,8 @@ final class KeyboardViewController: UIInputViewController {
         default: "return"
         }
         _ = composer.fieldTraitsChanged(secure: t.isSecureTextEntry ?? false, type: type)
-        model.clipboardAllowed = hasFullAccess && t.isSecureTextEntry != true
+        if hasFullAccess && !clipboardOn { clipList.wipe() }  // switched off in the Companion app
+        model.clipboardAllowed = clipboardOn && t.isSecureTextEntry != true
         wordsAllowed = type == .text && t.isSecureTextEntry != true && t.autocorrectionType != .no
     }
 
@@ -348,7 +351,7 @@ final class KeyboardViewController: UIInputViewController {
     /// copy count changed. Reading text may trigger iOS's "Allow Paste" alert (#144); if so, read only on the user's tap
     /// by changing just this function and its callers.
     private func noticeCopy() {
-        guard hasFullAccess else { return }
+        guard clipboardOn else { return }
         let board = UIPasteboard.general
         let count = board.changeCount
         guard count != UserDefaults.standard.integer(forKey: "clip.changeCount") else { return }  // the process may be new

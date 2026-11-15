@@ -13,17 +13,21 @@ public struct Clip: Codable, Equatable {
 /// Where the Clips live: on the phone only, in the Keyboard's own storage.
 public protocol ClipStore: AnyObject {
     var clips: [Clip] { get set }
+    /// Deletes everything stored, whatever it holds.
+    func wipe()
 }
 
 public final class InMemoryClipStore: ClipStore {
     public var clips: [Clip] = []
     public init() {}
+    public func wipe() { clips = [] }
 }
 
 /// A small JSON file, written with complete file protection: unreadable while the phone is locked (then it reads as empty).
 public final class FileClipStore: ClipStore {
     private let url: URL
     public init(url: URL) { self.url = url }
+    public func wipe() { try? FileManager.default.removeItem(at: url) }
     public var clips: [Clip] {
         get { (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode([Clip].self, from: $0) } ?? [] }
         set {
@@ -57,4 +61,15 @@ public final class ClipList {
     }
 
     public func clearAll() { store.clips = [] }
+
+    /// Turning clipboard history off: delete the whole store, so nothing stays behind.
+    public func wipe() { store.wipe() }
+}
+
+/// The clipboard history switch, set in the Companion app and read by the Keyboard through the shared container
+/// (settings only). On unless it was turned off.
+public enum ClipSettings {
+    public static let group = "group.com.chhunly.typer"
+    public static let key = "clipboardHistory"
+    public static func isOn(_ defaults: UserDefaults?) -> Bool { defaults?.object(forKey: key) as? Bool ?? true }
 }
