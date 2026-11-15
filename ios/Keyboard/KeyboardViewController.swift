@@ -35,10 +35,8 @@ final class KeyboardModel: ObservableObject {
     /// Recents (as of opening) for an empty query, else the matches.
     var emojiResults: [String] {
         emojiQuery.trimmingCharacters(in: .whitespaces).isEmpty
-            ? emojiSections.first { $0.title == "Recently Used" }?.emoji ?? [] : emojiSearch(emojiQuery)
+            ? emojiSections.first { $0.title == "Recently Used" }?.emoji ?? [] : Array(emojiSearch(emojiQuery).prefix(50))
     }
-    /// The results row sits between the field and the keys.
-    static let searchExtra = EmojiSearchBar.fieldHeight + EmojiSearchBar.resultsHeight + 4 - KeyLayout.barHeight
     @Published var needsGlobe = false
     @Published var shift = Shift.off
     @Published var page = Page.letters
@@ -72,19 +70,23 @@ final class KeyboardModel: ObservableObject {
         return KeyLayout.keys(width: width, page: page, upper: shift != .off, globe: needsGlobe, bar: bar, khmer: layout == .khmer)
     }
 
-    /// English letters, lowercase, below the results row; no emoji or ខ/EN key, so space grows over their place.
+    /// English letters, lowercase, below the field and results row; the rows shrink so it all fits the panel's own height.
+    /// No emoji or ខ/EN key, so space grows over their place.
     private func searchKeys(width: CGFloat) -> [Key] {
         let keys = KeyLayout.keys(width: width, page: .letters, upper: false, globe: false, bar: [])
         guard let page = keys.first(where: { $0.action == .page }) else { return [] }
+        let top = KeyLayout.barTop + EmojiSearchBar.fieldHeight + 4 + EmojiSearchBar.resultsHeight + 4
+        let gap: CGFloat = 6, keyHeight = (height - 4 - top - 3 * gap) / 4
         return keys.filter { $0.action != .emoji && $0.action != .mode }.map { k in
-            var r = k.rect.offsetBy(dx: 0, dy: Self.searchExtra)
+            let row = ((k.rect.minY - KeyLayout.rowsTop) / (KeyLayout.keyHeight + KeyLayout.rowGap)).rounded()
+            var r = CGRect(x: k.rect.minX, y: top + row * (keyHeight + gap), width: k.rect.width, height: keyHeight)
             if k.action == .space { r = CGRect(x: page.rect.maxX + KeyLayout.gap, y: r.minY, width: r.maxX - page.rect.maxX - KeyLayout.gap, height: r.height) }
             return Key(action: k.action, rect: r)
         }
     }
 
     /// The Khmer layout's letters take one row more.
-    var height: CGFloat { emojiSearching ? KeyLayout.height + Self.searchExtra : layout == .khmer && page == .letters ? KeyLayout.khmerHeight : KeyLayout.height }
+    var height: CGFloat { layout == .khmer && page == .letters ? KeyLayout.khmerHeight : KeyLayout.height }
 
     /// The bar's rightmost slot: abc keeps the Latin while composing; idle, it switches layouts.
     var slotLabel: String { typed.isEmpty && layout == .sing ? "កខគ" : "abc" }
@@ -161,7 +163,7 @@ final class KeyboardViewController: UIInputViewController {
                 onEnglishWord: { [unowned self] in englishWordTapped($0) },
                 onSlot: { [unowned self] in slotTapped() },
                 onEmoji: { [unowned self] in emojiPicked($0) },
-                onSearch: { [unowned self] in keyFeedback(); model.emojiQuery = ""; model.emojiSearching = true; heightConstraint.constant = model.height },
+                onSearch: { [unowned self] in keyFeedback(); model.emojiQuery = ""; model.emojiSearching = true },
                 onGlobe: { [unowned self] in advanceToNextInputMode() },
                 onLetters: { [unowned self] in keyFeedback(); model.showEmoji = false; model.page = .letters },
                 onDelete: { [unowned self] in keyFeedback(); textDocumentProxy.deleteBackward() }))  // a grapheme, ZWJ emoji included
@@ -286,7 +288,6 @@ final class KeyboardViewController: UIInputViewController {
         case .returnKey, .page: model.emojiSearching = false
         default: break
         }
-        heightConstraint.constant = model.height
     }
 
     /// Commits the top Suggestion (no learning) and swaps the keys for the Emoji panel.
