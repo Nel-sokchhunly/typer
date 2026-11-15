@@ -87,6 +87,58 @@ final class ComposerTests: XCTestCase {
     }
 }
 
+/// The Khmer layout (#130). iOS only for now: the shared fixtures gain these when Android has the layout.
+final class LayoutTests: XCTestCase {
+    let userDir = FileManager.default.temporaryDirectory.appendingPathComponent("typer-ios-\(UUID())")
+    let proxy = FakeProxy()
+    var spy: Spy!
+    var composer: Composer!
+
+    override func setUp() {
+        spy = Spy(Engine(dataDir: ComposerTests.dataDir, userDir: userDir.path))
+        composer = Composer(engine: spy, proxy: proxy, scheduler: .immediate)
+        if composer.mode == "EN" { _ = composer.toggleMode() }  // mode is static: undo other tests
+    }
+
+    override func tearDown() { try? FileManager.default.removeItem(at: userDir) }
+
+    func testSwitchesWhenIdleNotWhileAPhraseIsOpen() {
+        XCTAssertEqual(composer.layout, .sing)
+        XCTAssertTrue(composer.key("k"))
+        XCTAssertFalse(composer.canSwitchLayout)
+        XCTAssertFalse(composer.switchLayout())
+        XCTAssertEqual(composer.layout, .sing)
+        XCTAssertTrue(composer.rawLatin())
+        XCTAssertTrue(composer.canSwitchLayout)
+        XCTAssertTrue(composer.switchLayout())
+        XCTAssertEqual(composer.layout, .khmer)
+        XCTAssertEqual(proxy.doc, "k")
+    }
+
+    func testKhmerLayoutTypesStraightIntoTheField() {
+        XCTAssertTrue(composer.switchLayout())
+        for k in ["ក", "ុំ", " ", "ា", "a"] { XCTAssertTrue(composer.key(k)) }
+        XCTAssertEqual(proxy.doc, "កុំ ាa")
+        XCTAssertEqual(proxy.marked, 0)
+        XCTAssertEqual(composer.typed, "")
+        XCTAssertEqual(composer.suggestions, [])
+        XCTAssertEqual(spy.suggests, 0)
+        XCTAssertEqual(spy.picks, [])
+        XCTAssertTrue(composer.canSwitchLayout)
+    }
+
+    func testSwitchingBackComposesSingAgain() {
+        XCTAssertTrue(composer.switchLayout())
+        XCTAssertTrue(composer.key("ក"))
+        XCTAssertTrue(composer.switchLayout())
+        XCTAssertEqual(composer.layout, .sing)
+        XCTAssertTrue(composer.key("k"))
+        XCTAssertEqual(composer.typed, "k")
+        XCTAssertEqual(proxy.markedText, "k")
+        XCTAssertEqual(proxy.doc, "កk")
+    }
+}
+
 /// One fixture case: a fresh user dir, a fake field, the real engine behind a spy, the Composer in Khmer mode.
 private final class FixtureRun {
     let steps: [[String: Any]]

@@ -27,6 +27,7 @@ final class KeyboardModel: ObservableObject {
     @Published var shift = Shift.off
     @Published var page = Page.letters
     @Published var mode = "ខ"  // the Composer's mode label
+    @Published var layout = Composer.Layout.sing
     @Published var canToggle = true
     @Published var returnLabel = "return"
     @Published var returnProminent = false
@@ -34,6 +35,7 @@ final class KeyboardModel: ObservableObject {
     /// The user set shift by hand since the last key; auto-cap leaves it alone until a key is typed.
     var shiftChosen = false
     private var lastShiftTap = Date.distantPast
+    private var slotShown = "កខគ", slotSince = Date.distantPast
 
     /// Keys currently held down, for the highlight and pop-up preview.
     @Published var pressed: [Key] = []
@@ -44,7 +46,20 @@ final class KeyboardModel: ObservableObject {
     /// The one layout both the drawn keys and the touch layer use; empty while the all-Suggestions panel replaces the keys.
     func keys(width: CGFloat) -> [Key] {
         if showAll && !typed.isEmpty { return [] }
-        return KeyLayout.keys(width: width, page: page, upper: shift != .off, globe: needsGlobe, bar: !typed.isEmpty || !englishWords.isEmpty ? [] : mode == "EN" ? KeyLayout.englishPunctuation : KeyLayout.punctuation)
+        let bar = !typed.isEmpty || !englishWords.isEmpty ? []
+            : layout == .khmer ? KeyLayout.khmerPunctuation : mode == "EN" ? KeyLayout.englishPunctuation : KeyLayout.punctuation
+        return KeyLayout.keys(width: width, page: page, upper: shift != .off, globe: needsGlobe, bar: bar, khmer: layout == .khmer)
+    }
+
+    /// The Khmer layout's letters take one row more.
+    var height: CGFloat { layout == .khmer && page == .letters ? KeyLayout.khmerHeight : KeyLayout.height }
+
+    /// The bar's rightmost slot: abc keeps the Latin while composing; idle, it switches layouts.
+    var slotLabel: String { typed.isEmpty && layout == .sing ? "កខគ" : "abc" }
+    /// Taps on the slot count 0.3 s after its label last changed: a quick double tap on abc only keeps the Latin.
+    var slotReady: Bool { Date().timeIntervalSince(slotSince) > 0.3 }
+    func slotChecked() {
+        if slotLabel != slotShown { slotShown = slotLabel; slotSince = Date() }
     }
 
     /// Shift once; a quick second tap locks caps; tapping a lock (or a lone shift) turns it off.
@@ -74,6 +89,7 @@ final class KeyboardViewController: UIInputViewController {
     private let model = KeyboardModel()
     private var lexicon: [String] = []  // iOS's extra words for keyboards: contact names, text replacements
     private var wordsAllowed = false  // English word suggestions: plain text fields that allow autocorrection
+    private var heightConstraint: NSLayoutConstraint!
     private lazy var composer: Composer = {
         let userDir = try? FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).path
@@ -102,7 +118,8 @@ final class KeyboardViewController: UIInputViewController {
                 model: model,
                 onCandidate: { [unowned self] in handle(composer.candidateTapped($0)) },
                 onLatin: { [unowned self] in handle(composer.rawLatin()) },
-                onEnglishWord: { [unowned self] in englishWordTapped($0) }))
+                onEnglishWord: { [unowned self] in englishWordTapped($0) },
+                onSlot: { [unowned self] in slotTapped() }))
         hosting.view.translatesAutoresizingMaskIntoConstraints = false
         hosting.view.backgroundColor = .clear
         hosting.view.isMultipleTouchEnabled = true
@@ -129,9 +146,9 @@ final class KeyboardViewController: UIInputViewController {
             layer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
         requestSupplementaryLexicon { [weak self] lex in self?.lexicon = lex.entries.map(\.documentText) }
-        let height = view.heightAnchor.constraint(equalToConstant: KeyboardView.height)
-        height.priority = UILayoutPriority(999)
-        height.isActive = true
+        heightConstraint = view.heightAnchor.constraint(equalToConstant: model.height)
+        heightConstraint.priority = UILayoutPriority(999)
+        heightConstraint.isActive = true
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -194,12 +211,22 @@ final class KeyboardViewController: UIInputViewController {
         case .space: type(" ")
         case .backspace: handle(composer.backspace(), else: { textDocumentProxy.deleteBackward() })
         case .returnKey: handle(composer.returnKey(), else: { textDocumentProxy.insertText("\n") })
-        case .shift: model.shiftTapped()
+        case .shift: if model.layout == .sing { model.shiftTapped() }  // the Khmer layout's shift layer comes later
         case .symbols: model.page = model.page == .numbers ? .symbols : .numbers
         case .page: model.page = model.page == .letters ? .numbers : .letters
         case .globe: advanceToNextInputMode()
         case .mode: modeTapped()
+        case .slot: slotTapped()
         }
+        heightConstraint.constant = model.height
+    }
+
+    /// While a Phrase is open the slot keeps the Latin; idle, it switches layouts and shows the letters.
+    private func slotTapped() {
+        guard model.slotReady else { return }
+        if composer.isComposing { return handle(composer.rawLatin()) }
+        if composer.switchLayout() { model.page = .letters; model.shift = .off }
+        refresh(afterKey: true)
     }
 
     /// Switching mode never turns shift on: the keys stay as they are until the next letter.
@@ -217,18 +244,21 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func refresh(afterKey: Bool = false) {
-        let khmer = composer.mode == "ខ"
-        let before = khmer ? nil : textDocumentProxy.documentContextBeforeInput  // Khmer needs neither: skip the IPC read
-        model.englishWords = !khmer && wordsAllowed ? Self.englishWords(before: before, lexicon: lexicon) : []
+        let english = composer.layout == .sing && composer.mode == "EN"
+        let before = english ? textDocumentProxy.documentContextBeforeInput : nil  // only English needs it: skip the IPC read
+        model.englishWords = english && wordsAllowed ? Self.englishWords(before: before, lexicon: lexicon) : []
         model.typed = composer.typed
         model.suggestions = composer.suggestions
         if composer.typed.isEmpty { model.showAll = false }
         model.mode = composer.mode
+        model.layout = composer.layout
         model.canToggle = composer.canToggle
         if afterKey { model.shiftChosen = false }
         if model.shift != .lock && !model.shiftChosen {  // a typed key or a field change re-decides shift, like Apple's
-            model.shift = AutoCap.shouldShift(before: before, kind: model.autoCap, khmerMode: khmer) ? .once : .off
+            model.shift = AutoCap.shouldShift(before: before, kind: model.autoCap, khmerMode: !english) ? .once : .off
         }
+        model.slotChecked()
+        heightConstraint.constant = model.height
     }
 }
 

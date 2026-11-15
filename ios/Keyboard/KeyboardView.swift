@@ -5,11 +5,11 @@ struct KeyboardView: View {
     let onCandidate: (Int) -> Void
     let onLatin: () -> Void
     let onEnglishWord: (Int) -> Void
+    let onSlot: () -> Void
 
     private let margin = KeyLayout.margin
     private let keyHeight = KeyLayout.keyHeight
     private let rowGap = KeyLayout.rowGap
-    static let height = KeyLayout.height
 
     /// Keys are drawn only; the UIKit TouchLayer above this view takes every touch on them (see TouchLayer).
     var body: some View {
@@ -57,12 +57,13 @@ struct KeyboardView: View {
             return Look(image: model.shift == .lock ? "capslock.fill" : model.shift == .once ? "shift.fill" : "shift",
                         style: model.shift == .off ? .function : .letter)
         case .symbols: return Look(text: model.page == .numbers ? "#+=" : "123", fontSize: 16)
-        case .page: return Look(text: model.page == .letters ? "123" : "ABC", fontSize: 16)
+        case .page: return Look(text: model.page == .letters ? "123" : model.layout == .khmer ? "កខគ" : "ABC", fontSize: 16)
         case .backspace: return Look(image: "delete.left")
         case .globe: return Look(image: "globe")
         case .mode: return Look(text: model.mode, style: .mode, fontSize: 16)
         case .space: return Look(text: "space", style: .letter, fontSize: 16)
         case .returnKey: return Look(text: model.returnLabel, style: model.returnProminent ? .prominent : .function, fontSize: 16)
+        case .slot: return Look(text: model.slotLabel, fontSize: 16)
         }
     }
 
@@ -111,11 +112,11 @@ struct KeyboardView: View {
                     .background(KeyStyle.mode.background)  // Typer's yellow, like the ខ/EN key
                     .cornerRadius(8)
                     .onTouchUp { onCandidate(0) }
-                barButton(Text("abc").font(.system(size: 16, weight: .semibold))) { onLatin() }  // keep the Latin
                 barButton(HStack(spacing: 3) {  // how many Suggestions the panel holds
                     Text("\(model.suggestions.count)").font(.system(size: 16, weight: .semibold))
                     Image(systemName: model.showAll ? "chevron.up" : "chevron.down").font(.system(size: 13, weight: .bold))
                 }) { model.showAll.toggle() }
+                slot  // abc: keep the Latin
             }
         }
         .frame(height: 40)
@@ -136,14 +137,20 @@ struct KeyboardView: View {
                     .cornerRadius(8)
                     .onTouchUp { onEnglishWord(i) }
             }
+            slot
         }
         .frame(height: 40)
+    }
+
+    /// The bar's rightmost slot when the bar is drawn here; the idle punctuation bar draws it as a key (KeyLayout).
+    private var slot: some View {
+        barButton(Text(model.slotLabel).font(.system(size: 16, weight: .semibold)), onSlot)
     }
 
     /// A bar button with a full-height hit area that, like the keys, fires on touch-up.
     private func barButton<Label: View>(_ label: Label, _ action: @escaping () -> Void) -> some View {
         label.foregroundColor(.primary)
-            .frame(width: 52, height: 36)
+            .frame(width: KeyLayout.slotWidth, height: 36)
             .background(KeyStyle.function.background)
             .cornerRadius(8)
             .onTouchUp(action)

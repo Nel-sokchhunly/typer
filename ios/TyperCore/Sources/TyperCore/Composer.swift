@@ -49,6 +49,14 @@ public final class Composer {
     /// The phrase as typed, for the candidate bar's Latin chip.
     public private(set) var typed = ""
     public var isComposing: Bool { !typed.isEmpty }
+
+    /// Sing layout: Latin keys, typed as Sing (Khmer mode) or as is (English mode). Khmer layout: Khmer letters,
+    /// typed straight into the field.
+    public enum Layout { case sing, khmer }
+    public private(set) var layout = Layout.sing
+    /// Whether the bar's rightmost slot switches layouts now; while a Phrase is open it keeps the Latin instead.
+    public var canSwitchLayout: Bool { !isComposing }
+
     /// "ខ" or "EN"; a secure, email or number field shows EN.
     public var mode: String { passthrough ? "EN" : "ខ" }
 
@@ -94,6 +102,10 @@ public final class Composer {
 
     /// A typed character: letter, `'`, space, punctuation, digit, emoji, ...
     public func key(_ text: String) -> Bool {
+        if layout == .khmer {  // no Phrase, no Marked text, no engine
+            proxy.insertText(text)
+            return true
+        }
         if passingThrough() { return false }
         guard text.count == 1, let c = text.first else { return otherKey() }
         let starting = !isComposing
@@ -150,6 +162,13 @@ public final class Composer {
     public func toggleMode() -> Bool {
         guard canToggle else { return false }
         Self.english.toggle()
+        return true
+    }
+
+    /// Sing <-> Khmer layout. Refused while a Phrase is open.
+    public func switchLayout() -> Bool {
+        guard canSwitchLayout else { return false }
+        layout = layout == .sing ? .khmer : .sing
         return true
     }
 

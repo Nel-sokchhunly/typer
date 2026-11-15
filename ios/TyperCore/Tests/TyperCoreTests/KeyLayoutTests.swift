@@ -55,6 +55,21 @@ final class KeyLayoutTests: XCTestCase {
         XCTAssertTrue(english.contains { $0.action == .punct(".") })
         XCTAssertFalse(english.contains { $0.action == .punct("។") })
     }
+
+    func testKhmerLayoutHasFourRowsOfTwelveNoModeKeyAndFitsItsHeight() {
+        let ks = KeyLayout.keys(width: w, page: .letters, upper: false, globe: true, bar: KeyLayout.khmerPunctuation, khmer: true)
+        let rows = Dictionary(grouping: ks.filter { $0.rect.minY >= KeyLayout.rowsTop }, by: \.rect.minY).sorted { $0.key < $1.key }
+        XCTAssertEqual(rows.map(\.value.count), [12, 12, 12, 12, 4])  // page, globe, space, return
+        XCTAssertEqual(rows[3].value.first?.action, .shift)
+        XCTAssertEqual(rows[3].value.last?.action, .backspace)
+        XCTAssertEqual(rows[0].value.map(\.action), KhmerKeys.base[0].map { .char($0) })
+        XCTAssertFalse(ks.contains { $0.action == .mode })
+        XCTAssertEqual(ks.filter { if case .punct = $0.action { true } else { false } }.count, 8)
+        XCTAssertEqual(ks.first { $0.action == .slot }?.rect.maxX ?? 0, w - KeyLayout.margin, accuracy: 0.01)
+        XCTAssertEqual(ks.map(\.rect.maxX).max()!, w - KeyLayout.margin, accuracy: 0.01)
+        XCTAssertLessThanOrEqual(ks.map(\.rect.maxY).max()!, KeyLayout.khmerHeight)
+        XCTAssertGreaterThan(ks.map(\.rect.maxY).max()!, KeyLayout.height)
+    }
 }
 
 final class KeyTouchesTests: XCTestCase {

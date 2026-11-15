@@ -6,6 +6,7 @@ public enum KeyPage: Int { case letters, numbers, symbols }
 public enum KeyAction: Hashable {
     case char(String), punct(String)
     case shift, symbols, page, backspace, globe, mode, space, returnKey
+    case slot  // the idle bar's rightmost slot: switch layouts
 }
 
 public struct Key: Equatable {
@@ -26,6 +27,9 @@ public enum KeyLayout {
     public static let rowsTop: CGFloat = barTop + barHeight + 6
     /// Candidate bar + gap + four rows: the controller sizes the keyboard to exactly this.
     public static let height: CGFloat = rowsTop + 4 * keyHeight + 3 * rowGap + 4
+    /// The Khmer layout's letters: one row more.
+    public static let khmerHeight: CGFloat = height + keyHeight + rowGap
+    public static let slotWidth: CGFloat = 52
 
     private static let letters = ["qwertyuiop", "asdfghjkl", "zxcvbnm"]
     private static let numbers = ["1234567890", "-/:;()$&@\"", ".,?!'"]
@@ -33,9 +37,12 @@ public enum KeyLayout {
     /// The idle candidate bar's keys: Khmer punctuation in Khmer mode, the 123-page regulars in English mode.
     public static let punctuation = ["។", "៕", "ៗ", "៛", "?", "!"]
     public static let englishPunctuation = [",", ".", "'", "\"", "@", "-"]
+    public static let khmerPunctuation = punctuation + [",", "."]
 
-    /// `bar`: the idle candidate bar's punctuation keys, empty while composing. `upper`: letters page with shift on.
-    public static func keys(width w: CGFloat, page: KeyPage, upper: Bool, globe: Bool, bar: [String]) -> [Key] {
+    /// `bar`: the idle candidate bar's punctuation keys, then the slot; empty while composing. `upper`: letters page
+    /// with shift on. `khmer`: the Khmer layout, 4 rows of 12 letters and no ខ/EN key.
+    public static func keys(width w: CGFloat, page: KeyPage, upper: Bool, globe: Bool, bar: [String],
+                            khmer: Bool = false) -> [Key] {
         let inner = w - 2 * margin
         let kw = (inner - 9 * gap) / 10
         let fw = (inner - 7 * kw - 8 * gap) / 2  // function key beside the letters of row 3
@@ -46,12 +53,25 @@ public enum KeyLayout {
 
         if !bar.isEmpty {
             let n = CGFloat(bar.count)
-            let pw = (inner - (n - 1) * gap) / n
+            let pw = (inner - slotWidth - n * gap) / n
             for (j, p) in bar.enumerated() { add(.punct(p), margin + CGFloat(j) * (pw + gap), barTop + 2, pw, 36) }
+            add(.slot, w - margin - slotWidth, barTop + 2, slotWidth, 36)
+        }
+
+        let khmerLetters = khmer && page == .letters
+        if khmerLetters {
+            let kw = (inner - 11 * gap) / 12
+            for (i, row) in KhmerKeys.base.enumerated() {
+                let y = rowsTop + CGFloat(i) * (keyHeight + rowGap)
+                var x = margin
+                if i == 3 { add(.shift, x, y, kw); x += kw + gap }  // inert until the shift layer
+                for s in row { add(.char(s), x, y, kw); x += kw + gap }
+                if i == 3 { add(.backspace, x, y, kw) }
+            }
         }
 
         let rows = [letters, numbers, symbols][page.rawValue]
-        for i in 0..<3 {
+        for i in 0..<3 where !khmerLetters {
             let y = rowsTop + CGFloat(i) * (keyHeight + rowGap)
             let chars = Array(rows[i])
             var x = margin
@@ -69,12 +89,12 @@ public enum KeyLayout {
             if i == 2 { add(.backspace, x, y, fw) }
         }
 
-        let y = rowsTop + 3 * (keyHeight + rowGap)
+        let y = rowsTop + (khmerLetters ? 4 : 3) * (keyHeight + rowGap)
         var x = margin
         func fixed(_ a: KeyAction, _ f: CGFloat) { add(a, x, y, kw * f); x += kw * f + gap }
         fixed(.page, 1.35)
         if globe { fixed(.globe, 1.1) }
-        fixed(.mode, 1.1)
+        if !khmer { fixed(.mode, 1.1) }
         let space = w - margin - kw * 2.1 - x - gap  // flexible
         add(.space, x, y, space)
         add(.returnKey, x + space + gap, y, kw * 2.1)
