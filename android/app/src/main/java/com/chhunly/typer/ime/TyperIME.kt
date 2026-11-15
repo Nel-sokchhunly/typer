@@ -5,12 +5,14 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.content.ClipboardManager
 import android.provider.UserDictionary
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowInsetsController
 import android.view.inputmethod.EditorInfo
+import com.chhunly.typer.core.ClipHistory
 import com.chhunly.typer.core.AutoCap
 import com.chhunly.typer.core.Composer
 import com.chhunly.typer.core.Engine
@@ -95,6 +97,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
 
     override fun onCreate() {
         super.onCreate()
+        clipboardManager?.addPrimaryClipChangedListener(clipListener)
         letters = if (keyboardPrefs.getString("layout", null) == KeyPage.KHMER.name) KeyPage.KHMER else KeyPage.LETTERS
         scheduler.async {
             val data = EngineData.dataDir(this)
@@ -122,7 +125,43 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         }
     }
 
+    // ---- clipboard history (in memory, an hour) ----
+
+    private val clips = ClipHistory()
+    private var clipboardOpen = false
+    private val clipboardManager by lazy { getSystemService(ClipboardManager::class.java) }
+    private val clipListener = ClipboardManager.OnPrimaryClipChangedListener { clipChanged() }
+
+    /** A new copy: kept unless Android marks it sensitive (a password manager's copy) or it is empty. */
+    private fun clipChanged() {
+        val clip = try { clipboardManager?.primaryClip } catch (e: SecurityException) { null } ?: return
+        if (clip.description.extras?.getBoolean("android.content.extra.IS_SENSITIVE") == true) return
+        if (clip.itemCount == 0) return
+        val text = clip.getItemAt(0).coerceToText(this)?.toString()?.take(MAX_CLIP) ?: return
+        if (text.isBlank()) return
+        clips.add(text, SystemClock.elapsedRealtime())
+        render()
+        main.postDelayed({ render() }, clips.freshMs + 100)  // the paste pill goes when the clip is no longer fresh
+    }
+
+    private fun paste(text: String) {
+        currentInputConnection?.commitText(text, 1)
+        refresh(afterKey = true)
+    }
+
+    override fun onClip(index: Int) {
+        val list = clips.list(SystemClock.elapsedRealtime())
+        if (index < list.size) {
+            clipboardOpen = false
+            paste(list[index])
+        } else if (list.isNotEmpty()) {
+            clips.clear()
+            render()
+        }
+    }
+
     override fun onDestroy() {
+        clipboardManager?.removePrimaryClipChangedListener(clipListener)
         scheduler.async { engine.loaded?.close() }
         loader.shutdown()
         super.onDestroy()
@@ -142,6 +181,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         super.onStartInput(attribute, restarting)
         proxy.selection(attribute.initialSelStart, attribute.initialSelEnd, -1, -1)
         glided = null
+        clipboardOpen = false
         val type = fieldType(attribute)
         val secure = secure(attribute)
         composer.fieldTraitsChanged(secure, type)
@@ -289,6 +329,9 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             layoutLocked = layoutLocked,
             glide = composer.mode == "EN" && wordsAllowed && english != null,
             glided = glided != null,
+            clipboard = clipboardOpen && !composer.isComposing,
+            clips = if (clipboardOpen) clips.list(SystemClock.elapsedRealtime()) else emptyList(),
+            freshClip = if (clipboardOpen || composer.isComposing) null else clips.fresh(SystemClock.elapsedRealtime()),
         )
     }
 
@@ -338,6 +381,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             s.split('\n').mapNotNull { l -> l.split('\t').takeIf { it.size == 2 }?.let { it[0] to it[1] } }.toMap()
         } ?: emptyMap()
         emojiOpen = true
+        clipboardOpen = false
         render()
     }
 
@@ -444,6 +488,14 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             is StripAction.Suggestion -> handle(composer.candidateTapped(action.index))
             StripAction.Latin -> handle(composer.rawLatin())
             StripAction.Layout -> layoutTapped()
+            StripAction.Clipboard -> {
+                clipboardOpen = !clipboardOpen
+                render()
+            }
+            StripAction.Paste -> clips.fresh(SystemClock.elapsedRealtime())?.let {
+                clips.freshUsed()
+                paste(it)
+            }
             StripAction.Expand -> {
                 showAll = !showAll && composer.isComposing
                 render()
@@ -560,6 +612,8 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     }
 
     companion object {
+        /** A clip longer than this is kept cut short (a whole document copied stays out of memory). */
+        private const val MAX_CLIP = 5000
         private val PASSWORDS = setOf(
             InputType.TYPE_TEXT_VARIATION_PASSWORD,
             InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,

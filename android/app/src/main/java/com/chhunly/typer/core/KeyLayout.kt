@@ -221,6 +221,10 @@ sealed interface StripAction {
     data object Latin : StripAction
     /** The bar's last slot when no Phrase is open: កខគ to the Khmer layout, abc back to the Sing layout. */
     data object Layout : StripAction
+    /** The bar's first slot when idle: open or close clipboard history. */
+    data object Clipboard : StripAction
+    /** Text copied in the last minute, offered as a one-tap paste. */
+    data object Paste : StripAction
     /** Open or close the all-Suggestions panel. */
     data object Expand : StripAction
     data class Punctuation(val text: String) : StripAction
@@ -261,9 +265,21 @@ object StripLayout {
 
     private fun layout(m: Metrics) = StripSlot(StripAction.Layout, pill(m, m.width - m.margin - LAYOUT, LAYOUT))
 
-    /** Idle: the punctuation row, then the layout switch. */
-    fun punctuation(m: Metrics, marks: List<String>): List<StripSlot> =
-        row(m, marks.size).mapIndexed { i, b -> StripSlot(StripAction.Punctuation(marks[i]), b) } + layout(m)
+    /** Width of the clipboard button, the idle bar's first slot. */
+    const val CLIPBOARD = 44f
+
+    /**
+     * Idle: the clipboard button, the punctuation row (or, with `paste`, the freshly copied text to paste), then the
+     * layout switch.
+     */
+    fun punctuation(m: Metrics, marks: List<String>, paste: Boolean = false): List<StripSlot> {
+        val clip = StripSlot(StripAction.Clipboard, pill(m, m.margin, CLIPBOARD))
+        val left = m.margin + CLIPBOARD + GAP
+        val right = m.width - m.margin - LAYOUT - GAP
+        if (paste) return listOf(clip, StripSlot(StripAction.Paste, pill(m, left, right - left)), layout(m))
+        val w = (right - left - (marks.size - 1) * GAP) / marks.size
+        return listOf(clip) + marks.mapIndexed { i, s -> StripSlot(StripAction.Punctuation(s), pill(m, left + i * (w + GAP), w)) } + layout(m)
+    }
 
     /**
      * English words in Typer's order: best, second, then the word as typed (index 0) in quotes; then the layout

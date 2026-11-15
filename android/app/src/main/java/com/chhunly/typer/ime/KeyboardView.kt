@@ -62,6 +62,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         fun onEmojiSearch(open: Boolean)
         /** A glide over the letters: its path (dp), each letter's key centre (dp) and a letter key's width. */
         fun onGlide(xs: FloatArray, ys: FloatArray, keys: Map<Char, Pair<Float, Float>>, keyWidth: Float)
+        /** A row of clipboard history: a clip index, or the clips' count for "Clear all". */
+        fun onClip(index: Int)
     }
 
     enum class Shift { OFF, ONCE, LOCK }
@@ -107,9 +109,14 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         val glide: Boolean = false,
         /** After a glide: the bar shows the glided word first (yellow), then its alternatives, none in quotes. */
         val glided: Boolean = false,
+        /** Clipboard history is open in the keys' place; [clips] newest first. */
+        val clipboard: Boolean = false,
+        val clips: List<String> = emptyList(),
+        /** Text copied in the last minute: the idle bar offers it as a one-tap paste. */
+        val freshClip: String? = null,
     ) {
         val composing get() = typed.isNotEmpty()
-        val panelOpen get() = showAll && composing
+        val panelOpen get() = (showAll && composing) || clipboard
         val khmerLayout get() = letters == KeyPage.KHMER
         /** What the bar's last slot is now: keep-Latin abc, or the layout switch (កខគ, or abc back to Sing). */
         val lastSlot get() = if (composing) "latin" else if (khmerLayout) "abc" else "kkk"
@@ -652,15 +659,17 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     private fun stripSlots(): List<StripSlot> = when {
         state.composing -> StripLayout.composing(metrics)
-        state.words.isNotEmpty() -> StripLayout.words(metrics, state.words.size, state.glided)
-        state.khmerLayout -> StripLayout.punctuation(metrics, KeyLayout.khmerLayoutPunctuation)
-        else -> StripLayout.punctuation(metrics, if (state.mode == "EN") KeyLayout.englishPunctuation else KeyLayout.punctuation)
+        state.words.isNotEmpty() && !state.clipboard -> StripLayout.words(metrics, state.words.size, state.glided)
+        state.khmerLayout -> StripLayout.punctuation(metrics, KeyLayout.khmerLayoutPunctuation, state.freshClip != null)
+        else -> StripLayout.punctuation(metrics, if (state.mode == "EN") KeyLayout.englishPunctuation else KeyLayout.punctuation, state.freshClip != null)
     }
 
     private fun stripLabel(a: StripAction): String = when (a) {
         is StripAction.Suggestion -> state.suggestions.getOrNull(a.index) ?: if (a.index == 0) state.typed else ""
         StripAction.Latin -> "abc"
         StripAction.Layout -> if (state.khmerLayout) "abc" else LAYOUT_KHMER
+        StripAction.Clipboard -> ""
+        StripAction.Paste -> oneLine(state.freshClip ?: "")
         StripAction.Expand -> state.suggestions.size.toString()
         is StripAction.Punctuation -> a.text
         is StripAction.Word -> state.words.getOrNull(a.index)?.let { if (a.index == 0 && !state.glided) "“$it”" else it } ?: ""
@@ -683,6 +692,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             val yellow = emphasised(a)
             val (bg, fg) = when {
                 a == StripAction.Layout -> LAYOUT_INK to LAYOUT_YELLOW  // its own look in light and dark: not a punctuation key, not ខ
+                a == StripAction.Clipboard && state.clipboard -> theme.mode to theme.onMode  // open: yellow, like a selected tab
                 yellow -> theme.mode to theme.onMode
                 else -> theme.functionKey to theme.onFunction
             }
@@ -704,6 +714,17 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                 }
                 StripAction.Latin -> drawLabel(canvas, "abc", r.centerX(), r.centerY(), 16f, fg, bold = true)
                 StripAction.Layout -> drawLabel(canvas, stripLabel(a), r.centerX(), r.centerY(), 16f, fg, if (dim) 102 else 255, bold = true)
+                StripAction.Clipboard -> drawIcon(canvas, R.drawable.ic_clipboard, r.centerX(), r.centerY(), fg, 20f)
+                StripAction.Paste -> {
+                    drawIcon(canvas, R.drawable.ic_clipboard, r.left + px(18f), r.centerY(), fg, 16f)
+                    font(false)
+                    text.textSize = 15f * sp
+                    text.color = fg
+                    text.textAlign = Paint.Align.LEFT
+                    val shown = TextUtils.ellipsize(stripLabel(a), text, r.width() - px(44f), TextUtils.TruncateAt.END).toString()
+                    canvas.drawText(shown, r.left + px(32f), stripBaseline(r, shown.any { it in 'ក'..'៿' }), text)
+                    text.textAlign = Paint.Align.CENTER
+                }
                 else -> drawStripText(canvas, stripLabel(a), r, false, a is StripAction.Punctuation, fg, start = a is StripAction.Suggestion)  // regular weight: the yellow says it's the top one
             }
         }
@@ -745,7 +766,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     private val rowHeight get() = 52f
     private fun panelBox() = Box(0f, metrics.rowsTop, metrics.width, metrics.height - metrics.rowsTop)
-    private fun panelRows() = state.suggestions.size + 1  // + the Latin row
+    private fun panelRows() = if (state.clipboard) state.clips.size + 1 else state.suggestions.size + 1  // + the Latin row, or Clear all / the empty note
 
     private fun drawPanel(canvas: Canvas) {
         val box = panelBox()
@@ -758,6 +779,10 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             val top = r.top + px(i * rowHeight) - panelScroll
             if (top > r.bottom || top + px(rowHeight) < r.top) continue
             val row = RectF(r.left + px(metrics.margin), top, r.right - px(metrics.margin), top + px(rowHeight))
+            if (state.clipboard) {
+                drawClipRow(canvas, i, row)
+                continue
+            }
             val latin = i == state.suggestions.size
             text.textAlign = Paint.Align.RIGHT
             if (!latin) drawPanelText(canvas, (i + 1).toString(), row.left + px(28f), row, 14f, theme.onSurfaceVariant, false)
@@ -774,6 +799,31 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         }
         canvas.restore()
     }
+
+    /** A clipboard row: the clip on one line; after the clips, Clear all (or a note when there are none). */
+    private fun drawClipRow(canvas: Canvas, i: Int, row: RectF) {
+        font(false)
+        text.textSize = 17f * sp
+        if (i < state.clips.size) {
+            drawIcon(canvas, R.drawable.ic_clipboard, row.left + px(24f), row.centerY(), theme.onSurfaceVariant, 18f)
+            text.color = theme.onLetter
+            text.textAlign = Paint.Align.LEFT
+            val s = oneLine(state.clips[i])
+            val shown = TextUtils.ellipsize(s, text, row.width() - px(56f), TextUtils.TruncateAt.END).toString()
+            canvas.drawText(shown, row.left + px(44f), stripBaseline(row, s.any { it in 'ក'..'៿' }), text)
+            fill.color = theme.outlineVariant
+            canvas.drawRect(row.left + px(12f), row.bottom - px(0.5f), row.right - px(12f), row.bottom + px(0.5f), fill)
+        } else {
+            text.color = theme.onSurfaceVariant
+            text.textAlign = Paint.Align.CENTER
+            if (state.clips.isNotEmpty()) font(true)
+            val note = if (state.clips.isEmpty()) "Text you copy shows here for an hour" else "Clear all"
+            canvas.drawText(note, row.centerX(), stripBaseline(row, false), text)
+        }
+        text.textAlign = Paint.Align.CENTER
+    }
+
+    private fun oneLine(s: String) = s.replace(Regex("\\s+"), " ").trim()
 
     private fun drawPanelText(canvas: Canvas, s: String, x: Float, row: RectF, sizeSp: Float, color: Int, bold: Boolean, right: Float = row.right) {
         font(bold)
@@ -868,7 +918,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                         panelDownY = -1f
                         if (!panelScrolling) panelIndexAt(y)?.let { row ->
                             haptic(HapticFeedbackConstants.KEYBOARD_TAP)
-                            listener.onPanel(if (row == state.suggestions.size) -1 else row)
+                            if (state.clipboard) listener.onClip(row) else listener.onPanel(if (row == state.suggestions.size) -1 else row)
                         }
                     }
                     else -> {
@@ -1048,6 +1098,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         for ((i, s) in stripSlots().withIndex()) {
             val label = when (val a = s.action) {
                 StripAction.Latin -> "abc, keep Latin"
+                StripAction.Clipboard -> if (state.clipboard) "close clipboard" else "clipboard"
+                StripAction.Paste -> "paste, ${stripLabel(StripAction.Paste)}"
                 StripAction.Layout -> when {
                     state.khmerLayout -> "Sing layout"
                     state.layoutLocked -> "Khmer layout, not in this field"
@@ -1062,9 +1114,15 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             for (i in 0 until panelRows()) {
                 val top = metrics.rowsTop + i * rowHeight - panelScroll / d
                 if (top + rowHeight <= metrics.rowsTop || top >= metrics.height) continue
+                val box = Box(0f, max(top, metrics.rowsTop), metrics.width, rowHeight)
+                if (state.clipboard) {
+                    if (i < state.clips.size) out += Target(PANEL + i, "paste, ${oneLine(state.clips[i])}", box) { listener.onClip(i) }
+                    else if (state.clips.isNotEmpty()) out += Target(PANEL + i, "clear clipboard history", box) { listener.onClip(i) }
+                    continue
+                }
                 val latin = i == state.suggestions.size
                 val label = if (latin) "${state.typed}, keep Latin" else state.suggestions[i]
-                out += Target(PANEL + i, label, Box(0f, max(top, metrics.rowsTop), metrics.width, rowHeight)) {
+                out += Target(PANEL + i, label, box) {
                     listener.onPanel(if (latin) -1 else i)
                 }
             }
