@@ -269,6 +269,7 @@ private final class FixtureRun {
         case "return": if !composer.returnKey() { proxy.insertText("\n") }
         case "composerBackspace": consumed = composer.backspace()
         case "returnKey": consumed = composer.returnKey()
+        case "commitTop": consumed = composer.commitTop()
         case "rawLatin": consumed = composer.rawLatin()
         case "toggle": consumed = composer.toggleMode()
         case "textChanged": consumed = composer.textChanged()

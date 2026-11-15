@@ -130,7 +130,7 @@ public final class Composer {
 
     /// Emoji, non-ASCII, ...: insert the top suggestion, then let the key through.
     private func otherKey() -> Bool {
-        if isComposing { commit(0) }
+        if isComposing { commit(0, learn: false) }
         return false
     }
 
@@ -156,9 +156,12 @@ public final class Composer {
         return true
     }
 
-    public func returnKey() -> Bool {
+    public func returnKey() -> Bool { commitTop() }
+
+    /// Commit the top Suggestion, learn nothing (only a tap is a Pick). False when there's nothing to commit.
+    public func commitTop() -> Bool {
         guard !passingThrough(), isComposing else { return false }
-        commit(0)
+        commit(0, learn: false)
         return true
     }
 
@@ -245,7 +248,7 @@ public final class Composer {
     }
 
     /// A Pick must come from the current Phrase: if its result hasn't landed, compute it now.
-    private func commit(_ index: Int) {
+    private func commit(_ index: Int, learn: Bool = true) {
         let input = typed
         if suggestionsFor != input {
             scheduler.sync { suggestions = engine.suggest(input, 9) }
@@ -255,7 +258,7 @@ public final class Composer {
             _ = write(input, final: true)
             return
         }
-        if write(suggestions[index], final: true) {
+        if write(suggestions[index], final: true), learn {
             let engine = engine
             scheduler.async { engine.pick(input, index) }
         }
