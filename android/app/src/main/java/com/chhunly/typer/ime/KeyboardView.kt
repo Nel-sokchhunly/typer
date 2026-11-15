@@ -174,7 +174,30 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     }
 
     /** The Khmer page has a fifth row (Khmer digits); the emoji page and search use the letters' four. */
-    private fun rowsFor(s: State) = if (s.page == KeyPage.KHMER && !s.emoji) 5 else 4
+    private fun rowsFor(s: State) = when {
+        s.emoji || s.emojiSearch -> 4
+        s.page == KeyPage.KHMER -> 5
+        s.page == KeyPage.LETTERS && numberRow -> 5
+        else -> 4
+    }
+
+    /** From the Companion app ([KeyboardPrefs]), set when the Keyboard opens: a number row, key sound, height. */
+    var numberRow = false
+        set(value) { if (field != value) { field = value; keysCache = null; requestLayout() } }
+    var keySound = false
+    var heightScale = 1f
+        set(value) { if (field != value) { field = value; requestLayout() } }
+    private val audio by lazy { context.getSystemService(android.media.AudioManager::class.java) }
+
+    private fun clickSound(key: Key?) {
+        if (!keySound) return
+        audio?.playSoundEffect(when (key?.action) {
+            KeyAction.Backspace -> android.media.AudioManager.FX_KEYPRESS_DELETE
+            KeyAction.Return -> android.media.AudioManager.FX_KEYPRESS_RETURN
+            KeyAction.Space -> android.media.AudioManager.FX_KEYPRESS_SPACEBAR
+            else -> android.media.AudioManager.FX_KEYPRESS_STANDARD
+        }, -1f)
+    }
 
     /** An open long-press popup (Khmer alternates): its key, options with boxes (dp), the picked one, its finger. */
     private class More(val key: Key, val options: List<Pair<String, Box>>, var picked: Int, val pointer: Int)
@@ -218,7 +241,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     private var keysCache: List<Key>? = null
     private val keys: List<Key>
         get() = keysCache ?: (if (state.emoji && !state.emojiSearch) KeyLayout.emojiRow(metrics)
-        else KeyLayout.keys(metrics, if (state.emojiSearch) KeyPage.LETTERS else state.page, state.shift != Shift.OFF, state.khmerLayout)).also { keysCache = it }
+        else KeyLayout.keys(metrics, if (state.emojiSearch) KeyPage.LETTERS else state.page, state.shift != Shift.OFF, state.khmerLayout, numberRow && !state.emojiSearch)).also { keysCache = it }
 
     /** Emoji data, set by the service once loaded off the main thread; the emoji key does nothing until then. */
     var emojiData: com.chhunly.typer.core.EmojiData? = null
@@ -267,7 +290,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
         val screenH = resources.displayMetrics.heightPixels / d
-        val m = Metrics(w / d, screenH, if (state.emojiSearch) SEARCH_ROW else 0f, rowsFor(state))
+        val m = Metrics(w / d, screenH, if (state.emojiSearch) SEARCH_ROW else 0f, rowsFor(state), heightScale)
         if (m.width != metrics.width || m.pitch != metrics.pitch || m.extraTop != metrics.extraTop || m.rows != metrics.rows) {
             metrics = m
             keysCache = null
@@ -972,7 +995,10 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     private fun run(id: Int, effects: List<KeyEffect>) {
         for (fx in effects) when (fx) {
-            KeyEffect.Press -> haptic(HapticFeedbackConstants.KEYBOARD_TAP)
+            KeyEffect.Press -> {
+                haptic(HapticFeedbackConstants.KEYBOARD_TAP)
+                clickSound(tracker.pressed.firstOrNull())
+            }
             is KeyEffect.Fire -> {
                 if (Build.VERSION.SDK_INT >= 27) haptic(HapticFeedbackConstants.KEYBOARD_RELEASE)
                 listener.onKey(fx.action)

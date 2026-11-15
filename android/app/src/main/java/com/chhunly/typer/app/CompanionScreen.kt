@@ -80,6 +80,7 @@ import com.chhunly.typer.R
 import com.chhunly.typer.ime.FontChoice
 import com.chhunly.typer.ime.EngineData
 import com.chhunly.typer.ime.HapticsChoice
+import com.chhunly.typer.ime.KeyboardPrefs
 import com.chhunly.typer.ime.ThemeChoice
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -134,6 +135,11 @@ fun CompanionScreen(khmer: Boolean, onKhmerChange: (Boolean) -> Unit) {
                     if (ThemeChoice.available) WallpaperCard(copy)
                     VibrationCard(copy)
                     FontCard(copy)
+                    PrefSwitch(copy.autoCapTitle, copy.autoCapDetail, KeyboardPrefs::autoCap, KeyboardPrefs::setAutoCap)
+                    PrefSwitch(copy.doubleSpaceTitle, copy.doubleSpaceDetail, KeyboardPrefs::doubleSpace, KeyboardPrefs::setDoubleSpace)
+                    PrefSwitch(copy.numberRowTitle, copy.numberRowDetail, KeyboardPrefs::numberRow, KeyboardPrefs::setNumberRow)
+                    PrefSwitch(copy.keySoundTitle, copy.keySoundDetail, KeyboardPrefs::keySound, KeyboardPrefs::setKeySound)
+                    HeightCard(copy)
                     ResetLearningCard(copy)
                 }
                 Section(copy.featuresTitle) {
@@ -382,6 +388,61 @@ private fun FontCard(copy: Copy) {
     ChoiceCard(copy.fontTitle, copy.fontDetail, copy.fontOptions, FontChoice.entries.indexOf(choice)) { i ->
         choice = FontChoice.entries[i]
         setFont(choice)
+    }
+}
+
+/** An on/off Keyboard setting from [KeyboardPrefs]. */
+@Composable
+private fun PrefSwitch(title: String, detail: String, get: (Context) -> Boolean, set: (Context, Boolean) -> Unit) {
+    val context = LocalContext.current
+    var on by remember { mutableStateOf(get(context)) }
+    SwitchCard(title, detail, on) {
+        on = it
+        set(context, it)
+    }
+}
+
+@Composable
+private fun HeightCard(copy: Copy) {
+    val context = LocalContext.current
+    var choice by remember { mutableStateOf(KeyboardPrefs.height(context)) }
+    ChoiceCard(copy.heightTitle, copy.heightDetail, copy.heightOptions, KeyboardPrefs.Height.entries.indexOf(choice)) { i ->
+        choice = KeyboardPrefs.Height.entries[i]
+        KeyboardPrefs.setHeight(context, choice)
+    }
+}
+
+/** A setting that is on or off: title, detail and a switch in Typer yellow; the whole row toggles it. */
+@Composable
+private fun SwitchCard(title: String, detail: String, on: Boolean, onChange: (Boolean) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Card {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .toggleable(value = on, role = Role.Switch, onValueChange = onChange)
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Txt(title, 17, weight = FontWeight.SemiBold)
+                Txt(detail, 15, color = colors.onSurfaceVariant)
+            }
+            Switch(
+                checked = on,
+                onCheckedChange = null,
+                colors = SwitchDefaults.colors(
+                    checkedTrackColor = TyperYellow,
+                    checkedThumbColor = TyperInk,
+                    checkedBorderColor = TyperInk,
+                    uncheckedTrackColor = Color.Transparent,
+                    uncheckedThumbColor = colors.onSurfaceVariant,
+                    uncheckedBorderColor = colors.outline,
+                ),
+            )
+        }
     }
 }
 

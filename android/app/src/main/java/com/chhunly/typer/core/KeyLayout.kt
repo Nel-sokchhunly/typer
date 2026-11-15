@@ -47,12 +47,15 @@ data class Key(val action: KeyAction, val box: Box, val style: KeyStyle, val hin
  * Sizes in dp from android/docs/reference.md (measured on Gboard): side margin 4.5, gap 1.29% of the width,
  * row pitch from the screen height, keys 80% of the pitch, a 48 dp suggestion strip plus 4 dp above row 1.
  */
-/** `extraTop`: room above the strip, e.g. the emoji search results row. `rows`: 4, or 5 on the Khmer page. */
-class Metrics(val width: Float, screenHeight: Float, val extraTop: Float = 0f, val rows: Int = 4) {
+/**
+ * `extraTop`: room above the strip, e.g. the emoji search results row. `rows`: 4, or 5 on the Khmer page and with the
+ * number row. `scale`: the keyboard height setting (rows a little shorter or taller).
+ */
+class Metrics(val width: Float, screenHeight: Float, val extraTop: Float = 0f, val rows: Int = 4, val scale: Float = 1f) {
     val margin = 4.5f
     val gap = (width * 0.0129f).coerceIn(4f, 6f)
     /** Gboard scales rows with screen height: 59 dp at 914 dp tall, 50.5 dp at 800; a line through both. */
-    val pitch = (screenHeight * 0.07456f - 9.15f).coerceIn(46f, 64f)
+    val pitch = (screenHeight * 0.07456f - 9.15f).coerceIn(46f, 64f) * scale
     val keyHeight = pitch * 0.8f
     val rowGap = pitch - keyHeight
     val stripHeight = 48f
@@ -84,13 +87,15 @@ object KeyLayout {
      * `upper`: letters page with shift on. `khmerLayout`: the numbers and symbols pages were opened from the Khmer
      * layout, so they leave out the ខ/EN key (Khmer mode means nothing there) and ?123's way back reads កខគ.
      */
-    fun keys(m: Metrics, page: KeyPage, upper: Boolean, khmerLayout: Boolean = false): List<Key> {
+    fun keys(m: Metrics, page: KeyPage, upper: Boolean, khmerLayout: Boolean = false, numberRow: Boolean = false): List<Key> {
         if (page == KeyPage.KHMER) return khmer(m, upper)
         val out = ArrayList<Key>(40)
         val k = m.keyWidth
         val g = m.gap
         val wide = 1.5f * k + 0.5f * g  // shift, backspace, ?123 and return: one and a half keys
-        fun rowTop(i: Int) = m.rowsTop + i * m.pitch
+        val digitsRow = numberRow && page == KeyPage.LETTERS  // the digits get their own row above the letters
+        val off = if (digitsRow) 1 else 0
+        fun rowTop(i: Int) = m.rowsTop + (i + off) * m.pitch
         fun add(a: KeyAction, x: Float, row: Int, w: Float, style: KeyStyle, hint: String? = null) =
             out.add(Key(a, Box(x, rowTop(row), w, m.keyHeight), style, hint))
 
@@ -98,6 +103,9 @@ object KeyLayout {
             KeyPage.LETTERS, KeyPage.KHMER -> letters
             KeyPage.NUMBERS -> numbers
             KeyPage.SYMBOLS -> symbols
+        }
+        if (digitsRow) {
+            for ((j, c) in digits.withIndex()) add(KeyAction.Text(c.toString()), m.margin + j * (k + g), -1, k, KeyStyle.LETTER)
         }
         for (i in 0..2) {
             var x = m.margin
@@ -109,7 +117,7 @@ object KeyLayout {
             for ((j, c) in rows[i].withIndex()) {
                 val s = c.toString()
                 val label = if (page == KeyPage.LETTERS && upper) s.uppercase() else s
-                val hint = if (page == KeyPage.LETTERS && i == 0) digits[j].toString() else null
+                val hint = if (page == KeyPage.LETTERS && i == 0 && !digitsRow) digits[j].toString() else null
                 add(KeyAction.Text(label), x, i, k, KeyStyle.LETTER, hint)
                 x += k + g
             }

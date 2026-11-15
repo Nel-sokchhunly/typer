@@ -262,6 +262,11 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         val theme = KeyboardTheme.from(this)
         view?.theme = theme
         view?.haptics = HapticsChoice.get(this)
+        autoCapOn = KeyboardPrefs.autoCap(this)
+        doubleSpaceOn = KeyboardPrefs.doubleSpace(this)
+        view?.keySound = KeyboardPrefs.keySound(this)
+        view?.numberRow = KeyboardPrefs.numberRow(this)
+        view?.heightScale = KeyboardPrefs.height(this).scale
         view?.systemFont = FontChoice.get(this) == FontChoice.SYSTEM
         colorNavigationBar(theme)
         loadUserWords()
@@ -345,7 +350,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         if (!composer.isComposing) showAll = false
         if (afterKey) shiftChosen = false
         if (shift != Shift.LOCK && !shiftChosen) {
-            shift = if (page != KeyPage.KHMER && AutoCap.shouldShift(before, autoCap, khmer)) Shift.ONCE else Shift.OFF
+            shift = if (autoCapOn && page != KeyPage.KHMER && AutoCap.shouldShift(before, autoCap, khmer)) Shift.ONCE else Shift.OFF
         }
         render()
     }
@@ -390,8 +395,34 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
 
     // ---- view events ----
 
+    /** Companion app switches, read when the Keyboard opens. */
+    private var autoCapOn = true
+    private var doubleSpaceOn = true
+    /** The last key was space: a second one right after a word types ". " in English mode. */
+    private var lastWasSpace = false
+
+    /** Double-space for a period (English mode): "word" + space + space -> "word. ", then auto-cap as after any period. */
+    private fun doubleSpace(): Boolean {
+        if (!doubleSpaceOn || composer.mode != "EN" || composer.isComposing || !wordsAllowed) return false
+        val ic = currentInputConnection ?: return false
+        val before = ic.getTextBeforeCursor(2, 0)?.toString() ?: return false
+        if (before.length < 2 || before[1] != ' ' || !before[0].isLetterOrDigit()) return false
+        ic.beginBatchEdit()
+        ic.deleteSurroundingText(1, 0)
+        ic.commitText(". ", 1)
+        ic.endBatchEdit()
+        refresh(afterKey = true)
+        return true
+    }
+
     override fun onKey(action: KeyAction) {
+        val wasSpace = lastWasSpace
+        lastWasSpace = action == KeyAction.Space
         if (emojiSearch) return searchKey(action)
+        if (action == KeyAction.Space && wasSpace && glided == null && doubleSpace()) {
+            lastWasSpace = false
+            return
+        }
         if (glided != null) {
             val word = glided!![0]
             glided = null
