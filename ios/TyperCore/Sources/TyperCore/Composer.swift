@@ -130,9 +130,24 @@ public final class Composer {
     }
 
     public func backspace() -> Bool {
+        if layout == .khmer { return khmerBackspace() }
         guard !passingThrough(), isComposing else { return false }
         typed.removeLast()
         update()
+        return true
+    }
+
+    /// Khmer layout: one backspace removes one Unicode scalar, even inside a stacked cluster. Hosts differ on
+    /// what deleteBackward removes (cluster or scalar), so re-read the context and restore only what's missing.
+    private func khmerBackspace() -> Bool {
+        guard let ctx = proxy.documentContextBeforeInput, let cluster = ctx.last,
+            cluster.unicodeScalars.count > 1  // one scalar (or no context): plain deleteBackward
+        else { return false }
+        let keep = String(String.UnicodeScalarView(cluster.unicodeScalars.dropLast()))
+        let want = ctx.unicodeScalars.count - 1
+        proxy.deleteBackward()
+        let now = (proxy.documentContextBeforeInput ?? "").unicodeScalars.count
+        if want > now { proxy.insertText(String(String.UnicodeScalarView(keep.unicodeScalars.suffix(want - now)))) }
         return true
     }
 

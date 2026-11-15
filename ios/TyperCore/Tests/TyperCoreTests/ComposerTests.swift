@@ -9,6 +9,7 @@ final class FakeProxy: TextProxy {
     var after = ""
     var marked = 0
     var contextHasMarked = true  // whether the host counts marked text as before the caret
+    var scalarDelete = false  // hosts whose deleteBackward removes one scalar, not a cluster
     var contextNil = false  // hosts that never report context
     var doc: String { before + after }
     var markedText: String { String(before.suffix(marked)) }
@@ -29,7 +30,11 @@ final class FakeProxy: TextProxy {
     }
     func deleteBackward() {
         guard !before.isEmpty else { return }
-        before.removeLast()
+        if scalarDelete {
+            before = String(String.UnicodeScalarView(before.unicodeScalars.dropLast()))
+        } else {
+            before.removeLast()
+        }
         marked = max(0, marked - 1)
     }
     /// The user taps `n` characters to the left; the host keeps the marked text as plain text.
@@ -113,6 +118,38 @@ final class LayoutTests: XCTestCase {
         XCTAssertTrue(composer.switchLayout())
         XCTAssertEqual(composer.layout, .khmer)
         XCTAssertEqual(proxy.doc, "k")
+    }
+
+    private func khmerBackspaces(_ text: String, scalarDelete: Bool, nilContext: Bool = false) -> [String] {
+        proxy.scalarDelete = scalarDelete
+        XCTAssertTrue(composer.switchLayout())
+        proxy.before = text
+        proxy.contextNil = nilContext
+        var out: [String] = []
+        while !proxy.doc.isEmpty {
+            if !composer.backspace() { proxy.deleteBackward() }
+            out.append(proxy.doc)
+        }
+        return out
+    }
+
+    func testKhmerBackspaceRemovesOneScalarPerPress() {
+        for scalar in [false, true] {
+            XCTAssertEqual(khmerBackspaces("គ្រូ", scalarDelete: scalar), ["គ្រ", "គ្", "គ", ""])
+            setUp()
+        }
+    }
+
+    func testKhmerBackspaceTakesTwoPressesForVowelPlusNikahit() {
+        for scalar in [false, true] {
+            XCTAssertEqual(khmerBackspaces("កុំ", scalarDelete: scalar), ["កុ", "ក", ""])
+            setUp()
+        }
+        XCTAssertEqual(khmerBackspaces("សួស្តី", scalarDelete: false).first, "សួស្ត")
+    }
+
+    func testKhmerBackspaceWithoutContextFallsBackToDeleteBackward() {
+        XCTAssertEqual(khmerBackspaces("គ្រូ", scalarDelete: false, nilContext: true), ["គ្", ""])  // host deletes whole clusters
     }
 
     func testKhmerLayoutTypesStraightIntoTheField() {
