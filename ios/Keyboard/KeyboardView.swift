@@ -204,18 +204,20 @@ struct KeyboardView: View {
     private var englishBar: some View {
         let w = model.englishWords
         let order = Array(w.indices.dropFirst()) + [0]
-        return HStack(spacing: 6) {
-            ForEach(order, id: \.self) { i in
+        // like iOS QuickType: plain words between thin dividers; the best one in Typer's yellow (darker on light, to stay readable)
+        let best = dynamic(light: UIColor(red: 0.65, green: 0.47, blue: 0, alpha: 1), dark: UIColor(red: 0xf5 / 255, green: 0xc8 / 255, blue: 0x42 / 255, alpha: 1))
+        return HStack(spacing: 0) {
+            ForEach(Array(order.enumerated()), id: \.element) { n, i in
+                if n > 0 { divider.frame(height: 36) }
                 Text(i == 0 ? "\u{201C}\(w[0])\u{201D}" : w[i])
-                    .font(.system(size: 17, weight: i == 1 ? .bold : .regular))
+                    .font(.system(size: 17, weight: i == 1 ? .semibold : .regular))
                     .lineLimit(1).minimumScaleFactor(0.7)
-                    .foregroundColor(i == 1 ? KeyStyle.mode.foreground : .primary)
+                    .foregroundColor(i == 1 ? best : .primary)
                     .frame(maxWidth: .infinity, minHeight: 36)
-                    .background(i == 1 ? KeyStyle.mode.background : KeyStyle.function.background)
-                    .cornerRadius(8)
+                    .contentShape(Rectangle())
                     .onTouchUp { onEnglishWord(i) }
             }
-            slot
+            slot.padding(.leading, 6)
         }
         .frame(height: 40)
     }
