@@ -609,6 +609,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                 }
                 drawLabel(canvas, label, cx, cy, size, fg, alpha, onBaseline = a.text.length == 1 && !khmerPage)
                 if (key.long == KeyAction.Settings) drawIcon(canvas, R.drawable.ic_settings, r.right - px(9f), r.top + px(9f), theme.onSurfaceVariant, 11f)
+                if (key.long == KeyAction.Emoji) drawIcon(canvas, R.drawable.ic_emoji, cx, r.top + px(12f), fg, 14f)  // Gboard's comma: emoji on top
                 // hints drawn as on Gboard: the top row's digits, and every alternate on the Khmer layout (not accents)
                 key.hint?.takeIf { khmerPage || it[0].isDigit() }?.let { hint ->
                     val it = KeyLayout.label(hint).removePrefix("\u25CC")
@@ -630,8 +631,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             KeyAction.Page -> drawLabel(canvas, pageLabel(), cx, cy, 16f, fg, alpha, bold = true)
             KeyAction.Emoji -> drawIcon(canvas, R.drawable.ic_emoji, cx, cy, fg)
             KeyAction.Symbols -> drawLabel(canvas, if (state.page == KeyPage.NUMBERS) "=\\<" else "?123", cx, cy, 16f, fg, alpha, bold = true)
-            KeyAction.Mode -> drawLabel(canvas, state.mode, cx, cy, if (state.mode == "EN") 16f else 20f, fg, alpha, bold = true)
-            KeyAction.Space -> Unit  // blank, like Gboard
+            KeyAction.Mode -> drawIcon(canvas, R.drawable.ic_language, cx, cy, fg, 24f, alpha)  // Gboard's globe: Sing <-> English
+            KeyAction.Space -> drawLabel(canvas, if (state.mode == "EN" && !state.khmerLayout) "English" else "ខ្មែរ", cx, cy, 14f, theme.onSurfaceVariant)  // the language, as Gboard shows it
             KeyAction.Settings -> Unit  // only a long press, never a key of its own
         }
     }
@@ -648,12 +649,14 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         text.alpha = 255
     }
 
-    private fun drawIcon(canvas: Canvas, id: Int, cx: Float, cy: Float, color: Int, sizeDp: Float = 24f) {
+    private fun drawIcon(canvas: Canvas, id: Int, cx: Float, cy: Float, color: Int, sizeDp: Float = 24f, alpha: Int = 255) {
         val icon = icons.getOrPut(id) { context.getDrawable(id)!!.mutate() }
         val h = px(sizeDp) / 2
         icon.setBounds((cx - h).toInt(), (cy - h).toInt(), (cx + h).toInt(), (cy + h).toInt())
         icon.setTint(color)
+        icon.alpha = alpha
         icon.draw(canvas)
+        icon.alpha = 255
     }
 
     /** The character above the finger: a round bubble sitting on the key (reference.md: about 57 dp on Gboard). */
