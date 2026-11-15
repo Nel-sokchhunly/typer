@@ -165,7 +165,8 @@ struct KeyboardView: View {
 
     /// The bar's rightmost slot when the bar is drawn here; the idle punctuation bar draws it as a key (KeyLayout).
     private var slot: some View {
-        barButton(Text(model.slotLabel).font(.system(size: 16, weight: .semibold)), style: .switcher, onSlot)
+        // while composing it is keep-Latin, styled like the chevron; only the layout switch gets the switcher look
+        barButton(Text(model.slotLabel).font(.system(size: 16, weight: .semibold)), style: model.typed.isEmpty ? .switcher : .function, onSlot)
     }
 
     /// A bar button with a full-height hit area that, like the keys, fires on touch-up.
