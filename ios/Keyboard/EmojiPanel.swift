@@ -31,15 +31,24 @@ struct EmojiPanel: View {
                     HStack(alignment: .top, spacing: 12) {  // not lazy: section widths are exact, so jumps land (the cells are lazy)
                         ForEach(sections, id: \.title) { s in
                             VStack(alignment: .leading, spacing: 0) {
-                                Text(s.title).font(.system(size: 12, weight: .semibold)).foregroundColor(.secondary)
+                                Text(s.title).font(.system(size: 12, weight: .semibold)).foregroundColor(.secondary).fixedSize()
                                     .frame(height: titleHeight)
-                                LazyHGrid(rows: Array(repeating: GridItem(.fixed(cell), spacing: 0), count: rows), spacing: 0) {
-                                    ForEach(s.emoji, id: \.self) { e in
-                                        EmojiCell(emoji: e, size: cell, width: geo.size.width, tones: tones, picker: $picker, onPick: onPick)
+                                // explicit columns, not a LazyHGrid: the width is exactly columns * cell, so sections never overlap
+                                LazyHStack(spacing: 0) {
+                                    ForEach(0..<(s.emoji.count + rows - 1) / rows, id: \.self) { col in
+                                        VStack(spacing: 0) {
+                                            ForEach(s.emoji[col * rows..<min(s.emoji.count, (col + 1) * rows)], id: \.self) { e in
+                                                EmojiCell(emoji: e, size: cell, width: geo.size.width, tones: tones, picker: $picker, onPick: onPick)
+                                            }
+                                        }
+                                        .frame(width: cell, alignment: .top)
                                     }
                                 }
                             }
-                            .frame(width: CGFloat((s.emoji.count + rows - 1) / rows) * cell, alignment: .leading)
+                            // at least as wide as the title (about 7pt a letter), so a short Recents doesn't truncate it
+                            .frame(width: max(CGFloat((s.emoji.count + rows - 1) / rows) * cell, CGFloat(s.title.count) * 7),
+                                   alignment: .leading)
+                            .clipped()
                             .id(s.title)
                         }
                     }
@@ -115,8 +124,9 @@ struct TonePicker {
     }
 }
 
-/// A grid cell: tap inserts; holding 0.4 s on one with skin tones opens the picker, and the cell then shows the tone
-/// picked. One drag gesture does both, in the panel's space so scrolling (which moves the cell) reads as movement.
+/// A grid cell: tap inserts; holding 0.4 s on one with skin tones opens the picker above it, sliding highlights an
+/// option, releasing inserts it and the cell then shows that tone. The drag is in the panel's space so the picker
+/// and the finger agree.
 private struct EmojiCell: View {
     let emoji: String
     let size: CGFloat
@@ -125,46 +135,38 @@ private struct EmojiCell: View {
     @Binding var picker: TonePicker?
     let onPick: (String) -> Void
     @State private var picked: String?
-    @State private var hold: DispatchWorkItem?
-    @State private var start: CGPoint?
+    /// The release that closes the picker also reads as a tap; ignore it.
+    @State private var held = false
 
     var body: some View {
         let shown = picked ?? emoji
-        Text(shown).font(.system(size: size * 0.64)).frame(width: size, height: size)
-            .contentShape(Rectangle())
-            .simultaneousGesture(DragGesture(minimumDistance: 0, coordinateSpace: .named(EmojiPanel.space))
-                .onChanged { v in
-                    if start != v.startLocation {  // a new touch
-                        start = v.startLocation
-                        let options = tones(shown)
-                        hold?.cancel()
-                        guard !options.isEmpty else { return }
-                        let w = TonePicker.optionWidth * CGFloat(options.count), h: CGFloat = 48
-                        let x = min(max(v.startLocation.x - w / 2, KeyLayout.margin), width - KeyLayout.margin - w)
-                        let y = max(0, v.startLocation.y - size / 2 - h - 4)
-                        let item = DispatchWorkItem {
-                            picker = TonePicker(options: options, frame: CGRect(x: x, y: y, width: w, height: h),
+        GeometryReader { g in
+            Text(shown).font(.system(size: size * 0.64)).frame(width: size, height: size)
+                .contentShape(Rectangle())
+                .onTapGesture { if !held { onPick(shown) } }
+                .simultaneousGesture(LongPressGesture(minimumDuration: 0.4, maximumDistance: 10)
+                    .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(EmojiPanel.space)))
+                    .onChanged { value in
+                        guard case .second(true, let drag) = value else { return }
+                        if picker == nil {
+                            let options = tones(shown)
+                            guard !options.isEmpty else { return }
+                            let f = g.frame(in: .named(EmojiPanel.space)), w = TonePicker.optionWidth * CGFloat(options.count)
+                            let x = min(max(f.midX - w / 2, KeyLayout.margin), width - KeyLayout.margin - w)
+                            held = true
+                            picker = TonePicker(options: options, frame: CGRect(x: x, y: max(0, f.minY - 52), width: w, height: 48),
                                                 selected: options.firstIndex(of: shown))
                         }
-                        hold = item
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: item)
-                    } else if picker != nil {
-                        picker?.selected = picker?.index(at: v.location)
-                    } else if hypot(v.translation.width, v.translation.height) > 10 {
-                        hold?.cancel()
+                        if let drag { picker?.selected = picker?.index(at: drag.location) }
                     }
-                }
-                .onEnded { v in
-                    hold?.cancel()
-                    start = nil
-                    if let p = picker {
+                    .onEnded { _ in
+                        if let p = picker, let i = p.selected { picked = p.options[i]; onPick(p.options[i]) }
                         picker = nil
-                        if let i = p.index(at: v.location) { picked = p.options[i]; onPick(p.options[i]) }
-                    } else if hypot(v.translation.width, v.translation.height) < 10 {
-                        onPick(shown)
-                    }
-                })
-            .accessibilityLabel(shown).accessibilityAddTraits(.isButton).accessibilityAction { onPick(shown) }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { held = false }
+                    })
+        }
+        .frame(width: size, height: size)
+        .accessibilityElement().accessibilityLabel(shown).accessibilityAddTraits(.isButton).accessibilityAction { onPick(shown) }
     }
 }
 
