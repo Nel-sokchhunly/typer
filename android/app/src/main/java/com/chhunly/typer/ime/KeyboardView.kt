@@ -114,6 +114,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         val clips: List<String> = emptyList(),
         /** Text copied in the last minute: the idle bar offers it as a one-tap paste. */
         val freshClip: String? = null,
+        /** The Latin of a Phrase that just went in as Khmer when the caret left it: the idle bar offers it back. */
+        val undo: String? = null,
         /** Next-word suggestions after a word, idle (they take the punctuation's place; Khmer keeps ។). */
         val next: List<String> = emptyList(),
         /** The field's kind: email fields get @, URL fields /, and both .com on the period's long press. */
@@ -702,11 +704,14 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     private fun stripSlots(): List<StripSlot> = when {
         state.composing -> StripLayout.composing(metrics)
+        state.undo != null && !state.clipboard ->
+            StripLayout.punctuation(metrics, emptyList(), StripAction.Undo)
         state.words.isNotEmpty() && !state.clipboard -> StripLayout.words(metrics, state.words.size, state.glided, state.emojiSuggestion != null)
         state.next.isNotEmpty() && !state.clipboard && state.freshClip == null ->
             StripLayout.next(metrics, state.next.size, if (state.mode == "EN" || state.khmerLayout) emptyList() else listOf("។"), state.emojiSuggestion != null)
-        state.khmerLayout -> StripLayout.punctuation(metrics, KeyLayout.khmerLayoutPunctuation, state.freshClip != null)
-        else -> StripLayout.punctuation(metrics, if (state.mode == "EN") KeyLayout.englishPunctuation else KeyLayout.punctuation, state.freshClip != null)
+        state.khmerLayout -> StripLayout.punctuation(metrics, KeyLayout.khmerLayoutPunctuation, StripAction.Paste.takeIf { state.freshClip != null })
+        else -> StripLayout.punctuation(metrics, if (state.mode == "EN") KeyLayout.englishPunctuation else KeyLayout.punctuation,
+            StripAction.Paste.takeIf { state.freshClip != null })
     }
 
     private fun stripLabel(a: StripAction): String = when (a) {
@@ -715,6 +720,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         StripAction.Layout -> if (state.khmerLayout) "abc" else LAYOUT_KHMER
         StripAction.Clipboard -> ""
         StripAction.Paste -> oneLine(state.freshClip ?: "")
+        StripAction.Undo -> state.undo ?: ""
         is StripAction.Next -> state.next.getOrNull(a.index) ?: ""
         StripAction.Emoji -> state.emojiSuggestion ?: ""
         StripAction.Expand -> state.suggestions.size.toString()
@@ -762,8 +768,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                 StripAction.Latin -> drawLabel(canvas, "abc", r.centerX(), r.centerY(), 16f, fg, bold = true)
                 StripAction.Layout -> drawLabel(canvas, stripLabel(a), r.centerX(), r.centerY(), 16f, fg, if (dim) 102 else 255, bold = true)
                 StripAction.Clipboard -> drawIcon(canvas, R.drawable.ic_clipboard, r.centerX(), r.centerY(), fg, 20f)
-                StripAction.Paste -> {
-                    drawIcon(canvas, R.drawable.ic_clipboard, r.left + px(18f), r.centerY(), fg, 16f)
+                StripAction.Paste, StripAction.Undo -> {
+                    drawIcon(canvas, if (a == StripAction.Undo) R.drawable.ic_undo else R.drawable.ic_clipboard, r.left + px(18f), r.centerY(), fg, 16f)
                     font(false)
                     text.textSize = 15f * sp
                     text.color = fg
@@ -1089,6 +1095,9 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
      * SYSTEM follows the phone's touch-feedback setting (no FLAG_IGNORE_GLOBAL_SETTING), with a tap on press and a
      * lighter one on release. LIGHT and STRONG are a fixed tick or click on press only; OFF is silent.
      */
+    /** The space-bar drag reached the Phrase's edge: one firm tick. */
+    fun bump() = haptic(HapticFeedbackConstants.LONG_PRESS)
+
     private fun haptic(constant: Int) {
         when (haptics) {
             HapticsChoice.SYSTEM -> performHapticFeedback(constant)
@@ -1151,6 +1160,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                 StripAction.Clipboard -> if (state.clipboard) "close clipboard" else "clipboard"
                 StripAction.Emoji -> "emoji, ${state.emojiSuggestion?.let { emojiData?.label(it) } ?: ""}"
                 StripAction.Paste -> "paste, ${stripLabel(StripAction.Paste)}"
+                StripAction.Undo -> "undo Khmer, ${stripLabel(StripAction.Undo)}"
                 StripAction.Layout -> when {
                     state.khmerLayout -> "Sing layout"
                     state.layoutLocked -> "Khmer layout, not in this field"

@@ -277,6 +277,8 @@ sealed interface StripAction {
     data object Clipboard : StripAction
     /** Text copied in the last minute, offered as a one-tap paste. */
     data object Paste : StripAction
+    /** The Phrase just went in as Khmer because the caret left it: tap to have the Latin Phrase back. */
+    data object Undo : StripAction
     /** A next-word suggestion (index into the list). */
     data class Next(val index: Int) : StripAction
     /** An emoji for the word just typed ("love" -> ❤️). */
@@ -325,14 +327,14 @@ object StripLayout {
     const val CLIPBOARD = 44f
 
     /**
-     * Idle: the clipboard button, the punctuation row (or, with `paste`, the freshly copied text to paste), then the
-     * layout switch.
+     * Idle: the clipboard button, the punctuation row (or, with `wide`, one wide pill instead: the freshly copied text
+     * to paste, or the undo of a Phrase that went in as Khmer), then the layout switch.
      */
-    fun punctuation(m: Metrics, marks: List<String>, paste: Boolean = false): List<StripSlot> {
+    fun punctuation(m: Metrics, marks: List<String>, wide: StripAction? = null): List<StripSlot> {
         val clip = StripSlot(StripAction.Clipboard, pill(m, m.margin, CLIPBOARD))
         val left = m.margin + CLIPBOARD + GAP
         val right = m.width - m.margin - LAYOUT - GAP
-        if (paste) return listOf(clip, StripSlot(StripAction.Paste, pill(m, left, right - left)), layout(m))
+        if (wide != null) return listOf(clip, StripSlot(wide, pill(m, left, right - left)), layout(m))
         val w = (right - left - (marks.size - 1) * GAP) / marks.size
         return listOf(clip) + marks.mapIndexed { i, s -> StripSlot(StripAction.Punctuation(s), pill(m, left + i * (w + GAP), w)) } + layout(m)
     }

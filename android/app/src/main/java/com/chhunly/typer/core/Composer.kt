@@ -216,9 +216,37 @@ class Composer(
      * The selection or text changed (onUpdateSelection), including the echoes of the Composer's own writes.
      * Mid-Phrase, if the caret no longer sits right after the Phrase, keep the Phrase as typed.
      */
-    fun textChanged(): Boolean {
+    fun textChanged(khmer: Boolean = false): Boolean {
         if (!isComposing || stillAfterPhrase()) return false
-        return keepLatin()
+        return if (khmer) leaveKhmer() != null else keepLatin()
+    }
+
+    /** What [leaveKhmer] put in for which Phrase, so the Keyboard can offer to take it back. */
+    data class Left(val latin: String, val khmer: String)
+
+    /**
+     * Android: the caret left the Phrase, so the Phrase goes in as its top Suggestion, as return does (computed now if
+     * it's stale), and nothing is learned. Null when there was no Phrase.
+     */
+    fun leaveKhmer(): Left? {
+        if (passingThrough() || !isComposing) return null
+        val latin = typed
+        val written = commit(0, learn = false) ?: return null
+        return Left(latin, written).also { lastLeft = it }
+    }
+
+    /** The latest [leaveKhmer]. */
+    var lastLeft: Left? = null
+        private set
+
+    /** Take a [leaveKhmer] back: `latin` is the Phrase again, caret at its end, over the editor's composing region. */
+    fun resume(latin: String): Boolean {
+        if (passthrough || isComposing || latin.isEmpty() || !usesMarkedText) return false
+        typed = latin
+        caret = latin.length
+        anchor = null
+        update()
+        return true
     }
 
     /**
@@ -271,17 +299,18 @@ class Composer(
     }
 
     /** A Pick must come from the current Phrase: if its result hasn't landed, compute it now. */
-    private fun commit(index: Int, learn: Boolean = true) {
+    /** Returns what went in, or null if the fallback found the caret moved and kept the Latin. */
+    private fun commit(index: Int, learn: Boolean = true): String? {
         val input = typed
         if (suggestionsFor != input) {
             scheduler.sync { suggestions = engine.suggest(input, 9) }
             suggestionsFor = input
         }
-        if (index !in suggestions.indices) {
-            write(input, final = true)
-            return
-        }
-        if (write(suggestions[index], final = true) && learn) scheduler.async { engine.pick(input, index) }
+        if (index !in suggestions.indices) return if (write(input, final = true)) input else null
+        val chosen = suggestions[index]
+        if (!write(chosen, final = true)) return null
+        if (learn) scheduler.async { engine.pick(input, index) }
+        return chosen
     }
 
     /** Leave the Phrase in the document as it stands (Latin), no learning. */

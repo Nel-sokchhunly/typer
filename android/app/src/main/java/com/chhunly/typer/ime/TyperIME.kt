@@ -1,5 +1,6 @@
 package com.chhunly.typer.ime
 
+import kotlin.math.abs
 import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.os.Handler
@@ -87,6 +88,15 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     private var tones: Map<String, String> = emptyMap()
     private val emojiPrefs by lazy { getSharedPreferences("typer_emoji", MODE_PRIVATE) }
     private var dragCaret = -1
+    /** Space-bar drag mid-Phrase: clusters pushed past the Phrase's edge; at [DETENT] the Phrase goes in as Khmer. */
+    private var dragOver = 0
+
+    /**
+     * A Phrase that went in as Khmer because the caret left it: `khmer` at `start`, and the selection that followed.
+     * The bar offers the Latin back until the next key, tap, caret move, field change or hide.
+     */
+    private data class Undo(val latin: String, val khmer: String, val start: Int, val selStart: Int, val selEnd: Int)
+    private var undo: Undo? = null
 
     // English words: loaded once, off the main thread
     @Volatile private var english: EnglishWords? = null
@@ -218,6 +228,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         super.onStartInput(attribute, restarting)
         proxy.selection(attribute.initialSelStart, attribute.initialSelEnd, -1, -1)
         glided = null
+        undo = null
         clipboardOpen = false
         val type = fieldType(attribute)
         val secure = secure(attribute)
@@ -318,6 +329,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         composer.fieldEnded()
+        undo = null
         view?.reset()
         showAll = false
         emojiOpen = false
@@ -335,9 +347,46 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         proxy.selection(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         if (dragCaret >= 0) return  // our own caret moves while dragging on the space bar
         if (glided != null && (newSelStart != newSelEnd || newSelEnd != glideEnd)) glided = null  // the caret moved away
-        // A tap inside the Phrase: it stays a Phrase, with the caret there (Composer.caretMoved). Anywhere else ends it.
-        if (!caretInPhrase(newSelStart, newSelEnd, candidatesStart, candidatesEnd)) composer.textChanged()
+        undo?.let { u -> if ((newSelStart != u.selStart || newSelEnd != u.selEnd) && !selectionIs(u.selStart, u.selEnd)) undo = null }
+        // A tap inside the Phrase: it stays a Phrase, with the caret there (Composer.caretMoved). Anywhere else it
+        // goes in as Khmer, the caret (or selection) kept where the user put it.
+        if (!caretInPhrase(newSelStart, newSelEnd, candidatesStart, candidatesEnd)) leavePhrase(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         refresh()
+    }
+
+    /** The editor's selection right now (an update may be a late echo). */
+    private fun selectionIs(start: Int, end: Int): Boolean {
+        val t = currentInputConnection?.getExtractedText(ExtractedTextRequest(), 0) ?: return false
+        return t.startOffset + t.selectionStart == start && t.startOffset + t.selectionEnd == end
+    }
+
+    /**
+     * The caret left the Phrase. With the Phrase's span known, it goes in as its top Suggestion (Composer.leaveKhmer)
+     * and the selection is put back where the user put it, shifted by the length change if it was after the Phrase.
+     * Without a span (some editors drop it), the Composer decides as before: the Latin stays.
+     */
+    private fun leavePhrase(selStart: Int, selEnd: Int, spanStart: Int, spanEnd: Int) {
+        val ic = currentInputConnection
+        if (ic == null || !composer.isComposing || spanStart < 0 || spanEnd - spanStart != composer.typed.length) {
+            composer.textChanged()
+            return
+        }
+        ic.beginBatchEdit()
+        val latin = composer.typed
+        if (composer.textChanged(khmer = true) && !composer.isComposing) {
+            val khmer = composer.lastLeft?.takeIf { it.latin == latin }?.khmer ?: latin
+            val delta = khmer.length - latin.length
+            fun map(p: Int) = when {
+                p >= spanEnd -> p + delta
+                p > spanStart -> spanStart + khmer.length
+                else -> p
+            }
+            val a = map(selStart)
+            val b = map(selEnd)
+            ic.setSelection(a, b)
+            if (khmer != latin) undo = Undo(latin, khmer, spanStart, a, b)
+        }
+        ic.endBatchEdit()
     }
 
     /**
@@ -420,6 +469,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             next = next,
             emojiSuggestion = emojiSuggestion,
             freshClip = if (clipboardOpen || composer.isComposing) null else clips.fresh(SystemClock.elapsedRealtime()),
+            undo = if (composer.isComposing) null else undo?.latin,
         )
     }
 
@@ -457,6 +507,11 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         val wasSpace = lastWasSpace
         lastWasSpace = action == KeyAction.Space
         if (emojiSearch) return searchKey(action)
+        val u = undo
+        undo = null
+        if (u != null && action == KeyAction.Backspace && u.selStart == u.selEnd && u.selEnd == u.start + u.khmer.length) {
+            return undoLeave(u)  // right after the Khmer that went in: backspace takes it back, like Gboard's undo
+        }
         if (action == KeyAction.Space && wasSpace && glided == null && doubleSpace()) {
             lastWasSpace = false
             return
@@ -605,7 +660,10 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onStrip(action: StripAction) {
+        val u = undo
+        if (action != StripAction.Clipboard) undo = null
         when (action) {
+            StripAction.Undo -> u?.let { undoLeave(it) }
             is StripAction.Suggestion -> handle(composer.candidateTapped(action.index))
             StripAction.Latin -> handle(composer.rawLatin())
             StripAction.Layout -> layoutTapped()
@@ -712,7 +770,25 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     }
 
     /** Hold or slide on the space bar: the caret follows, cluster by cluster. Mid-Phrase, it moves inside the Phrase. */
+    /**
+     * The Phrase that went in as Khmer is the Latin Phrase again, composing, if the Khmer is still where it went.
+     * Otherwise (the text changed under it) nothing happens.
+     */
+    private fun undoLeave(u: Undo) {
+        val ic = currentInputConnection ?: return
+        val t = ic.getExtractedText(ExtractedTextRequest(), 0)
+        val at = u.start - (t?.startOffset ?: 0)
+        val there = t?.text?.toString()?.let { if (at >= 0 && at + u.khmer.length <= it.length) it.substring(at, at + u.khmer.length) else null }
+        if (there != u.khmer) return refresh()
+        ic.beginBatchEdit()
+        ic.setComposingRegion(u.start, u.start + u.khmer.length)
+        composer.resume(u.latin)
+        ic.endBatchEdit()
+        refresh()
+    }
+
     override fun onDragStart() {
+        dragOver = 0
         if (composer.isComposing) return  // onCaret moves the Composer's caret; the Phrase and its Suggestions stay
         dragCaret = proxy.selEnd
         refresh()
@@ -720,9 +796,10 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
 
     override fun onCaret(clusters: Int) {
         val ic = currentInputConnection ?: return
-        if (composer.isComposing) {
-            if (composer.moveCaret(clusters)) refresh()
-            return
+        if (composer.isComposing) return phraseDrag(clusters)
+        if (undo != null) {
+            undo = null
+            render()
         }
         if (dragCaret < 0) return
         val before = ic.getTextBeforeCursor(64, 0)?.toString()
@@ -733,12 +810,51 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         ic.setSelection(dragCaret, dragCaret)
     }
 
+    /**
+     * Space-bar drag mid-Phrase. Inside, the caret moves in the Phrase. At an edge it stops with a bump; pushed on by
+     * [DETENT] more clusters (about a key's width), the Phrase goes in as Khmer and the drag carries on through the text.
+     */
+    private fun phraseDrag(clusters: Int) {
+        val len = composer.typed.length
+        val target = composer.caret + clusters
+        if (target in 0..len) {
+            dragOver = 0
+            if (composer.moveCaret(clusters)) refresh()
+            return
+        }
+        val edge = target.coerceIn(0, len)
+        if (edge != composer.caret) composer.moveCaret(edge - composer.caret)
+        if (dragOver == 0) view?.bump()
+        dragOver += abs(target - edge)
+        if (dragOver >= DETENT) leaveByDrag(left = clusters < 0)
+        refresh()
+    }
+
+    private fun leaveByDrag(left: Boolean) {
+        val ic = currentInputConnection ?: return
+        val start = proxy.composeStart
+        if (start < 0 || proxy.composeEnd - start != composer.typed.length) return  // span unknown: stay at the edge
+        ic.beginBatchEdit()
+        val gone = composer.leaveKhmer()
+        if (gone != null) {
+            val caret = if (left) start else start + gone.khmer.length
+            ic.setSelection(caret, caret)
+            dragCaret = caret
+            if (gone.khmer != gone.latin) undo = Undo(gone.latin, gone.khmer, start, caret, caret)
+        }
+        ic.endBatchEdit()
+        dragOver = 0
+    }
+
     override fun onDragEnd() {
+        dragOver = 0
         dragCaret = -1
         refresh()
     }
 
     companion object {
+        /** Clusters of space-bar travel past a Phrase's edge (10 dp each) before the Phrase goes in as Khmer. */
+        private const val DETENT = 4
         /** A clip longer than this is kept cut short (a whole document copied stays out of memory). */
         private const val MAX_CLIP = 5000
         private val PASSWORDS = setOf(

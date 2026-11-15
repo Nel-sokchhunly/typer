@@ -257,6 +257,60 @@ scenario_caret() { # mid-Phrase caret: a space-bar drag or a tap inside the Phra
     shot caret
 }
 
+scenario_leave() { # the caret leaves a Phrase: it goes in as Khmer; undo brings the Latin back; the drag stops at the edge first
+    open_app || { FAILED=1; return; }
+    type_keys tov
+    tap $(return_key); sleep 0.5  # ទៅ
+    type_keys sala
+    wait_for "សាលា" 30 >/dev/null
+    set -- $(ui rect try)
+    tap $(($1 + 24)) $((($2 + $4) / 2))  # the field's start: before ទៅ, outside the Phrase
+    sleep 0.6
+    check "leave: a tap outside the Phrase puts it in as Khmer" "ទៅសាលា" "$(field_text)"
+    check "leave: the bar offers the Latin back" "|undo Khmer, sala|" "|$(ui labels | tr '\n' '|')"
+    shot leave-undo
+    type_keys k  # the caret stayed where tapped: k starts a Phrase before ទៅ
+    sleep 0.4
+    check "leave: the caret stayed where the tap put it" "kទៅសាលា" "$(field_text)"
+    tap $(key_at delete); sleep 0.4
+    tap $(ui bounds "undo Khmer, sala" 2>/dev/null || echo) 2>/dev/null  # gone after a key: nothing to tap
+    check "leave: a key ends the undo" "ទៅសាលា" "$(field_text)"
+
+    open_app || { FAILED=1; return; }
+    type_keys tov
+    tap $(return_key); sleep 0.5
+    type_keys sala
+    wait_for "សាលា" 30 >/dev/null
+    set -- $(ui rect try)
+    tap $(($1 + 24)) $((($2 + $4) / 2))
+    sleep 0.6
+    xy=$(ui bounds "undo Khmer, sala") && tap $xy
+    sleep 0.6
+    check "leave: undo brings the Latin Phrase back" "ទៅsala" "$(field_text)"
+    check "leave: undo makes it a Phrase again" "|abc, keep Latin|" "|$(ui labels | tr '\n' '|')"
+    tap $(return_key); sleep 0.5
+    check "leave: return after undo puts it in as Khmer" "ទៅសាលា" "$(field_text)"
+
+    open_app || { FAILED=1; return; }
+    type_keys tov
+    tap $(return_key); sleep 0.5
+    type_keys knhom
+    wait_for "ខ្ញុំ" 30 >/dev/null
+    set -- $(key_at space)
+    "$ADB" shell input motionevent DOWN $1 $2
+    sleep 0.5
+    for i in 1 2 3 4 5 6; do "$ADB" shell input motionevent MOVE $(($1 - 30 * i)) $2; sleep 0.1; done  # to the edge and one past
+    sleep 0.4
+    check "leave: the drag stops at the Phrase's edge" "|abc, keep Latin|" "|$(ui labels | tr '\n' '|')"
+    for i in 7 8 9 10 11 12 13; do "$ADB" shell input motionevent MOVE $(($1 - 30 * i)) $2; sleep 0.1; done  # past the detent
+    "$ADB" shell input motionevent UP $(($1 - 390)) $2
+    sleep 0.6
+    check "leave: pushing on puts it in as Khmer" "ទៅខ្ញុំ" "$(field_text)"
+    type_keys x; sleep 0.4
+    check "leave: and the drag carried on into the text" "xទៅខ្ញុំ" "$(field_text)"
+    shot leave
+}
+
 scenario_learn() { # Pick a non-first Suggestion from the panel; after a Keyboard restart it ranks first
     "$ADB" shell run-as $PKG rm -f files/user/picks.tsv files/user/user.tsv
     restart_keyboard
@@ -916,7 +970,7 @@ scenario_compare() {
 }
 
 log "Typer Android e2e $(date)  device: $("$ADB" shell getprop ro.product.model | tr -d '\r') API $("$ADB" shell getprop ro.build.version.sdk | tr -d '\r')"
-for s in ${*:-tracer phrase caret learn reset password english glide clipboard next emojisuggest settings longpress keys emoji font khmer talkback}; do
+for s in ${*:-tracer phrase caret leave learn reset password english glide clipboard next emojisuggest settings longpress keys emoji font khmer talkback}; do
     log "-- $s"
     "scenario_$s"
 done
