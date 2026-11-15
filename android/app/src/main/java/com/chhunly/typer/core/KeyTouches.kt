@@ -67,7 +67,7 @@ class KeyTouches(private val step: Float = 10f, private val glideStart: Float = 
         val backspace = key.action == KeyAction.Backspace
         held = Held(id, key, backspace, x, y).also { if (glide && letter(key)) { it.xs += x; it.ys += y } }
         if (backspace) fx += listOf(KeyEffect.Fire(KeyAction.Backspace), KeyEffect.StartRepeat)
-        else if (key.hint != null || key.more.isNotEmpty() || key.action == KeyAction.Space) fx += KeyEffect.StartLongPress
+        else if (key.hint != null || key.more.isNotEmpty() || key.long != null || key.action == KeyAction.Space) fx += KeyEffect.StartLongPress
         return fx
     }
 
@@ -127,6 +127,10 @@ class KeyTouches(private val step: Float = 10f, private val glideStart: Float = 
         if (h.key.action == KeyAction.Space) {
             h.dragging = true  // hold space, then slide: the caret follows
             return listOf(KeyEffect.DragStarted)
+        }
+        h.key.long?.let {
+            h.long = true
+            return listOf(KeyEffect.Fire(it))
         }
         if (h.key.more.size > 1) {
             h.long = true

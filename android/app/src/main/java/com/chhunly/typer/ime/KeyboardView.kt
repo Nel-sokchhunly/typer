@@ -116,6 +116,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         val freshClip: String? = null,
         /** Next-word suggestions after a word, idle (they take the punctuation's place; Khmer keeps ។). */
         val next: List<String> = emptyList(),
+        /** The field's kind: email fields get @, URL fields /, and both .com on the period's long press. */
+        val field: com.chhunly.typer.core.FieldKind = com.chhunly.typer.core.FieldKind.TEXT,
         /** An emoji for the word just typed, shown in the bar beside the words. */
         val emojiSuggestion: String? = null,
     ) {
@@ -133,7 +135,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         set(value) {
             if (field == value) return
             val relayout = field.page != value.page || (field.shift != Shift.OFF) != (value.shift != Shift.OFF) ||
-                field.emoji != value.emoji || field.emojiSearch != value.emojiSearch || field.letters != value.letters
+                field.emoji != value.emoji || field.emojiSearch != value.emojiSearch || field.letters != value.letters ||
+                field.field != value.field
             if (field.lastSlot != value.lastSlot) lastSlotChanged = SystemClock.uptimeMillis()
             if (field.panelOpen != value.panelOpen) panelScroll = 0f
             if (field.emoji != value.emoji) { emojiScroll = 0f; tonePopup = null }
@@ -203,25 +206,32 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     private class More(val key: Key, val options: List<Pair<String, Box>>, var picked: Int, val pointer: Int)
     private var morePopup: More? = null
 
+    /**
+     * The popup's first option sits over the key, the rest run right, or left when they don't fit to the right (the
+     * period, keys near the edge); so a long press released without sliding types the first option.
+     */
     private fun openMore(key: Key, pointer: Int) {
-        val k = key.box.width
+        val k = minOf(key.box.width, (metrics.width - 2 * metrics.margin) / key.more.size)
         val n = key.more.size
-        val w = n * k
-        val left = (key.box.left).coerceAtMost(metrics.width - metrics.margin - w).coerceAtLeast(metrics.margin)
         val top = (key.box.top - metrics.keyHeight - 4f).coerceAtLeast(0f)
-        val options = key.more.mapIndexed { i, s -> s to Box(left + i * k, top, k, metrics.keyHeight) }
-        morePopup = More(key, options, options.indexOfFirst { it.second.left <= key.box.centerX && key.box.centerX <= it.second.right }.coerceAtLeast(0), pointer)
+        val start = key.box.centerX - k / 2
+        val rightward = start + n * k <= metrics.width - metrics.margin
+        val options = key.more.mapIndexed { i, s ->
+            val left = if (rightward) start + i * k else start - i * k
+            s to Box(left.coerceIn(metrics.margin, metrics.width - metrics.margin - k), top, k, metrics.keyHeight)
+        }
+        morePopup = More(key, options, 0, pointer)
     }
 
     private fun movedMore(x: Float) {
         val m = morePopup ?: return
-        val i = m.options.indexOfFirst { x < it.second.right }.let { if (it < 0) m.options.size - 1 else it }
+        val i = m.options.indices.minByOrNull { abs(m.options[it].second.centerX - x) } ?: return
         if (i != m.picked) { m.picked = i; haptic(HapticFeedbackConstants.CLOCK_TICK) }
     }
 
     private fun drawMore(canvas: Canvas, m: More) {
         val first = m.options.first().second
-        val all = RectF(px(first.left), px(first.top), px(m.options.last().second.right), px(first.bottom))
+        val all = RectF(px(m.options.minOf { it.second.left }), px(first.top), px(m.options.maxOf { it.second.right }), px(first.bottom))
         fill.color = 0x33000000
         canvas.drawRoundRect(RectF(all.left, all.top + px(1.5f), all.right, all.bottom + px(1.5f)), px(12f), px(12f), fill)
         fill.color = theme.popup
@@ -241,7 +251,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     private var keysCache: List<Key>? = null
     private val keys: List<Key>
         get() = keysCache ?: (if (state.emoji && !state.emojiSearch) KeyLayout.emojiRow(metrics)
-        else KeyLayout.keys(metrics, if (state.emojiSearch) KeyPage.LETTERS else state.page, state.shift != Shift.OFF, state.khmerLayout, numberRow && !state.emojiSearch)).also { keysCache = it }
+        else KeyLayout.keys(metrics, if (state.emojiSearch) KeyPage.LETTERS else state.page, state.shift != Shift.OFF, state.khmerLayout, numberRow && !state.emojiSearch, state.field)).also { keysCache = it }
 
     /** Emoji data, set by the service once loaded off the main thread; the emoji key does nothing until then. */
     var emojiData: com.chhunly.typer.core.EmojiData? = null
@@ -598,6 +608,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                     else -> 22f
                 }
                 drawLabel(canvas, label, cx, cy, size, fg, alpha, onBaseline = a.text.length == 1 && !khmerPage)
+                if (key.long == KeyAction.Settings) drawIcon(canvas, R.drawable.ic_settings, r.right - px(9f), r.top + px(9f), theme.onSurfaceVariant, 11f)
                 key.hint?.let { hint ->
                     val it = KeyLayout.label(hint).removePrefix("\u25CC")
                     font(false)
@@ -620,6 +631,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             KeyAction.Symbols -> drawLabel(canvas, if (state.page == KeyPage.NUMBERS) "=\\<" else "?123", cx, cy, 16f, fg, alpha, bold = true)
             KeyAction.Mode -> drawLabel(canvas, state.mode, cx, cy, if (state.mode == "EN") 16f else 20f, fg, alpha, bold = true)
             KeyAction.Space -> Unit  // blank, like Gboard
+            KeyAction.Settings -> Unit  // only a long press, never a key of its own
         }
     }
 
@@ -1189,6 +1201,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         KeyAction.Symbols -> if (state.page == KeyPage.NUMBERS) "more symbols" else "numbers"
         KeyAction.Mode -> if (state.mode == "EN") "English mode" else "Khmer mode"
         KeyAction.Space -> "space"
+        KeyAction.Settings -> "Typer settings"
     }
 
     private var a11yFocused = NO_ID

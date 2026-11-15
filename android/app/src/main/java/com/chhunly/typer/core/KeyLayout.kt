@@ -32,6 +32,8 @@ sealed interface KeyAction {
     data object Return : KeyAction
     /** Open the emoji page. */
     data object Emoji : KeyAction
+    /** Open Typer's settings (the Companion app): long press on the comma key, as on Gboard. */
+    data object Settings : KeyAction
 }
 
 /** How a key is drawn: letters and space on the lightest surface, function keys on secondary container. */
@@ -41,7 +43,14 @@ enum class KeyStyle { LETTER, FUNCTION, ACTION, MODE }
  * `hint`: the long-press character, drawn small in the top-right corner (digits on the letters page's top row).
  * `more`: several long-press characters, chosen by sliding in a popup (the Khmer page); `hint` is then the first.
  */
-data class Key(val action: KeyAction, val box: Box, val style: KeyStyle, val hint: String? = null, val more: List<String> = emptyList())
+data class Key(
+    val action: KeyAction, val box: Box, val style: KeyStyle, val hint: String? = null, val more: List<String> = emptyList(),
+    /** What a long press does instead of a hint or alternates (the comma key's settings). */
+    val long: KeyAction? = null,
+)
+
+/** The field's kind, for the bottom row: email fields get @, URL fields /, and both .com on the period. */
+enum class FieldKind { TEXT, EMAIL, URL }
 
 /**
  * Sizes in dp from android/docs/reference.md (measured on Gboard): side margin 4.5, gap 1.29% of the width,
@@ -77,6 +86,31 @@ object KeyLayout {
     private val numbers = listOf(digits, "@#\$_&-+()/", "*\"':;!?")
     private val symbols = listOf("~`|•√π÷×¶∆", "£¢€¥^°={}\\", "%©®™✓[]")
 
+    /** Long press on rows 2 and 3 of the letters: Gboard's symbol for each key. */
+    private val SYMBOLS = mapOf(
+        'a' to "@", 's' to "#", 'd' to "$", 'f' to "%", 'g' to "&", 'h' to "-", 'j' to "+", 'k' to "(", 'l' to ")",
+        'z' to "*", 'x' to "\"", 'c' to "'", 'v' to ":", 'b' to ";", 'n' to "!", 'm' to "?",
+    )
+
+    /** Long press on a letter: its accented forms, after the digit or symbol. */
+    private val ACCENTS = mapOf(
+        'a' to listOf("à", "á", "â", "ä", "æ", "ã", "å", "ā"),
+        'c' to listOf("ç", "ć", "č"),
+        'e' to listOf("è", "é", "ê", "ë", "ē", "ė", "ę"),
+        'i' to listOf("î", "ï", "í", "ī", "į", "ì"),
+        'l' to listOf("ł"),
+        'n' to listOf("ñ", "ń"),
+        'o' to listOf("ô", "ö", "ò", "ó", "œ", "ø", "ō", "õ"),
+        's' to listOf("ß", "ś", "š"),
+        'u' to listOf("û", "ü", "ù", "ú", "ū"),
+        'y' to listOf("ÿ"),
+        'z' to listOf("ž", "ź", "ż"),
+    )
+
+    /** Long press on the period: more punctuation in text fields, domain endings in email and URL fields. */
+    private val PERIOD_MORE = listOf(".", "!", "?", ",", ";", ":", "'", "\"", "-")
+    private val DOMAINS = listOf(".", ".com", ".net", ".org", ".edu")
+
     /** The idle strip's keys: Khmer punctuation in Khmer mode, the common English ones in English mode (as iOS). */
     val punctuation = listOf("។", "៕", "ៗ", "៛", "?", "!")
     val englishPunctuation = listOf(",", ".", "'", "\"", "@", "-")
@@ -87,7 +121,7 @@ object KeyLayout {
      * `upper`: letters page with shift on. `khmerLayout`: the numbers and symbols pages were opened from the Khmer
      * layout, so they leave out the ខ/EN key (Khmer mode means nothing there) and ?123's way back reads កខគ.
      */
-    fun keys(m: Metrics, page: KeyPage, upper: Boolean, khmerLayout: Boolean = false, numberRow: Boolean = false): List<Key> {
+    fun keys(m: Metrics, page: KeyPage, upper: Boolean, khmerLayout: Boolean = false, numberRow: Boolean = false, field: FieldKind = FieldKind.TEXT): List<Key> {
         if (page == KeyPage.KHMER) return khmer(m, upper)
         val out = ArrayList<Key>(40)
         val k = m.keyWidth
@@ -96,8 +130,8 @@ object KeyLayout {
         val digitsRow = numberRow && page == KeyPage.LETTERS  // the digits get their own row above the letters
         val off = if (digitsRow) 1 else 0
         fun rowTop(i: Int) = m.rowsTop + (i + off) * m.pitch
-        fun add(a: KeyAction, x: Float, row: Int, w: Float, style: KeyStyle, hint: String? = null) =
-            out.add(Key(a, Box(x, rowTop(row), w, m.keyHeight), style, hint))
+        fun add(a: KeyAction, x: Float, row: Int, w: Float, style: KeyStyle, hint: String? = null, more: List<String> = emptyList()) =
+            out.add(Key(a, Box(x, rowTop(row), w, m.keyHeight), style, hint, more))
 
         val rows = when (page) {
             KeyPage.LETTERS, KeyPage.KHMER -> letters
@@ -117,14 +151,21 @@ object KeyLayout {
             for ((j, c) in rows[i].withIndex()) {
                 val s = c.toString()
                 val label = if (page == KeyPage.LETTERS && upper) s.uppercase() else s
-                val hint = if (page == KeyPage.LETTERS && i == 0 && !digitsRow) digits[j].toString() else null
-                add(KeyAction.Text(label), x, i, k, KeyStyle.LETTER, hint)
+                if (page == KeyPage.LETTERS) {
+                    // long press: the digit (top row) or Gboard's symbol (rows 2 and 3) first, then accents
+                    val first = if (i == 0) (if (digitsRow) null else digits[j].toString()) else SYMBOLS[c]
+                    val accents = ACCENTS[c].orEmpty().mapNotNull { a -> if (upper) a.uppercase().takeIf { it.length == 1 } else a }
+                    val options = listOfNotNull(first) + accents
+                    add(KeyAction.Text(label), x, i, k, KeyStyle.LETTER, options.firstOrNull(), if (options.size > 1) options else emptyList())
+                } else {
+                    add(KeyAction.Text(label), x, i, k, KeyStyle.LETTER)
+                }
                 x += k + g
             }
             if (i == 2) add(KeyAction.Backspace, m.width - m.margin - wide, i, wide, KeyStyle.FUNCTION)
         }
 
-        bottomRow(m, out, mode = page == KeyPage.LETTERS || !khmerLayout, punctuation = true)
+        bottomRow(m, out, mode = page == KeyPage.LETTERS || !khmerLayout, punctuation = true, field = field)
         return out
     }
 
@@ -132,24 +173,29 @@ object KeyLayout {
      * The bottom row: ?123, ខ/EN (`mode`), comma, emoji, space, period, return. The Khmer layout has no ខ/EN key and
      * no comma or period keys (they are in its bar); space takes the room left.
      */
-    private fun bottomRow(m: Metrics, out: MutableList<Key>, mode: Boolean, punctuation: Boolean) {
+    private fun bottomRow(m: Metrics, out: MutableList<Key>, mode: Boolean, punctuation: Boolean, field: FieldKind = FieldKind.TEXT) {
         val k = m.keyWidth
         val g = m.gap
         val wide = 1.5f * k + 0.5f * g
         val top = m.rowsTop + m.bottomRow * m.pitch
         val right = m.width - m.margin - wide  // the return key's left edge
         var x = m.margin
-        fun next(a: KeyAction, w: Float, style: KeyStyle) {
-            out.add(Key(a, Box(x, top, w, m.keyHeight), style))
+        fun next(a: KeyAction, w: Float, style: KeyStyle, more: List<String> = emptyList(), long: KeyAction? = null) {
+            out.add(Key(a, Box(x, top, w, m.keyHeight), style, null, more, long))
             x += w + g
         }
         next(KeyAction.Page, wide, KeyStyle.FUNCTION)
         if (mode) next(KeyAction.Mode, k, KeyStyle.MODE)
-        if (punctuation) next(KeyAction.Text(","), k, KeyStyle.FUNCTION)
+        val comma = when (field) {
+            FieldKind.EMAIL -> "@"
+            FieldKind.URL -> "/"
+            FieldKind.TEXT -> ","
+        }
+        if (punctuation) next(KeyAction.Text(comma), k, KeyStyle.FUNCTION, long = KeyAction.Settings)
         next(KeyAction.Emoji, k, KeyStyle.FUNCTION)  // where Gboard has it, after the comma
         val after = if (punctuation) k + g else 0f  // the period, after space
         next(KeyAction.Space, right - g - after - x, KeyStyle.LETTER)
-        if (punctuation) next(KeyAction.Text("."), k, KeyStyle.FUNCTION)
+        if (punctuation) next(KeyAction.Text("."), k, KeyStyle.FUNCTION, if (field == FieldKind.TEXT) PERIOD_MORE else DOMAINS)
         out.add(Key(KeyAction.Return, Box(right, top, wide, m.keyHeight), KeyStyle.ACTION))
     }
 

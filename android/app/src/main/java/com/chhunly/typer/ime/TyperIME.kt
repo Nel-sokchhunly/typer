@@ -6,12 +6,14 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.content.ClipboardManager
+import android.content.Intent
 import android.provider.UserDictionary
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowInsetsController
 import android.view.inputmethod.EditorInfo
+import com.chhunly.typer.core.FieldKind
 import com.chhunly.typer.core.NextWords
 import com.chhunly.typer.core.ClipHistory
 import com.chhunly.typer.core.AutoCap
@@ -56,6 +58,8 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     private var letters = KeyPage.LETTERS
     /** Password, email and number fields: the Sing layout only, while focused; [letters] is kept for later. */
     private var layoutLocked = false
+    /** Email, URL or other: the bottom row's @ or / and the period's long press. */
+    private var fieldKind = FieldKind.TEXT
     private val keyboardPrefs by lazy { getSharedPreferences("typer_keyboard", MODE_PRIVATE) }
     /** The letters page for this field: the chosen layout, or the Sing layout in a locked field. */
     private fun lettersPage() = if (layoutLocked) KeyPage.LETTERS else letters
@@ -220,6 +224,11 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         val variation = attribute.inputType and InputType.TYPE_MASK_VARIATION
         val password = (attribute.inputType and InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_TEXT && variation in PASSWORDS
         layoutLocked = secure || password || type == FieldType.EMAIL || type == FieldType.NUMBER
+        fieldKind = when {
+            type == FieldType.EMAIL -> FieldKind.EMAIL
+            variation == InputType.TYPE_TEXT_VARIATION_URI -> FieldKind.URL
+            else -> FieldKind.TEXT
+        }
         wordsAllowed = type == FieldType.TEXT && !password && variation != InputType.TYPE_TEXT_VARIATION_URI &&
             (attribute.inputType and InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_TEXT &&
             (attribute.inputType and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS) == 0
@@ -374,6 +383,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             recents = recents,
             tones = tones,
             letters = lettersPage(),
+            field = fieldKind,
             layoutLocked = layoutLocked,
             glide = composer.mode == "EN" && wordsAllowed && english != null,
             glided = glided != null,
@@ -445,7 +455,14 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             }
             KeyAction.Mode -> modeTapped()
             KeyAction.Emoji -> openEmoji()
+            KeyAction.Settings -> openSettings()
         }
+    }
+
+    /** Long press on the comma key: the Keyboard goes away and Typer's settings (the Companion app) open. */
+    private fun openSettings() {
+        requestHideSelf(0)
+        startActivity(Intent(this, com.chhunly.typer.app.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
     }
 
     // ---- emoji ----
