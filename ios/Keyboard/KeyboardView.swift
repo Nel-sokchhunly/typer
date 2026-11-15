@@ -92,6 +92,7 @@ struct KeyboardView: View {
     /// The character above the finger.
     private func preview(_ key: Key) -> some View {
         Text(look(key.action).text ?? "").font(.system(size: 36)).foregroundColor(.primary)
+            .lineLimit(1).minimumScaleFactor(0.5)  // wide Khmer letters (ឈ ឡ ញ) shrink instead of clipping
             .frame(width: key.rect.width + 6, height: 52)
             .background(RoundedRectangle(cornerRadius: 8).fill(KeyStyle.letter.background))
             .shadow(color: .black.opacity(0.35), radius: 2, x: 0, y: 1)
@@ -109,6 +110,7 @@ struct KeyboardView: View {
                 let label = KhmerKeys.optionLabel(for: p.options[i])
                 let selected = i == model.panelSelected
                 Text(label).font(.system(size: label.count > 1 ? 12 : 26))  // ZWJ, ZWNJ: small
+                    .lineLimit(1).minimumScaleFactor(0.5)
                     .foregroundColor(selected ? .white : .primary)
                     .frame(width: p.cells[i].width, height: p.cells[i].height)
                     .background(selected ? RoundedRectangle(cornerRadius: 6).fill(Color.accentColor) : nil)

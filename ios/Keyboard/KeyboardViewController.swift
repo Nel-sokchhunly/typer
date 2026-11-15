@@ -157,6 +157,13 @@ final class KeyboardViewController: UIInputViewController {
         heightConstraint.isActive = true
     }
 
+    /// Near the screen edges iOS holds a touch's start back while it checks for a system edge swipe: a tap still
+    /// lands (start and end arrive together) but a long-press opened late. Keys want touches at once.
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        view.window?.gestureRecognizers?.forEach { $0.delaysTouchesBegan = false }
+    }
+
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         model.needsGlobe = needsInputModeSwitchKey
