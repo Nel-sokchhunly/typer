@@ -103,7 +103,7 @@ struct KeyboardView: View {
         let previewed = isPreviewed(key)
         let bar = key.action == .fresh
         // light: letters press grey, function keys white; dark (every key one grey): any key presses lighter
-        let pressedBackground = dynamic(light: l.style == .letter ? KeyStyle.functionLight : .white, dark: UIColor(white: 0.42, alpha: 1))
+        let pressedBackground = dynamic(light: KeyStyle.functionLight, dark: UIColor(white: 0.42, alpha: 1))
         return Group {
             if key.action == .fresh {
                 HStack(spacing: 6) {
@@ -124,7 +124,7 @@ struct KeyboardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(isPressed(key) && !previewed ? pressedBackground : bar ? Color.clear : l.style.background)
         .cornerRadius(5)
-        .shadow(color: .black.opacity(bar ? 0 : 0.3), radius: 0, x: 0, y: 1)
+        .shadow(color: bar ? .clear : KeyStyle.shadow, radius: 0, x: 0, y: 1)
         .overlay {  // the Fresh clip reads like an iOS QuickType suggestion: plain text between thin dividers
             if bar {
                 HStack { divider; Spacer(); divider }
@@ -205,14 +205,13 @@ struct KeyboardView: View {
         let w = model.englishWords
         let order = Array(w.indices.dropFirst()) + [0]
         // like iOS QuickType: plain words between thin dividers; the best one in Typer's yellow (darker on light, to stay readable)
-        let best = dynamic(light: UIColor(red: 0.65, green: 0.47, blue: 0, alpha: 1), dark: UIColor(red: 0xf5 / 255, green: 0xc8 / 255, blue: 0x42 / 255, alpha: 1))
         return HStack(spacing: 0) {
             ForEach(Array(order.enumerated()), id: \.element) { n, i in
                 if n > 0 { divider.frame(height: 36) }
                 Text(i == 0 ? "\u{201C}\(w[0])\u{201D}" : w[i])
                     .font(.system(size: 17, weight: i == 1 ? .semibold : .regular))
                     .lineLimit(1).minimumScaleFactor(0.7)
-                    .foregroundColor(i == 1 ? best : .primary)
+                    .foregroundColor(i == 1 ? KeyStyle.amber : .primary)
                     .frame(maxWidth: .infinity, minHeight: 36)
                     .contentShape(Rectangle())
                     .onTouchUp { onEnglishWord(i) }
@@ -322,6 +321,10 @@ struct KeyboardView: View {
 enum KeyStyle {
     case letter, function, prominent, mode, switcher
     static let functionLight = UIColor(red: 0.68, green: 0.71, blue: 0.75, alpha: 1)
+    /// iOS 26 light keys have no edge shadow; dark ones keep the faint one.
+    static let shadow = dynamic(light: .clear, dark: UIColor(white: 0, alpha: 0.3))
+    /// Typer's yellow as text: #f5c842 on dark keys, a darker amber on white ones.
+    static let amber = dynamic(light: UIColor(red: 0.65, green: 0.47, blue: 0, alpha: 1), dark: UIColor(red: 0xf5 / 255, green: 0xc8 / 255, blue: 0x42 / 255, alpha: 1))
 }
 
 private func dynamic(light: UIColor, dark: UIColor) -> Color {
@@ -332,17 +335,17 @@ extension KeyStyle {
     var background: Color {
         switch self {
         case .letter: return dynamic(light: .white, dark: UIColor(white: 0.27, alpha: 1))  // iOS 26 dark: every key one grey
-        case .function: return dynamic(light: Self.functionLight, dark: UIColor(white: 0.27, alpha: 1))
+        case .function: return dynamic(light: .white, dark: UIColor(white: 0.27, alpha: 1))  // iOS 26 light: every key white too
         case .prominent: return .accentColor
         case .mode: return Color(red: 0xf5 / 255, green: 0xc8 / 255, blue: 0x42 / 255)  // #f5c842, Typer's yellow (macOS mode badge)
-        case .switcher: return Color(white: 0.1)  // the app icon's ink, in both modes: a yellow fill would look like the ខ/EN key
+        case .switcher: return dynamic(light: .white, dark: UIColor(white: 0.1, alpha: 1))  // the app icon's ink in dark mode; white like every key in light mode. A yellow fill would look like the ខ/EN key
         }
     }
     var foreground: Color {
         switch self {
         case .prominent: return .white
         case .mode: return Color(white: 0.1)  // dark on yellow in light and dark mode
-        case .switcher: return KeyStyle.mode.background  // Typer's yellow text
+        case .switcher: return KeyStyle.amber  // Typer's yellow text, darker on white to stay readable
         default: return .primary
         }
     }
