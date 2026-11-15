@@ -28,6 +28,7 @@ final class KeyboardModel: ObservableObject {
     @Published var page = Page.letters
     @Published var mode = "ខ"  // the Composer's mode label
     @Published var layout = Composer.Layout.sing
+    @Published var layoutForced = false  // password, email, number: Sing only
     @Published var canToggle = true
     @Published var returnLabel = "return"
     @Published var returnProminent = false
@@ -97,7 +98,8 @@ final class KeyboardViewController: UIInputViewController {
         let engine = Engine(dataDir: Bundle.main.resourcePath! + "/data", userDir: userDir)
         // load failure: an empty Suggester, the keyboard still types Latin
         let suggester: Suggester = engine.loaded ? engine : NoSuggestions()
-        let c = Composer(engine: suggester, proxy: ProxyAdapter { [unowned self] in textDocumentProxy })
+        let c = Composer(engine: suggester, proxy: ProxyAdapter { [unowned self] in textDocumentProxy },
+                         layout: UserDefaults.standard.string(forKey: "layout").flatMap(Composer.Layout.init) ?? .sing)
         c.onSuggestions = { [unowned self] in model.suggestions = composer.suggestions }  // results arrive after the key
         return c
     }()
@@ -225,7 +227,10 @@ final class KeyboardViewController: UIInputViewController {
     private func slotTapped() {
         guard model.slotReady else { return }
         if composer.isComposing { return handle(composer.rawLatin()) }
-        if composer.switchLayout() { model.page = .letters; model.shift = .off }
+        if composer.switchLayout() {
+            UserDefaults.standard.set(composer.chosen.rawValue, forKey: "layout")
+            model.page = .letters; model.shift = .off
+        }
         refresh(afterKey: true)
     }
 
@@ -252,6 +257,7 @@ final class KeyboardViewController: UIInputViewController {
         if composer.typed.isEmpty { model.showAll = false }
         model.mode = composer.mode
         model.layout = composer.layout
+        model.layoutForced = composer.layoutForced
         model.canToggle = composer.canToggle
         if afterKey { model.shiftChosen = false }
         if model.shift != .lock && !model.shiftChosen {  // a typed key or a field change re-decides shift, like Apple's

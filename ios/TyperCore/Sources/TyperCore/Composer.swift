@@ -52,10 +52,14 @@ public final class Composer {
 
     /// Sing layout: Latin keys, typed as Sing (Khmer mode) or as is (English mode). Khmer layout: Khmer letters,
     /// typed straight into the field.
-    public enum Layout { case sing, khmer }
-    public private(set) var layout = Layout.sing
+    public enum Layout: String { case sing, khmer }
+    /// The layout the user last picked; a field that forces Sing never overwrites it.
+    public private(set) var chosen: Layout
+    /// The layout in use: Sing in a secure, email or number field, else `chosen`.
+    public var layout: Layout { layoutForced ? .sing : chosen }
+    public var layoutForced: Bool { secure || field != .text }
     /// Whether the bar's rightmost slot switches layouts now; while a Phrase is open it keeps the Latin instead.
-    public var canSwitchLayout: Bool { !isComposing }
+    public var canSwitchLayout: Bool { !isComposing && !layoutForced }
 
     /// "ខ" or "EN"; a secure, email or number field shows EN.
     public var mode: String { passthrough ? "EN" : "ខ" }
@@ -78,7 +82,8 @@ public final class Composer {
     /// `usesMarkedText: false` is the fallback for hosts that mishandle marked text: the phrase is
     /// typed as plain text, and a commit deletes its length and inserts the choice.
     public init(engine: Suggester, proxy: TextProxy, usesMarkedText: Bool = true,
-                scheduler: Scheduler = .background()) {
+                scheduler: Scheduler = .background(), layout: Layout = .sing) {
+        chosen = layout
         self.engine = engine
         self.scheduler = scheduler
         self.proxy = proxy
@@ -183,7 +188,7 @@ public final class Composer {
     /// Sing <-> Khmer layout. Refused while a Phrase is open.
     public func switchLayout() -> Bool {
         guard canSwitchLayout else { return false }
-        layout = layout == .sing ? .khmer : .sing
+        chosen = chosen == .sing ? .khmer : .sing
         return true
     }
 

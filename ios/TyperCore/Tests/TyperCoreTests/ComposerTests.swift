@@ -164,6 +164,28 @@ final class LayoutTests: XCTestCase {
         XCTAssertTrue(composer.canSwitchLayout)
     }
 
+    func testForcedFieldsUseSingAndRestoreOnLeaving() {
+        XCTAssertTrue(composer.switchLayout())
+        for (secure, type) in [(true, FieldType.text), (false, .email), (false, .number)] {
+            _ = composer.fieldTraitsChanged(secure: secure, type: type)
+            XCTAssertEqual(composer.layout, .sing)
+            XCTAssertEqual(composer.chosen, .khmer)  // forcing never overwrites it
+            XCTAssertFalse(composer.canSwitchLayout)
+            XCTAssertFalse(composer.switchLayout())
+            XCTAssertEqual(composer.chosen, .khmer)
+            _ = composer.fieldTraitsChanged(secure: false, type: .text)
+            XCTAssertEqual(composer.layout, .khmer)
+            XCTAssertTrue(composer.canSwitchLayout)
+        }
+    }
+
+    func testStartsOnTheRememberedLayout() {
+        composer = Composer(engine: spy, proxy: proxy, scheduler: .immediate, layout: .khmer)
+        XCTAssertEqual(composer.layout, .khmer)
+        XCTAssertTrue(composer.key("ក"))
+        XCTAssertEqual(proxy.doc, "ក")
+    }
+
     func testSwitchingBackComposesSingAgain() {
         XCTAssertTrue(composer.switchLayout())
         XCTAssertTrue(composer.key("ក"))
