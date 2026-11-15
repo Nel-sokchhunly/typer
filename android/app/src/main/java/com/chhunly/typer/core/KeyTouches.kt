@@ -35,6 +35,11 @@ sealed interface KeyEffect {
  * space-bar drag that moves the caret (`step` dp of travel per cluster).
  */
 class KeyTouches(private val step: Float = 10f, private val glideStart: Float = 24f) {
+    private companion object {
+        /** How far (dp) a finger may drift on a key and still long-press it. */
+        const val SLIDE = 8f
+    }
+
     /** Glide typing is on (English mode on the letters): a slide from a letter becomes a glide word. */
     var glide = false
 
@@ -49,6 +54,8 @@ class KeyTouches(private val step: Float = 10f, private val glideStart: Float = 
         /** Space held, then released without sliding: still a space. */
         val spaceAfterAll get() = dragging && movedClusters == 0 && !moved
         var moved = false
+        /** The finger slid off the spot it landed on: a long press no longer applies (as on Gboard). */
+        var slid = false
     }
 
     private var held: Held? = null
@@ -91,6 +98,7 @@ class KeyTouches(private val step: Float = 10f, private val glideStart: Float = 
             if (h.gliding) return emptyList()
             val dx = x - h.startX
             val dy = y - h.startY
+            if (dx * dx + dy * dy > SLIDE * SLIDE) h.slid = true  // a slow-starting glide must not open a popup
             if (dx * dx + dy * dy > glideStart * glideStart) {
                 h.gliding = true
                 return listOf(KeyEffect.GlideStarted)
@@ -107,7 +115,7 @@ class KeyTouches(private val step: Float = 10f, private val glideStart: Float = 
         }
         if (h.dragging || h.long || h.key == key) return emptyList()
         val wasRepeating = h.repeating
-        held = Held(id, key, false, x)
+        held = Held(id, key, false, x).also { it.slid = true }  // slid onto this key: tapped on lift, never long-pressed
         return if (wasRepeating) listOf(KeyEffect.StopRepeat) else emptyList()
     }
 
@@ -123,7 +131,7 @@ class KeyTouches(private val step: Float = 10f, private val glideStart: Float = 
     /** The long-press timer fired for touch `id`. */
     fun longPress(id: Int): List<KeyEffect> {
         val h = held ?: return emptyList()
-        if (h.id != id || h.long || h.dragging || h.repeating || h.gliding) return emptyList()
+        if (h.id != id || h.long || h.dragging || h.repeating || h.gliding || h.slid) return emptyList()
         if (h.key.action == KeyAction.Space) {
             h.dragging = true  // hold space, then slide: the caret follows
             return listOf(KeyEffect.DragStarted)
