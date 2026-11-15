@@ -115,7 +115,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         }
         loader.execute {
             english = try {
-                assets.open("data/english.tsv").use { EnglishWords.load(it) }
+                assets.open("data/english.tsv").use { EnglishWords.load(it) }.also { it.glide }  // build the glide index here, not on the first glide
             } catch (e: java.io.IOException) {
                 null
             }
@@ -141,6 +141,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         proxy.selection(attribute.initialSelStart, attribute.initialSelEnd, -1, -1)
+        glided = null
         val type = fieldType(attribute)
         val secure = secure(attribute)
         composer.fieldTraitsChanged(secure, type)
@@ -246,6 +247,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         proxy.selection(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         if (dragCaret >= 0) return  // our own caret moves while dragging on the space bar
+        if (glided != null && (newSelStart != newSelEnd || newSelEnd != glideEnd)) glided = null  // the caret moved away
         composer.textChanged()
         refresh()
     }
@@ -256,7 +258,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     private fun refresh(afterKey: Boolean = false) {
         val khmer = composer.mode == "ខ"
         val before = if (khmer) null else currentInputConnection?.getTextBeforeCursor(64, 0)?.toString()  // Khmer needs neither
-        words = if (!khmer && wordsAllowed && page == KeyPage.LETTERS) english?.suggest(before, userWords) ?: emptyList() else emptyList()
+        words = glided ?: if (!khmer && wordsAllowed && page == KeyPage.LETTERS) english?.suggest(before, userWords) ?: emptyList() else emptyList()
         if (!composer.isComposing) showAll = false
         if (afterKey) shiftChosen = false
         if (shift != Shift.LOCK && !shiftChosen) {
@@ -285,6 +287,8 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             tones = tones,
             letters = lettersPage(),
             layoutLocked = layoutLocked,
+            glide = composer.mode == "EN" && wordsAllowed && english != null,
+            glided = glided != null,
         )
     }
 
@@ -300,6 +304,11 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
 
     override fun onKey(action: KeyAction) {
         if (emojiSearch) return searchKey(action)
+        if (glided != null) {
+            val word = glided!![0]
+            glided = null
+            if (action == KeyAction.Backspace) return glideDeleted(word)
+        }
         if (emojiOpen && action == KeyAction.Page) return closeEmoji()
         when (action) {
             is KeyAction.Text -> type(action.text)
@@ -440,8 +449,66 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
                 render()
             }
             is StripAction.Punctuation -> type(action.text)
-            is StripAction.Word -> englishWordTapped(action.index)
+            is StripAction.Word -> if (glided != null) glideAlternative(action.index) else englishWordTapped(action.index)
         }
+    }
+
+    // ---- glide typing (English mode) ----
+
+    /** After a glide: the glided word and its alternatives, for the bar; null once anything else happens. */
+    private var glided: List<String>? = null
+    /** Where the caret should be while [glided] stands; anywhere else drops it. */
+    private var glideEnd = -1
+
+    /**
+     * A glide over the letters: the best word goes in at once, with a space before it unless the caret already
+     * follows a space or an opening mark, capitalised as shift says; the bar offers the alternatives.
+     */
+    override fun onGlide(xs: FloatArray, ys: FloatArray, keys: Map<Char, Pair<Float, Float>>, keyWidth: Float) {
+        val decoder = english?.glide ?: return
+        val found = decoder.decode(xs, ys, keys, keyWidth)
+        if (found.isEmpty()) return
+        val ic = currentInputConnection ?: return
+        val cased = found.map { w ->
+            when (shift) {
+                Shift.LOCK -> w.uppercase()
+                Shift.ONCE -> w.replaceFirstChar { it.uppercaseChar() }
+                Shift.OFF -> w
+            }
+        }
+        val prev = ic.getTextBeforeCursor(1, 0)?.lastOrNull()
+        val space = if (prev != null && !prev.isWhitespace() && prev !in "([{\"'“‘/@#") " " else ""
+        ic.beginBatchEdit()
+        ic.commitText(space + cased[0], 1)
+        ic.endBatchEdit()
+        glideEnd = proxy.selEnd + space.length + cased[0].length
+        glided = cased
+        if (shift == Shift.ONCE) shift = Shift.OFF
+        shiftChosen = true
+        render()
+        refresh()
+    }
+
+    /** Backspace right after a glide takes the whole word back. */
+    private fun glideDeleted(word: String) {
+        val ic = currentInputConnection ?: return
+        if (ic.getTextBeforeCursor(word.length, 0)?.toString() == word) ic.deleteSurroundingText(word.length, 0)
+        else deleteBackward()
+        refresh(afterKey = true)
+    }
+
+    /** An alternative from the bar replaces the glided word; the glided word itself just keeps it. */
+    private fun glideAlternative(i: Int) {
+        val w = glided ?: return
+        glided = null
+        val ic = currentInputConnection ?: return
+        if (i > 0 && i < w.size && ic.getTextBeforeCursor(w[0].length, 0)?.toString() == w[0]) {
+            ic.beginBatchEdit()
+            ic.deleteSurroundingText(w[0].length, 0)
+            ic.commitText(w[i], 1)
+            ic.endBatchEdit()
+        }
+        refresh(afterKey = true)
     }
 
     /** The word being typed becomes the tapped one, then a space; index 0 keeps it as typed. Never learned. */

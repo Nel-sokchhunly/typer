@@ -60,6 +60,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         fun onEmoji(emoji: String)
         /** Open or close emoji search (the letters type the query). */
         fun onEmojiSearch(open: Boolean)
+        /** A glide over the letters: its path (dp), each letter's key centre (dp) and a letter key's width. */
+        fun onGlide(xs: FloatArray, ys: FloatArray, keys: Map<Char, Pair<Float, Float>>, keyWidth: Float)
     }
 
     enum class Shift { OFF, ONCE, LOCK }
@@ -101,6 +103,10 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         val letters: KeyPage = KeyPage.LETTERS,
         /** Password, email or number field: the Sing layout only; the bar's កខគ is dimmed and does nothing. */
         val layoutLocked: Boolean = false,
+        /** Glide typing is on: English mode, the letters, a plain text field. */
+        val glide: Boolean = false,
+        /** After a glide: the bar shows the glided word first (yellow), then its alternatives, none in quotes. */
+        val glided: Boolean = false,
     ) {
         val composing get() = typed.isNotEmpty()
         val panelOpen get() = showAll && composing
@@ -123,6 +129,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             val resize = field.emojiSearch != value.emojiSearch || rowsFor(field) != rowsFor(value)
             if (field.page != value.page) morePopup = null
             field = value
+            tracker.glide = value.glide && value.page == KeyPage.LETTERS && !value.emoji && !value.emojiSearch
             if (relayout) keysCache = null
             if (resize) requestLayout()
             invalidate()
@@ -501,6 +508,25 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         if (more != null) drawMore(canvas, more)
         else if (shown != null) drawLongPress(canvas, shown.first, shown.second)
         else pressed.firstOrNull { previewed(it) }?.let { drawPreview(canvas, it) }
+        if (trail.size > 1) drawTrail(canvas)
+    }
+
+    /** The glide trail: the finger's path in Typer yellow, its older part thinner. */
+    private val trail = ArrayList<Pair<Float, Float>>()
+    private val trailPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+
+    private fun drawTrail(canvas: Canvas) {
+        trailPaint.color = theme.mode
+        val n = trail.size
+        val from = maxOf(1, n - 80)
+        for (i in from until n) {
+            trailPaint.strokeWidth = px(2f + 5f * (i - from) / (n - from))
+            canvas.drawLine(px(trail[i - 1].first), px(trail[i - 1].second), px(trail[i].first), px(trail[i].second), trailPaint)
+        }
     }
 
     private fun previewed(key: Key) = key.action is KeyAction.Text
@@ -626,7 +652,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     private fun stripSlots(): List<StripSlot> = when {
         state.composing -> StripLayout.composing(metrics)
-        state.words.isNotEmpty() -> StripLayout.words(metrics, state.words.size)
+        state.words.isNotEmpty() -> StripLayout.words(metrics, state.words.size, state.glided)
         state.khmerLayout -> StripLayout.punctuation(metrics, KeyLayout.khmerLayoutPunctuation)
         else -> StripLayout.punctuation(metrics, if (state.mode == "EN") KeyLayout.englishPunctuation else KeyLayout.punctuation)
     }
@@ -637,11 +663,12 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         StripAction.Layout -> if (state.khmerLayout) "abc" else LAYOUT_KHMER
         StripAction.Expand -> state.suggestions.size.toString()
         is StripAction.Punctuation -> a.text
-        is StripAction.Word -> state.words.getOrNull(a.index)?.let { if (a.index == 0) "“$it”" else it } ?: ""
+        is StripAction.Word -> state.words.getOrNull(a.index)?.let { if (a.index == 0 && !state.glided) "“$it”" else it } ?: ""
     }
 
     /** Typer yellow: the top Suggestion (or the Phrase itself until Suggestions arrive) and the best English word. */
-    private fun emphasised(a: StripAction) = (a is StripAction.Suggestion && a.index == 0) || (a is StripAction.Word && a.index == 1)
+    private fun emphasised(a: StripAction) = (a is StripAction.Suggestion && a.index == 0) ||
+        (a is StripAction.Word && a.index == (if (state.glided) 0 else 1))
 
     /**
      * The strip, as on iOS: pills. The top Suggestion (and the best English word) is Typer yellow with ink text in the
@@ -801,7 +828,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                 }
                 else -> {
                     morePopup = null  // a new touch closes a popup without typing
-                    KeyLayout.hit(x, y, keys)?.let { run(id, tracker.down(id, it, x)) }
+                    KeyLayout.hit(x, y, keys)?.let { run(id, tracker.down(id, it, x, y)) }
                 }
             }
             MotionEvent.ACTION_MOVE -> {
@@ -817,7 +844,9 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                 } else {
                     for (p in 0 until e.pointerCount) {
                         val px = e.getX(p) / d
-                        KeyLayout.hit(px, e.getY(p) / d, keys)?.let { run(e.getPointerId(p), tracker.move(e.getPointerId(p), it, px)) }
+                        val py = e.getY(p) / d
+                        KeyLayout.hit(px, py, keys)?.let { run(e.getPointerId(p), tracker.move(e.getPointerId(p), it, px, py)) }
+                        if (tracker.gliding) trail += px to py
                     }
                 }
             }
@@ -930,6 +959,21 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             }
             is KeyEffect.MoveCaret -> listener.onCaret(fx.clusters)
             KeyEffect.DragEnded -> listener.onDragEnd()
+            KeyEffect.GlideStarted -> {
+                longPressing?.let { handler.removeCallbacks(it) }
+                longPressing = null
+                trail.clear()
+            }
+            is KeyEffect.Glide -> {
+                trail.clear()
+                val centres = HashMap<Char, Pair<Float, Float>>()
+                for (k in keys) {
+                    val t = (k.action as? KeyAction.Text)?.text ?: continue
+                    if (t.length == 1 && t[0].lowercaseChar() in 'a'..'z') centres[t[0].lowercaseChar()] = k.box.centerX to k.box.centerY
+                }
+                listener.onGlide(fx.xs, fx.ys, centres, metrics.keyWidth)
+            }
+            KeyEffect.GlideCancelled -> trail.clear()
         }
     }
 

@@ -20,6 +20,12 @@ sealed interface KeyEffect {
     data object DragStarted : KeyEffect
     /** The drag is over (finger up, cancelled, or a new touch took over): the caret is the user's again. */
     data object DragEnded : KeyEffect
+    /** A finger on a letter slid past [KeyTouches.glideStart]: a glide (swipe) word; the view draws the trail. */
+    data object GlideStarted : KeyEffect
+    /** The glide is over: its path in dp, start to end; the caller decodes it into a word. */
+    data class Glide(val xs: FloatArray, val ys: FloatArray) : KeyEffect
+    /** The glide was cancelled (the system took the touch): nothing is typed. */
+    data object GlideCancelled : KeyEffect
 }
 
 /**
@@ -28,8 +34,15 @@ sealed interface KeyEffect {
  * touch is live; backspace fires on touch-down and repeats. Android adds long-press for the hint digit and a
  * space-bar drag that moves the caret (`step` dp of travel per cluster).
  */
-class KeyTouches(private val step: Float = 10f) {
-    private class Held(val id: Int, var key: Key, val repeating: Boolean, val startX: Float) {
+class KeyTouches(private val step: Float = 10f, private val glideStart: Float = 24f) {
+    /** Glide typing is on (English mode on the letters): a slide from a letter becomes a glide word. */
+    var glide = false
+
+    private class Held(val id: Int, var key: Key, val repeating: Boolean, val startX: Float, val startY: Float = 0f) {
+        var gliding = false
+        /** Glide candidates: the path since touch-down, in dp. */
+        val xs = ArrayList<Float>()
+        val ys = ArrayList<Float>()
         var long = false  // long-press fired: the touch-up types nothing
         var dragging = false
         var movedClusters = 0
@@ -41,15 +54,18 @@ class KeyTouches(private val step: Float = 10f) {
     private var held: Held? = null
 
     /** The key(s) to highlight. */
-    val pressed: List<Key> get() = held?.let { if (it.long || it.dragging) emptyList() else listOf(it.key) } ?: emptyList()
+    val pressed: List<Key> get() = held?.let { if (it.long || it.dragging || it.gliding) emptyList() else listOf(it.key) } ?: emptyList()
+    val gliding: Boolean get() = held?.gliding == true
+
+    private fun letter(k: Key) = (k.action as? KeyAction.Text)?.text?.let { it.length == 1 && it[0].lowercaseChar() in 'a'..'z' } == true
     val dragging: Boolean get() = held?.dragging == true
 
-    fun down(id: Int, key: Key, x: Float): List<KeyEffect> {
+    fun down(id: Int, key: Key, x: Float, y: Float = 0f): List<KeyEffect> {
         val fx = ArrayList<KeyEffect>()
         held?.let { fx += finish(it) }
         fx += KeyEffect.Press
         val backspace = key.action == KeyAction.Backspace
-        held = Held(id, key, backspace, x)
+        held = Held(id, key, backspace, x, y).also { if (glide && letter(key)) { it.xs += x; it.ys += y } }
         if (backspace) fx += listOf(KeyEffect.Fire(KeyAction.Backspace), KeyEffect.StartRepeat)
         else if (key.hint != null || key.more.isNotEmpty() || key.action == KeyAction.Space) fx += KeyEffect.StartLongPress
         return fx
@@ -57,6 +73,7 @@ class KeyTouches(private val step: Float = 10f) {
 
     /** What an earlier touch does when a new one lands (rollover). */
     private fun finish(h: Held): List<KeyEffect> = when {
+        h.gliding -> listOf(glideOf(h))
         h.repeating -> listOf(KeyEffect.StopRepeat)
         h.spaceAfterAll -> listOf(KeyEffect.DragEnded, KeyEffect.Fire(KeyAction.Space))
         h.dragging -> listOf(KeyEffect.DragEnded)
@@ -64,9 +81,23 @@ class KeyTouches(private val step: Float = 10f) {
         else -> listOf(KeyEffect.Fire(h.key.action))
     }
 
-    fun move(id: Int, key: Key, x: Float): List<KeyEffect> {
+    private fun glideOf(h: Held) = KeyEffect.Glide(h.xs.toFloatArray(), h.ys.toFloatArray())
+
+    fun move(id: Int, key: Key, x: Float, y: Float = 0f): List<KeyEffect> {
         val h = held ?: return emptyList()
         if (h.id != id) return emptyList()
+        if (h.xs.isNotEmpty() && !h.long) {  // a glide candidate: a letter touched with glide typing on
+            h.xs += x; h.ys += y
+            if (h.gliding) return emptyList()
+            val dx = x - h.startX
+            val dy = y - h.startY
+            if (dx * dx + dy * dy > glideStart * glideStart) {
+                h.gliding = true
+                return listOf(KeyEffect.GlideStarted)
+            }
+            h.key = key  // not a glide yet: the touch-up types the key under the finger, the path is kept
+            return emptyList()
+        }
         if (h.key.action == KeyAction.Space && !h.repeating && !h.long) {
             if (!h.dragging && abs(x - h.startX) > step * 1.5f) {
                 h.dragging = true
@@ -92,7 +123,7 @@ class KeyTouches(private val step: Float = 10f) {
     /** The long-press timer fired for touch `id`. */
     fun longPress(id: Int): List<KeyEffect> {
         val h = held ?: return emptyList()
-        if (h.id != id || h.long || h.dragging || h.repeating) return emptyList()
+        if (h.id != id || h.long || h.dragging || h.repeating || h.gliding) return emptyList()
         if (h.key.action == KeyAction.Space) {
             h.dragging = true  // hold space, then slide: the caret follows
             return listOf(KeyEffect.DragStarted)
@@ -111,6 +142,7 @@ class KeyTouches(private val step: Float = 10f) {
         if (h.id != id) return emptyList()
         held = null
         return when {
+            h.gliding -> listOf(glideOf(h))
             h.repeating -> listOf(KeyEffect.StopRepeat)
             h.spaceAfterAll -> listOf(KeyEffect.DragEnded, KeyEffect.Fire(KeyAction.Space))
             h.dragging -> listOf(KeyEffect.DragEnded)
@@ -124,6 +156,7 @@ class KeyTouches(private val step: Float = 10f) {
         if (h.id != id) return emptyList()
         held = null
         return when {
+            h.gliding -> listOf(KeyEffect.GlideCancelled)
             h.repeating -> listOf(KeyEffect.StopRepeat)
             h.dragging -> listOf(KeyEffect.DragEnded)
             else -> emptyList()
@@ -134,6 +167,10 @@ class KeyTouches(private val step: Float = 10f) {
     fun reset(): List<KeyEffect> {
         val h = held ?: return emptyList()
         held = null
-        return if (h.dragging) listOf(KeyEffect.DragEnded) else emptyList()
+        return when {
+            h.gliding -> listOf(KeyEffect.GlideCancelled)
+            h.dragging -> listOf(KeyEffect.DragEnded)
+            else -> emptyList()
+        }
     }
 }

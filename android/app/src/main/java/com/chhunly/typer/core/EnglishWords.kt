@@ -16,6 +16,9 @@ class EnglishWords private constructor(
     private val counts: HashMap<String, Long>,
     private val bigrams: HashMap<String, Long>,
 ) {
+    /** Glide typing over the same word counts; built on first use (off the main thread, see TyperIME). */
+    val glide: GlideDecoder by lazy { GlideDecoder(counts) }
+
     fun suggest(before: String?, userWords: List<String>): List<String> {
         if (before == null) return emptyList()
         val word = before.takeLastWhile { it.isLetter() || it == '\'' }

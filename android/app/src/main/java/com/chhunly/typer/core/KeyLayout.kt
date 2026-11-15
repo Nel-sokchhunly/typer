@@ -265,9 +265,12 @@ object StripLayout {
     fun punctuation(m: Metrics, marks: List<String>): List<StripSlot> =
         row(m, marks.size).mapIndexed { i, b -> StripSlot(StripAction.Punctuation(marks[i]), b) } + layout(m)
 
-    /** English words in Typer's order: best, second, then the word as typed (index 0) in quotes; then the layout switch. */
-    fun words(m: Metrics, count: Int): List<StripSlot> {
-        val order = (1 until count) + 0
+    /**
+     * English words in Typer's order: best, second, then the word as typed (index 0) in quotes; then the layout
+     * switch. `glided`: the glided word (index 0) first, then its alternatives.
+     */
+    fun words(m: Metrics, count: Int, glided: Boolean = false): List<StripSlot> {
+        val order = if (glided) (0 until count).toList() else (1 until count) + 0
         return row(m, order.size).mapIndexed { i, b -> StripSlot(StripAction.Word(order[i]), b) } + layout(m)
     }
 }
