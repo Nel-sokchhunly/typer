@@ -98,8 +98,10 @@ struct KeyboardView: View {
         // light: letters press grey, function keys white; dark (every key one grey): any key presses lighter
         let pressedBackground = dynamic(light: l.style == .letter ? KeyStyle.functionLight : .white, dark: UIColor(white: 0.42, alpha: 1))
         return Group {
-            if let text = l.text { Text(text).font(.system(size: l.fontSize)).foregroundColor(l.style.foreground) }
-            else if let image = l.image { Image(systemName: image).font(.system(size: 18)).foregroundColor(l.style.foreground) }
+            if let text = l.text {
+                Text(text).font(.system(size: l.fontSize)).foregroundColor(l.style.foreground)
+                    .lineLimit(1).minimumScaleFactor(0.4).padding(.horizontal, 2)  // shrinks to fit: េះ draws as េ◌◌ះ
+            } else if let image = l.image { Image(systemName: image).font(.system(size: 18)).foregroundColor(l.style.foreground) }
             else { Color.clear }  // a blank key (space) still needs a view to draw its background on
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
