@@ -127,8 +127,13 @@ public struct LongPressPanel: Equatable {
 
     public init(key: Key, width: CGFloat) {
         let own: [String] = if case .char(let t) = key.action { [t] } else { [] }
-        options = own + key.longPress
-        let r = key.rect, cw = r.width + 8
+        self.init(options: own + key.longPress, above: key.rect, width: width)
+    }
+
+    /// The same panel above any rect, e.g. an emoji in the Emoji panel (its skin tones).
+    public init(options: [String], above r: CGRect, width: CGFloat) {
+        self.options = options
+        let cw = r.width + 8
         let step = r.midX < width / 2 ? cw : -cw
         let y = max(0, r.minY - Self.cellHeight - 4)
         let xs = options.indices.map { r.midX - cw / 2 + CGFloat($0) * step }

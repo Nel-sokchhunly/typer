@@ -7,6 +7,7 @@ struct KeyboardView: View {
     let onEnglishWord: (Int) -> Void
     let onSlot: () -> Void
     let onEmoji: (String) -> Void
+    let onHold: (EmojiHold) -> Void
     let onSearch: () -> Void
     let onGlobe: () -> Void
     let onLetters: () -> Void
@@ -21,9 +22,10 @@ struct KeyboardView: View {
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
                 if model.showEmoji && !model.emojiSearching {
-                    EmojiPanel(sections: model.emojiSections, onPick: onEmoji, tones: model.emojiTones, display: model.emojiDisplay, onSearch: onSearch,
+                    EmojiPanel(sections: model.emojiSections, onPick: onEmoji, tones: model.emojiTones, display: model.emojiDisplay, onHold: onHold, onSearch: onSearch,
                                globe: model.needsGlobe, onGlobe: onGlobe, onLetters: onLetters, onDelete: onDelete)
                         .frame(height: model.height)
+                    if let p = model.panel { longPressPanel(p) }  // an emoji's skin tones
                 } else if model.showAll && !model.typed.isEmpty {
                     VStack(spacing: 0) {
                         candidateBar
@@ -123,8 +125,7 @@ struct KeyboardView: View {
             ForEach(p.cells.indices, id: \.self) { i in
                 let label = KhmerKeys.optionLabel(for: p.options[i])
                 let selected = i == model.panelSelected
-                Text(label).font(.system(size: label.count > 1 ? 12 : 26))  // ZWJ, ZWNJ: small
-                    .lineLimit(1).minimumScaleFactor(0.5)
+                optionText(label)
                     .foregroundColor(selected ? KeyStyle.mode.foreground : .primary)  // Typer's yellow, like the ខ/EN key
                     .frame(width: p.cells[i].width, height: p.cells[i].height)
                     .background(selected ? RoundedRectangle(cornerRadius: 6).fill(KeyStyle.mode.background) : nil)
@@ -132,6 +133,16 @@ struct KeyboardView: View {
             }
         }
         .offset(x: all.minX, y: all.minY)
+    }
+
+    /// A Khmer option at 26 pt (ZWJ, ZWNJ labels small); an emoji drawn at EmojiCellView.drawSize and scaled to
+    /// 26 pt, so it caches the small strike (see EmojiCellView).
+    @ViewBuilder private func optionText(_ label: String) -> some View {
+        if label.unicodeScalars.contains(where: { $0.properties.isEmojiPresentation }) {
+            Text(label).font(.system(size: EmojiCellView.drawSize)).scaleEffect(26 / EmojiCellView.drawSize)
+        } else {
+            Text(label).font(.system(size: label.count > 1 ? 12 : 26)).lineLimit(1).minimumScaleFactor(0.5)
+        }
     }
 
     // MARK: candidate bar

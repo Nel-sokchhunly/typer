@@ -163,6 +163,7 @@ final class KeyboardViewController: UIInputViewController {
                 onEnglishWord: { [unowned self] in englishWordTapped($0) },
                 onSlot: { [unowned self] in slotTapped() },
                 onEmoji: { [unowned self] in emojiPicked($0) },
+                onHold: { [unowned self] in emojiHeld($0) },
                 onSearch: { [unowned self] in keyFeedback(); model.emojiQuery = ""; model.emojiSearching = true },
                 onGlobe: { [unowned self] in advanceToNextInputMode() },
                 onLetters: { [unowned self] in keyFeedback(); model.showEmoji = false; model.page = .letters },
@@ -300,6 +301,24 @@ final class KeyboardViewController: UIInputViewController {
         model.emojiSearch = { [unowned catalog] in catalog.search($0) }
         model.showEmoji = true
         refresh(afterKey: true)
+    }
+
+    /// An emoji's skin tones in the keyboard's long-press panel, as on a Khmer key: the highlighted one goes in on release.
+    private func emojiHeld(_ h: EmojiHold) {
+        switch h {
+        case .began(let options, let current, let cell):
+            let p = LongPressPanel(options: options, above: view.convert(cell, from: nil), width: view.bounds.width)
+            model.panel = p
+            model.panelSelected = options.firstIndex(of: current) ?? 0
+            keyFeedback()
+        case .moved(let at):
+            if let p = model.panel { model.panelSelected = p.index(at: view.convert(at, from: nil).x) }
+        case .ended:
+            if let p = model.panel, p.options.indices.contains(model.panelSelected) { emojiPicked(p.options[model.panelSelected]) }
+            model.panel = nil
+        case .cancelled:
+            model.panel = nil
+        }
     }
 
     private func emojiPicked(_ e: String) {

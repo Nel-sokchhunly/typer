@@ -12,6 +12,7 @@ struct EmojiPanel: View {
     let tones: (String) -> [String]
     /// an emoji as it shows now, with the remembered tone
     let display: (String) -> String
+    let onHold: (EmojiHold) -> Void
     let onSearch: () -> Void
     let globe: Bool
     let onGlobe: () -> Void
@@ -34,7 +35,7 @@ struct EmojiPanel: View {
                 EmojiSearchBar.field(query: "").onTouchUp(onSearch).accessibilityLabel("Search Emoji").accessibilityAddTraits(.isButton)
                     .padding(.horizontal, KeyLayout.margin)
                 EmojiGrid(sections: sections, rows: rows, cell: cell, tones: tones, display: display, onPick: onPick,
-                          onSection: { current = $0 }, scroller: scroller)
+                          onSection: { current = $0 }, onHold: onHold, scroller: scroller)
                     .frame(height: area + titleHeight)
                 bottomBar.padding(.horizontal, KeyLayout.margin)
             }
@@ -130,14 +131,15 @@ final class EmojiGridLayout: UICollectionViewLayout {
     }
 }
 
-/// The grid: tap inserts; holding 0.4 s on an emoji with skin tones opens the picker above it, sliding highlights an
-/// option, lifting inserts it (lifting outside cancels) and the cell then shows that tone.
+/// The grid: tap inserts; holding 0.4 s on an emoji with skin tones opens the keyboard's long-press panel with its
+/// tones (as on a Khmer key): sliding highlights one, lifting inserts it, and the cell then shows that tone.
 struct EmojiGrid: UIViewRepresentable {
     /// Lets the category bar scroll the grid.
     final class Scroller { fileprivate weak var grid: UICollectionView?; fileprivate var layout: EmojiGridLayout?
         func scroll(to section: Int) {
             guard let cv = grid, let x = layout?.starts[safe: section] else { return }
-            cv.setContentOffset(CGPoint(x: x - cv.contentInset.left, y: 0), animated: true)
+            // not animated: an animated jump draws every emoji on the way, and each drawn glyph stays cached (~130 KB)
+            cv.setContentOffset(CGPoint(x: x - cv.contentInset.left, y: 0), animated: false)
         }
     }
 
@@ -148,6 +150,8 @@ struct EmojiGrid: UIViewRepresentable {
     let display: (String) -> String
     let onPick: (String) -> Void
     let onSection: (Int) -> Void
+    /// The long-press on a toned emoji, in window coordinates; the keyboard draws its long-press panel from it.
+    let onHold: (EmojiHold) -> Void
     let scroller: Scroller
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -160,7 +164,6 @@ struct EmojiGrid: UIViewRepresentable {
         cv.backgroundColor = .clear
         cv.showsHorizontalScrollIndicator = false
         cv.alwaysBounceVertical = false
-        cv.clipsToBounds = false  // the tone picker rises above the grid
         cv.contentInset = UIEdgeInsets(top: 0, left: KeyLayout.margin, bottom: 0, right: KeyLayout.margin)
         cv.contentOffset.x = -KeyLayout.margin
         cv.register(EmojiCellView.self, forCellWithReuseIdentifier: "e")
@@ -179,7 +182,6 @@ struct EmojiGrid: UIViewRepresentable {
         c.parent = self  // closures; `sections` stays the snapshot taken at open
         guard let layout = c.layout, layout.rows != rows || layout.cell != cell else { return }
         layout.rows = rows; layout.cell = cell
-        c.font = nil
         layout.invalidateLayout()
         cv.reloadData()
     }
@@ -188,10 +190,8 @@ struct EmojiGrid: UIViewRepresentable {
         var parent: EmojiGrid
         let sections: [EmojiSection]
         var layout: EmojiGridLayout?
-        var font: UIFont?
         private var lastSection = 0
-        private var picker: TonePickerView?
-        private var pressed: (path: IndexPath, options: [String])?
+        private var pressed: IndexPath?
 
         init(_ p: EmojiGrid) { parent = p; sections = p.sections }
 
@@ -205,9 +205,7 @@ struct EmojiGrid: UIViewRepresentable {
 
         func collectionView(_ cv: UICollectionView, cellForItemAt ip: IndexPath) -> UICollectionViewCell {
             let cell = cv.dequeueReusableCell(withReuseIdentifier: "e", for: ip) as! EmojiCellView
-            let f = font ?? UIFont.systemFont(ofSize: 0.75 * min(parent.cell.width, parent.cell.height))
-            font = f
-            cell.label.font = f
+            cell.glyphSize = 0.62 * min(parent.cell.width, parent.cell.height)
             cell.label.text = shown(ip)
             cell.accessibilityLabel = cell.label.text
             return cell
@@ -230,56 +228,66 @@ struct EmojiGrid: UIViewRepresentable {
 
         @objc func held(_ g: UILongPressGestureRecognizer) {
             guard let cv = g.view as? UICollectionView else { return }
-            let p = g.location(in: cv)
             switch g.state {
             case .began:
-                guard let ip = cv.indexPathForItem(at: p), let a = cv.layoutAttributesForItem(at: ip) else { return }
+                guard let ip = cv.indexPathForItem(at: g.location(in: cv)), let a = cv.layoutAttributesForItem(at: ip) else { return }
                 let e = shown(ip), options = parent.tones(e)
                 guard !options.isEmpty else { return }
-                let w = TonePickerView.optionWidth * CGFloat(options.count), v = cv.bounds.insetBy(dx: KeyLayout.margin, dy: 0)
-                let x = min(max(a.frame.midX - w / 2, v.minX), v.maxX - w)
-                let view = TonePickerView(options: options, frame: CGRect(x: x, y: a.frame.minY - 52, width: w, height: 48))
-                view.selected = options.firstIndex(of: e)
-                cv.addSubview(view)
-                picker = view; pressed = (ip, options)
+                pressed = ip
                 cv.isScrollEnabled = false
+                parent.onHold(.began(options: options, current: e, cell: cv.convert(a.frame, to: nil)))
             case .changed:
-                picker?.selected = picker?.index(at: p)
-            case .ended:
-                if let v = picker, let i = v.selected, let hit = pressed {
-                    parent.onPick(hit.options[i])
-                    cv.reloadItems(at: [hit.path])
-                }
-                close(cv)
-            case .cancelled, .failed: close(cv)
+                if pressed != nil { parent.onHold(.moved(g.location(in: nil))) }
+            case .ended, .cancelled, .failed:
+                guard let ip = pressed else { return }
+                parent.onHold(g.state == .ended ? .ended : .cancelled)
+                pressed = nil
+                cv.isScrollEnabled = true
+                cv.reloadItems(at: [ip])  // shows the tone just picked
             default: break
             }
         }
-
-        private func close(_ cv: UICollectionView) {
-            picker?.removeFromSuperview(); picker = nil; pressed = nil
-            cv.isScrollEnabled = true
-        }
     }
+}
+
+/// A long-press on a toned emoji, in window coordinates.
+enum EmojiHold {
+    case began(options: [String], current: String, cell: CGRect)
+    case moved(CGPoint)
+    case ended, cancelled
 }
 
 private extension Array {
     subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }
 
-private final class EmojiCellView: UICollectionViewCell {
+/// Memory: CoreText keeps every emoji it has drawn decoded for the life of the process; nothing frees it. The
+/// bitmap it keeps is the font's strike for the point size on this screen: up to 17 pt (51 px at 3x) it is a small
+/// strike, at 20 pt and up the 160 px one, about 3x the memory per emoji. So the label draws at 17 pt and a
+/// transform scales it to the cell's size: a slightly softer glyph, a third of the memory.
+final class EmojiCellView: UICollectionViewCell {
+    static let drawSize: CGFloat = 17
     let label = UILabel()
     override init(frame: CGRect) {
         super.init(frame: frame)
         label.textAlignment = .center
-        label.frame = contentView.bounds
-        label.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        label.font = .systemFont(ofSize: Self.drawSize)
         contentView.addSubview(label)
         contentView.layer.cornerRadius = 8
         isAccessibilityElement = true
         accessibilityTraits = .button
     }
     required init?(coder: NSCoder) { fatalError() }
+    /// The glyph's on-screen size; the label is laid out at drawSize and scaled up.
+    var glyphSize: CGFloat = 17 { didSet { if glyphSize != oldValue { setNeedsLayout() } } }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let k = glyphSize / Self.drawSize
+        label.transform = .identity
+        label.bounds = CGRect(x: 0, y: 0, width: contentView.bounds.width / k, height: contentView.bounds.height / k)
+        label.center = CGPoint(x: contentView.bounds.midX, y: contentView.bounds.midY)
+        label.transform = CGAffineTransform(scaleX: k, y: k)
+    }
     override var isHighlighted: Bool { didSet { contentView.backgroundColor = isHighlighted ? .tertiarySystemFill : nil } }
 }
 
@@ -294,34 +302,6 @@ private final class EmojiHeaderView: UICollectionReusableView {
         addSubview(label)
     }
     required init?(coder: NSCoder) { fatalError() }
-}
-
-/// The held emoji's tones: the highlighted one is inserted on release.
-private final class TonePickerView: UIView {
-    static let optionWidth: CGFloat = 44
-    private let labels: [UILabel]
-    var selected: Int? { didSet { for (i, l) in labels.enumerated() { l.backgroundColor = i == selected ? UIColor(KeyStyle.mode.background) : nil } } }
-
-    init(options: [String], frame: CGRect) {
-        labels = options.enumerated().map { i, o in
-            let l = UILabel(frame: CGRect(x: CGFloat(i) * Self.optionWidth, y: 0, width: Self.optionWidth, height: frame.height))
-            l.text = o; l.font = .systemFont(ofSize: 30); l.textAlignment = .center
-            l.layer.cornerRadius = 6; l.layer.masksToBounds = true
-            return l
-        }
-        super.init(frame: frame)
-        backgroundColor = UIColor(KeyStyle.letter.background)
-        layer.cornerRadius = 8
-        layer.shadowOpacity = 0.35; layer.shadowRadius = 2; layer.shadowOffset = CGSize(width: 0, height: 1)
-        labels.forEach(addSubview)
-    }
-    required init?(coder: NSCoder) { fatalError() }
-
-    /// The option under `p` (the grid's space); nil outside the popup (releasing there cancels).
-    func index(at p: CGPoint) -> Int? {
-        guard p.x >= frame.minX, p.x < frame.maxX, p.y > frame.minY - 30 else { return nil }
-        return Int((p.x - frame.minX) / Self.optionWidth)
-    }
 }
 
 /// The search field, and in search mode the row of results under it.
@@ -357,7 +337,7 @@ struct EmojiSearchBar: View {
                     LazyHStack(spacing: 0) {
                         ForEach(results, id: \.self) { e in
                             Button { onPick(e) } label: {
-                                Text(e).font(.system(size: 30)).frame(width: 44, height: Self.resultsHeight)
+                                Text(e).font(.system(size: EmojiCellView.drawSize)).scaleEffect(30 / EmojiCellView.drawSize).frame(width: 44, height: Self.resultsHeight)  // small strike, see EmojiCellView
                             }
                             .accessibilityLabel(e)
                         }
