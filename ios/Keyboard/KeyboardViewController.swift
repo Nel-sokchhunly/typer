@@ -44,6 +44,8 @@ final class KeyboardModel: ObservableObject {
     var clipboardAllowed = false
     /// The Fresh clip's text while the strip offers it.
     @Published var fresh: String?
+    /// A copy was noticed under a minute ago but not read yet: the strip offers "Paste" without its text.
+    @Published var freshPending = false
     @Published var needsGlobe = false
     @Published var shift = Shift.off
     @Published var page = Page.letters
@@ -75,7 +77,7 @@ final class KeyboardModel: ObservableObject {
         let bar = !typed.isEmpty || !englishWords.isEmpty ? []
             : layout == .khmer ? KeyLayout.khmerPunctuation : mode == "EN" ? KeyLayout.englishPunctuation : KeyLayout.punctuation
         let all = KeyLayout.keys(width: width, page: page, upper: shift != .off, globe: needsGlobe, bar: bar,
-                                 khmer: layout == .khmer, clipboard: clipboardAllowed, fresh: fresh != nil)
+                                 khmer: layout == .khmer, clipboard: clipboardAllowed, fresh: fresh != nil || freshPending)
         return showClipboard ? all.filter { $0.rect.minY < KeyLayout.rowsTop } : all  // the panel replaces the keys, the strip stays
     }
 
@@ -182,13 +184,13 @@ final class KeyboardViewController: UIInputViewController {
                 onSlot: { [unowned self] in slotTapped() },
                 onEmoji: { [unowned self] in emojiPicked($0) },
                 onClip: { [unowned self] in clipPicked($0) },
-                onClearClips: { [unowned self] in keyFeedback(); clipList.clearAll(); model.clips = clipList.list(now: Date()) },
+                onClearClips: { [unowned self] in keyFeedback(); clipList.clearAll(); model.clips = clipList.list(now: Date()); updateFresh() },
                 onPinClip: { [unowned self] c in
                     keyFeedback()
                     if c.isPinned { clipList.unpin(c.text, now: Date()) } else { clipList.pin(c.text, now: Date()) }
                     model.clips = clipList.list(now: Date())
+                    updateFresh()
                 },
-                onDeleteClip: { [unowned self] in keyFeedback(); clipList.delete($0.text); model.clips = clipList.list(now: Date()) },
                 onHold: { [unowned self] in emojiHeld($0) },
                 onSearch: { [unowned self] in keyFeedback(); model.emojiQuery = ""; model.emojiSearching = true },
                 onGlobe: { [unowned self] in advanceToNextInputMode() },
@@ -247,6 +249,7 @@ final class KeyboardViewController: UIInputViewController {
         _ = composer.fieldEnded()
         model.showEmoji = false; model.emojiSearching = false; model.emojiQuery = ""  // reopens on the letters
         model.showClipboard = false
+        freshTimer?.cancel()
         refresh()  // also restores the height
     }
 
@@ -286,7 +289,9 @@ final class KeyboardViewController: UIInputViewController {
         default: "return"
         }
         _ = composer.fieldTraitsChanged(secure: t.isSecureTextEntry ?? false, type: type)
-        if hasFullAccess && !clipboardOn { clipList.wipe(); model.clips = []; model.fresh = nil }  // switched off in the Companion app
+        if clipboardOn { wiped = false } else if !wiped {  // switched off in the Companion app, or Full Access revoked: delete once
+            clipList.wipe(); model.clips = []; model.fresh = nil; model.freshPending = false; pendingAt = nil; wiped = true
+        }
         model.clipboardAllowed = clipboardOn && t.isSecureTextEntry != true
         wordsAllowed = type == .text && t.isSecureTextEntry != true && t.autocorrectionType != .no
     }
@@ -306,7 +311,7 @@ final class KeyboardViewController: UIInputViewController {
         case .page: model.page = model.page == .letters ? .numbers : .letters
         case .emoji: openEmoji()
         case .clipboard: toggleClipboard()
-        case .fresh: if let t = model.fresh { clipPicked(t) }
+        case .fresh: if let t = model.fresh ?? readPending() { clipPicked(t) } else { updateFresh() }
         case .globe: advanceToNextInputMode()
         case .mode: modeTapped()
         case .slot: slotTapped()
@@ -339,10 +344,10 @@ final class KeyboardViewController: UIInputViewController {
 
     /// Opens the Clipboard panel (committing the top Suggestion first, no learning) or closes it back to where the user was.
     private func toggleClipboard() {
-        if model.showClipboard { return refresh() }  // fire already closed it
+        if model.showClipboard { model.showClipboard = false; return refresh(afterKey: true) }
         guard model.clipboardAllowed else { return }
         _ = composer.commitTop()
-        noticeCopy()
+        noticeCopy(); _ = readPending(); updateFresh()
         model.clips = clipList.list(now: Date())
         model.showClipboard = true
         refresh(afterKey: true)
@@ -358,9 +363,9 @@ final class KeyboardViewController: UIInputViewController {
         refresh(afterKey: true)
     }
 
-    /// The one place that decides when the Keyboard looks at the pasteboard: when it appears and on text input, if the
-    /// copy count changed. Reading text may trigger iOS's "Allow Paste" alert (#144); if so, read only on the user's tap
-    /// by changing just this function and its callers.
+    /// The one place that decides when the Keyboard looks at the pasteboard: when it appears and on text input. It never reads
+    /// the text (that triggers iOS's "Allow Paste" alert, #144), only notes that a new text copy is waiting; `readPending`
+    /// reads it on the user's tap.
     private func noticeCopy() {
         defer { updateFresh() }
         guard clipboardOn else { return }
@@ -369,20 +374,41 @@ final class KeyboardViewController: UIInputViewController {
         guard count != UserDefaults.standard.integer(forKey: "clip.changeCount") else { return }  // the process may be new
         UserDefaults.standard.set(count, forKey: "clip.changeCount")
         let hidden: Set = ["org.nspasteboard.ConcealedType", "org.nspasteboard.TransientType"]  // password managers
-        guard board.hasStrings, textDocumentProxy.isSecureTextEntry != true, hidden.isDisjoint(with: board.types),
-              let text = board.string else { return }
-        clipList.add(text, now: Date())
+        guard board.hasStrings, textDocumentProxy.isSecureTextEntry != true, hidden.isDisjoint(with: board.types) else { return }
+        pendingAt = Date()
     }
 
-    /// Offers the newest unpasted Clip for its first minute, and goes back to punctuation when the minute ends.
-    private func updateFresh() {
-        let c = model.clipboardAllowed ? clipList.fresh(now: Date()) : nil
-        model.fresh = c?.text
-        guard let c else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, ClipList.freshFor - Date().timeIntervalSince(c.at)) + 0.1) { [weak self] in
-            self?.updateFresh()  // earlier timers for an older Clip just recompute
-        }
+    /// When the unread copy was noticed; kept in the Keyboard's defaults so it survives the process being killed.
+    private var pendingAt: Date? {
+        get { UserDefaults.standard.object(forKey: "clip.pendingAt") as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: "clip.pendingAt") }
     }
+
+    /// Reads the waiting copy (the user's intent: the alert may appear) into the list; returns its text, nil if none or denied.
+    private func readPending() -> String? {
+        guard clipboardOn, pendingAt != nil else { return nil }
+        pendingAt = nil
+        guard let text = UIPasteboard.general.string else { return nil }
+        clipList.add(text, now: Date())
+        return text
+    }
+
+    /// Offers the waiting copy as "Paste", or the newest unpasted Clip, for its first minute; then back to punctuation.
+    private func updateFresh() {
+        let now = Date()
+        var age = pendingAt.map { now.timeIntervalSince($0) }
+        model.freshPending = model.clipboardAllowed && (age ?? .infinity) < ClipList.freshFor
+        let c = model.clipboardAllowed && !model.freshPending ? clipList.fresh(now: now) : nil
+        model.fresh = c?.text
+        if let c { age = now.timeIntervalSince(c.at) }
+        freshTimer?.cancel()
+        guard let age, model.freshPending || c != nil else { return }
+        let t = DispatchWorkItem { [weak self] in self?.updateFresh() }
+        freshTimer = t
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, ClipList.freshFor - age) + 0.1, execute: t)
+    }
+    private var freshTimer: DispatchWorkItem?
+    private var wiped = false
 
     /// An emoji's skin tones in the keyboard's long-press panel, as on a Khmer key: the highlighted one goes in on release.
     private func emojiHeld(_ h: EmojiHold) {

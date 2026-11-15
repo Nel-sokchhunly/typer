@@ -10,7 +10,6 @@ struct KeyboardView: View {
     let onClip: (String) -> Void
     let onClearClips: () -> Void
     let onPinClip: (Clip) -> Void  // pins, or unpins when already Pinned
-    let onDeleteClip: (Clip) -> Void
     let onHold: (EmojiHold) -> Void
     let onSearch: () -> Void
     let onGlobe: () -> Void
@@ -80,8 +79,8 @@ struct KeyboardView: View {
         case .symbols: return Look(text: model.page == .numbers ? "#+=" : "123", fontSize: 16)
         case .page: return Look(text: model.emojiSearching ? "ABC" : model.page == .letters ? "123" : model.layout == .khmer ? "កខគ" : "ABC", fontSize: 16)
         case .emoji: return Look(image: "face.smiling")
-        case .clipboard: return Look(image: "doc.on.clipboard", style: model.showClipboard ? .mode : .function, label: "Clipboard")  // yellow while its panel is open
-        case .fresh: return Look(image: "doc.on.clipboard", label: "Paste \(model.fresh ?? "")")  // drawn in keyView: icon and text
+        case .clipboard: return Look(image: "clipboard", style: model.showClipboard ? .mode : .function, label: "Clipboard")  // yellow while its panel is open
+        case .fresh: return Look(image: "clipboard", label: "Paste \(model.fresh ?? "")")  // drawn in keyView: icon and text
         case .backspace: return Look(image: "delete.left")
         case .globe: return Look(image: "globe")
         case .mode: return Look(text: model.mode, style: .mode, fontSize: 16)
@@ -107,8 +106,8 @@ struct KeyboardView: View {
         return Group {
             if key.action == .fresh {
                 HStack(spacing: 6) {
-                    Image(systemName: "doc.on.clipboard").font(.system(size: 16))
-                    Text((model.fresh ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")).font(.system(size: 16)).lineLimit(1).truncationMode(.tail)
+                    Image(systemName: "clipboard").font(.system(size: 16))
+                    Text(model.fresh == nil ? "Paste" : (model.fresh ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")).font(.system(size: 16)).lineLimit(1).truncationMode(.tail)
                 }
                 .foregroundColor(l.style.foreground).padding(.horizontal, 8)
                 .accessibilityElement(children: .ignore).accessibilityLabel(l.label ?? "")
@@ -249,20 +248,21 @@ struct KeyboardView: View {
     private var clipboardPanel: some View {
         scrollPanel {
             ForEach(Array(model.clips.enumerated()), id: \.offset) { _, c in
-                let pin = c.isPinned ? "Unpin" : "Pin"
-                panelRow(AttributedString(c.line), plain: true, pinned: c.isPinned) { onClip(c.text) }
-                    .contextMenu {  // long-press
-                        Button(pin) { onPinClip(c) }
-                        Button("Delete", role: .destructive) { onDeleteClip(c) }
+                panelRow(AttributedString(c.line), plain: true, pinButton: true) { onClip(c.text) }
+                    .overlay(alignment: .trailing) {  // on top of the row, so its taps pin instead of paste
+                        Button { onPinClip(c) } label: {
+                            Image(systemName: c.isPinned ? "pin.fill" : "pin").font(.system(size: 16))
+                                .foregroundColor(c.isPinned ? .primary : .secondary)
+                                .frame(width: 44, height: 44).contentShape(Rectangle())
+                        }
+                        .accessibilityLabel(c.isPinned ? "Unpin" : "Pin")
                     }
-                    .accessibilityAction(named: pin) { onPinClip(c) }
-                    .accessibilityAction(named: "Delete") { onDeleteClip(c) }
             }
             if model.clips.isEmpty {
                 Text("Text you copy shows here for an hour").font(.system(size: 16)).foregroundColor(.secondary)
                     .multilineTextAlignment(.center).padding(.horizontal, 12).padding(.vertical, 20)
                     .frame(maxWidth: .infinity)
-            } else {
+            } else if model.clips.contains(where: { !$0.isPinned }) {
                 panelRow(AttributedString("Clear all"), plain: true, onClearClips)
             }
         }
@@ -280,7 +280,7 @@ struct KeyboardView: View {
     }
 
     private func panelRow(_ text: AttributedString, number: Int? = nil, bold: Bool = false, tag: String? = nil,
-                          plain: Bool = false, pinned: Bool = false, _ action: @escaping () -> Void) -> some View {
+                          plain: Bool = false, pinButton: Bool = false, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if !plain {  // a Clip row is one line with no number column
@@ -290,10 +290,7 @@ struct KeyboardView: View {
                 Text(text).font(.system(size: 20, weight: bold ? .bold : .regular)).lineSpacing(6)
                     .multilineTextAlignment(.leading).lineLimit(plain ? 1 : nil)  // tail ellipsis
                 Spacer(minLength: 0)
-                if pinned {
-                    Image(systemName: "pin.fill").font(.system(size: 12)).foregroundColor(.secondary)
-                        .accessibilityLabel("Pinned")
-                }
+                if pinButton { Color.clear.frame(width: 32) }  // room for the pin button laid over the row
                 if let tag {
                     Text(tag).font(.system(size: 12)).foregroundColor(.secondary)
                         .padding(.horizontal, 6).padding(.vertical, 2)
