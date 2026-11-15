@@ -136,4 +136,28 @@ extension ClipListTests {
         clips.add("a", now: t0 + 2)
         XCTAssertNil(clips.fresh(now: t0 + 3))
     }
+
+    func testWipeDeletesEverything() {
+        clips.add("a", now: t0)
+        clips.wipe()
+        XCTAssertEqual(texts(t0), [])
+    }
+
+    func testFileStoreWipeRemovesFile() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("clips-\(UUID()).json")
+        let list = ClipList(store: FileClipStore(url: url))
+        list.add("a", now: t0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        list.wipe()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertEqual(list.list(now: t0), [])
+    }
+
+    func testSettingIsOnWhenAbsent() {
+        let d = UserDefaults(suiteName: "test-\(UUID())")!
+        XCTAssertTrue(ClipSettings.isOn(d))
+        XCTAssertTrue(ClipSettings.isOn(nil))
+        d.set(false, forKey: ClipSettings.key)
+        XCTAssertFalse(ClipSettings.isOn(d))
+    }
 }

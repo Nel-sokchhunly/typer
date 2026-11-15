@@ -16,6 +16,10 @@ targets:
     type: application
     platform: iOS
     sources: [App]
+    entitlements:
+      path: App/Typer.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.chhunly.typer]
     dependencies:
       - target: TyperKeyboard
     settings:
@@ -40,6 +44,10 @@ targets:
     dependencies:
       - framework: ../build/ios/Typer.xcframework
         embed: false
+    entitlements:
+      path: Keyboard/TyperKeyboard.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.chhunly.typer]
     info:
       path: Keyboard/Info.plist
       properties:
