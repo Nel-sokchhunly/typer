@@ -56,13 +56,12 @@ final class KeyLayoutTests: XCTestCase {
         XCTAssertFalse(english.contains { $0.action == .punct("។") })
     }
 
-    func testClipboardButtonIsFirstOnTheIdleBarOnBothLayoutsAndTheBarStillFits() {
+    func testClipboardButtonSitsBeforeTheSlotOnBothLayoutsAndTheBarStillFits() {
         for (bar, khmer) in [(KeyLayout.punctuation, false), (KeyLayout.englishPunctuation, false), (KeyLayout.khmerPunctuation, true)] {
             let ks = KeyLayout.keys(width: w, page: .letters, upper: false, globe: true, bar: bar, khmer: khmer, clipboard: true)
             let strip = ks.filter { $0.rect.minY < KeyLayout.rowsTop }.sorted { $0.rect.minX < $1.rect.minX }
-            XCTAssertEqual(strip.first?.action, .clipboard)
+            XCTAssertEqual(strip.suffix(2).map(\.action), [.clipboard, .slot])
             XCTAssertEqual(strip.first?.rect.minX ?? 0, KeyLayout.margin, accuracy: 0.01)
-            XCTAssertEqual(strip.last?.action, .slot)
             XCTAssertEqual(strip.count, bar.count + 2)
             for (a, b) in zip(strip, strip.dropFirst()) { XCTAssertEqual(b.rect.minX - a.rect.maxX, KeyLayout.gap, accuracy: 0.01) }
         }
@@ -256,10 +255,11 @@ final class KeyTouchesTests: XCTestCase {
 }
 
 extension KeyLayoutTests {
-    func testFreshClipReplacesPunctuationBetweenClipboardButtonAndSlot() {
+    func testFreshClipReplacesPunctuationBeforeClipboardButtonAndSlot() {
         let ks = KeyLayout.keys(width: w, page: .letters, upper: false, globe: true, bar: KeyLayout.punctuation, clipboard: true, fresh: true)
         let strip = ks.filter { $0.rect.minY < KeyLayout.rowsTop }.sorted { $0.rect.minX < $1.rect.minX }
-        XCTAssertEqual(strip.map(\.action), [.clipboard, .fresh, .slot])
+        XCTAssertEqual(strip.map(\.action), [.fresh, .clipboard, .slot])
+        XCTAssertEqual(strip.first?.rect.minX ?? 0, KeyLayout.margin, accuracy: 0.01)
         for (a, b) in zip(strip, strip.dropFirst()) { XCTAssertEqual(b.rect.minX - a.rect.maxX, KeyLayout.gap, accuracy: 0.01) }
         XCTAssertEqual(strip.last?.rect.maxX ?? 0, w - KeyLayout.margin, accuracy: 0.01)
     }

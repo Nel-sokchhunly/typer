@@ -45,8 +45,8 @@ public enum KeyLayout {
 
     /// `bar`: the idle candidate bar's punctuation keys, then the slot; empty while composing. `upper`: letters page
     /// with shift on (the Khmer layout: its shift layer). `khmer`: the Khmer layout, 4 rows of 12 letters and no ខ/EN key.
-    /// `fresh`: with the Clipboard button, a Fresh clip key fills the strip between it and the slot, in place of the punctuation.
-    /// `clipboard`: the Clipboard button first on the idle bar (the caller hides it without Full Access and in password fields).
+    /// `fresh`: with the Clipboard button, a Fresh clip key fills the strip before it, in place of the punctuation.
+    /// `clipboard`: the Clipboard button just left of the slot on the idle bar (the caller hides it without Full Access and in password fields).
     public static func keys(width w: CGFloat, page: KeyPage, upper: Bool, globe: Bool, bar: [String],
                             khmer: Bool = false, clipboard: Bool = false, fresh: Bool = false) -> [Key] {
         let inner = w - 2 * margin
@@ -58,18 +58,19 @@ public enum KeyLayout {
             out.append(Key(action: a, rect: CGRect(x: x, y: y, width: width, height: height), longPress: longPress))
         }
 
+        // the Clipboard button sits just left of the slot, so the idle bar ends in two buttons as the composing bar does
+        let slotX = w - margin - slotWidth, clipX = slotX - gap - slotWidth
+        let tail = clipboard ? slotWidth + gap : 0  // room the Clipboard button takes before the slot
         if !bar.isEmpty && clipboard && fresh {
-            add(.clipboard, margin, barTop + 2, slotWidth, 36)
-            let x = margin + slotWidth + gap
-            add(.fresh, x, barTop + 2, w - margin - slotWidth - gap - x, 36)
-            add(.slot, w - margin - slotWidth, barTop + 2, slotWidth, 36)
+            add(.fresh, margin, barTop + 2, clipX - gap - margin, 36)
         } else if !bar.isEmpty {
             let n = CGFloat(bar.count)
-            let lead = clipboard ? slotWidth + gap : 0
-            let pw = (inner - slotWidth - lead - n * gap) / n
-            if clipboard { add(.clipboard, margin, barTop + 2, slotWidth, 36) }
-            for (j, p) in bar.enumerated() { add(.punct(p), margin + lead + CGFloat(j) * (pw + gap), barTop + 2, pw, 36) }
-            add(.slot, w - margin - slotWidth, barTop + 2, slotWidth, 36)
+            let pw = (inner - slotWidth - tail - n * gap) / n
+            for (j, p) in bar.enumerated() { add(.punct(p), margin + CGFloat(j) * (pw + gap), barTop + 2, pw, 36) }
+        }
+        if !bar.isEmpty {
+            if clipboard { add(.clipboard, clipX, barTop + 2, slotWidth, 36) }
+            add(.slot, slotX, barTop + 2, slotWidth, 36)
         }
 
         let khmerLetters = khmer && page == .letters
