@@ -690,6 +690,25 @@ scenario_next() { # after a word the bar offers next words: Khmer after ខ្�
     tap $(key_at "English mode")
 }
 
+scenario_emojisuggest() { # a word with an emoji: English "love" offers one while typing; Khmer ភ្លើង offers one after it
+    open_app || { FAILED=1; return; }
+    tap $(key_at "Khmer mode"); wait_for "English mode" 10 >/dev/null; read_keys
+    type_keys love; sleep 0.8
+    xy=$(ui prefix "emoji, ") || { log "FAIL emojisuggest: no emoji for love"; FAILED=1; shot emojisuggest-fail; return; }
+    log "  bar: $(ui labels | sed -n '2,6p' | tr '\n' '|')"
+    shot emojisuggest-english
+    tap $xy; sleep 0.5
+    check "emojisuggest: the emoji goes after the word" "love ❤️ " "$(field_text)"
+    tap $(key_at "English mode"); sleep 0.3
+    open_app || { FAILED=1; return; }
+    wait_for "Khmer mode" 10 >/dev/null || { log "FAIL emojisuggest: not back in Khmer mode"; FAILED=1; shot emojisuggest-fail; return; }
+    type_keys phleung; sleep 1
+    tap $(ui bounds "$(ui first)"); sleep 0.8
+    log "  Khmer: $(field_text), bar: $(ui labels | sed -n '2,7p' | tr '\n' '|')"
+    ui prefix "emoji, " >/dev/null && log "PASS emojisuggest: a Khmer word offers an emoji" || { log "FAIL emojisuggest: no emoji after $(field_text)"; FAILED=1; }
+    shot emojisuggest-khmer
+}
+
 scenario_clipboard() { # copy: the bar offers a one-tap paste; the clipboard button lists the clips newest first; tap pastes; Clear all
     open_fields search || { FAILED=1; return; }
     tap $(ui bounds "copy sample"); sleep 0.8
@@ -756,7 +775,7 @@ scenario_compare() {
 }
 
 log "Typer Android e2e $(date)  device: $("$ADB" shell getprop ro.product.model | tr -d '\r') API $("$ADB" shell getprop ro.build.version.sdk | tr -d '\r')"
-for s in ${*:-tracer phrase learn reset password english glide clipboard next keys emoji font khmer talkback}; do
+for s in ${*:-tracer phrase learn reset password english glide clipboard next emojisuggest keys emoji font khmer talkback}; do
     log "-- $s"
     "scenario_$s"
 done
