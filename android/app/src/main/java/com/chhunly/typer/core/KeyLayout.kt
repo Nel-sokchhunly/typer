@@ -225,6 +225,8 @@ sealed interface StripAction {
     data object Clipboard : StripAction
     /** Text copied in the last minute, offered as a one-tap paste. */
     data object Paste : StripAction
+    /** A next-word suggestion (index into the list). */
+    data class Next(val index: Int) : StripAction
     /** Open or close the all-Suggestions panel. */
     data object Expand : StripAction
     data class Punctuation(val text: String) : StripAction
@@ -279,6 +281,22 @@ object StripLayout {
         if (paste) return listOf(clip, StripSlot(StripAction.Paste, pill(m, left, right - left)), layout(m))
         val w = (right - left - (marks.size - 1) * GAP) / marks.size
         return listOf(clip) + marks.mapIndexed { i, s -> StripSlot(StripAction.Punctuation(s), pill(m, left + i * (w + GAP), w)) } + layout(m)
+    }
+
+    /**
+     * After a word, idle: the clipboard button, `count` next words, then `marks` (Khmer keeps ។ here), then the
+     * layout switch.
+     */
+    fun next(m: Metrics, count: Int, marks: List<String>): List<StripSlot> {
+        val clip = StripSlot(StripAction.Clipboard, pill(m, m.margin, CLIPBOARD))
+        val markW = 40f
+        val right = m.width - m.margin - LAYOUT - GAP - marks.size * (markW + GAP)
+        val left = m.margin + CLIPBOARD + GAP
+        val w = (right - left - (count - 1) * GAP) / count
+        val out = arrayListOf(clip)
+        for (i in 0 until count) out += StripSlot(StripAction.Next(i), pill(m, left + i * (w + GAP), w))
+        for ((i, s) in marks.withIndex()) out += StripSlot(StripAction.Punctuation(s), pill(m, right + GAP + i * (markW + GAP), markW))
+        return out + layout(m)
     }
 
     /**

@@ -12,6 +12,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.WindowInsetsController
 import android.view.inputmethod.EditorInfo
+import com.chhunly.typer.core.NextWords
 import com.chhunly.typer.core.ClipHistory
 import com.chhunly.typer.core.AutoCap
 import com.chhunly.typer.core.Composer
@@ -117,8 +118,15 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             }
         }
         loader.execute {
+            nextWords = try {
+                assets.open("data/ngrams.tsv").use { NextWords.load(it) }
+            } catch (e: java.io.IOException) {
+                null
+            }
+        }
+        loader.execute {
             english = try {
-                assets.open("data/english.tsv").use { EnglishWords.load(it) }.also { it.glide }  // build the glide index here, not on the first glide
+                assets.open("data/english.tsv").use { EnglishWords.load(it) }.also { it.warm() }  // build the glide and next-word indexes here, not on first use
             } catch (e: java.io.IOException) {
                 null
             }
@@ -158,6 +166,19 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             clips.clear()
             render()
         }
+    }
+
+    /** Khmer next-word suggestions, loaded off the main thread; none until then. */
+    @Volatile private var nextWords: NextWords? = null
+    private var next: List<String> = emptyList()
+
+    /** A next word from the bar: Khmer goes in as it is (no spaces in Khmer), English with a space after. */
+    private fun nextTapped(i: Int) {
+        val w = next.getOrNull(i) ?: return
+        val english = composer.mode == "EN"
+        val word = if (english && shift == Shift.ONCE) w.replaceFirstChar { it.uppercaseChar() } else w
+        currentInputConnection?.commitText(if (english) "$word " else word, 1)
+        refresh(afterKey = true)
     }
 
     override fun onDestroy() {
@@ -299,6 +320,10 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         val khmer = composer.mode == "ខ"
         val before = if (khmer) null else currentInputConnection?.getTextBeforeCursor(64, 0)?.toString()  // Khmer needs neither
         words = glided ?: if (!khmer && wordsAllowed && page == KeyPage.LETTERS) english?.suggest(before, userWords) ?: emptyList() else emptyList()
+        next = if (wordsAllowed && page == KeyPage.LETTERS && words.isEmpty() && !composer.isComposing) {
+            if (khmer) nextWords?.khmer(currentInputConnection?.getTextBeforeCursor(48, 0)?.toString()) ?: emptyList()
+            else english?.next(before) ?: emptyList()
+        } else emptyList()
         if (!composer.isComposing) showAll = false
         if (afterKey) shiftChosen = false
         if (shift != Shift.LOCK && !shiftChosen) {
@@ -331,6 +356,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             glided = glided != null,
             clipboard = clipboardOpen && !composer.isComposing,
             clips = if (clipboardOpen) clips.list(SystemClock.elapsedRealtime()) else emptyList(),
+            next = next,
             freshClip = if (clipboardOpen || composer.isComposing) null else clips.fresh(SystemClock.elapsedRealtime()),
         )
     }
@@ -488,6 +514,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             is StripAction.Suggestion -> handle(composer.candidateTapped(action.index))
             StripAction.Latin -> handle(composer.rawLatin())
             StripAction.Layout -> layoutTapped()
+            is StripAction.Next -> nextTapped(action.index)
             StripAction.Clipboard -> {
                 clipboardOpen = !clipboardOpen
                 render()

@@ -114,6 +114,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         val clips: List<String> = emptyList(),
         /** Text copied in the last minute: the idle bar offers it as a one-tap paste. */
         val freshClip: String? = null,
+        /** Next-word suggestions after a word, idle (they take the punctuation's place; Khmer keeps ។). */
+        val next: List<String> = emptyList(),
     ) {
         val composing get() = typed.isNotEmpty()
         val panelOpen get() = (showAll && composing) || clipboard
@@ -660,6 +662,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     private fun stripSlots(): List<StripSlot> = when {
         state.composing -> StripLayout.composing(metrics)
         state.words.isNotEmpty() && !state.clipboard -> StripLayout.words(metrics, state.words.size, state.glided)
+        state.next.isNotEmpty() && !state.clipboard && state.freshClip == null ->
+            StripLayout.next(metrics, state.next.size, if (state.mode == "EN" || state.khmerLayout) emptyList() else listOf("។"))
         state.khmerLayout -> StripLayout.punctuation(metrics, KeyLayout.khmerLayoutPunctuation, state.freshClip != null)
         else -> StripLayout.punctuation(metrics, if (state.mode == "EN") KeyLayout.englishPunctuation else KeyLayout.punctuation, state.freshClip != null)
     }
@@ -670,6 +674,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         StripAction.Layout -> if (state.khmerLayout) "abc" else LAYOUT_KHMER
         StripAction.Clipboard -> ""
         StripAction.Paste -> oneLine(state.freshClip ?: "")
+        is StripAction.Next -> state.next.getOrNull(a.index) ?: ""
         StripAction.Expand -> state.suggestions.size.toString()
         is StripAction.Punctuation -> a.text
         is StripAction.Word -> state.words.getOrNull(a.index)?.let { if (a.index == 0 && !state.glided) "“$it”" else it } ?: ""
