@@ -114,8 +114,8 @@ object KeyLayout {
     /** The idle strip's keys: Khmer punctuation in Khmer mode, the common English ones in English mode (as iOS). */
     val punctuation = listOf("។", "៕", "ៗ", "៛", "?", "!")
     val englishPunctuation = listOf(",", ".", "'", "\"", "@", "-")
-    /** The Khmer layout's bar: the Khmer punctuation, plus comma and period (the layout has no keys for them). */
-    val khmerLayoutPunctuation = punctuation + listOf(",", ".")
+    /** The Khmer layout's bar: the same Khmer punctuation as the idle Sing layout (comma and period are keys). */
+    val khmerLayoutPunctuation = punctuation
 
     /**
      * `upper`: letters page with shift on. `khmerLayout`: the numbers and symbols pages were opened from the Khmer
@@ -170,33 +170,34 @@ object KeyLayout {
     }
 
     /**
-     * The bottom row: ?123, ខ/EN (`mode`), comma, emoji, space, period, return. The Khmer layout has no ខ/EN key and
-     * no comma or period keys (they are in its bar); space takes the room left.
+     * The bottom row in Gboard's order and widths (hundredths of a key): ?123 150, comma 100, emoji 100, the language
+     * key 100 (Typer's ខ/EN, in the slot Gboard gives its globe key, next to space; `mode`), space, period 100,
+     * return 150. Space takes what is left: 375, or 475 without the ខ/EN key (the Khmer layout, like Gboard's Khmer).
      */
     private fun bottomRow(m: Metrics, out: MutableList<Key>, mode: Boolean, punctuation: Boolean, field: FieldKind = FieldKind.TEXT) {
-        val k = m.keyWidth
-        val g = m.gap
-        val wide = 1.5f * k + 0.5f * g
-        val top = m.rowsTop + m.bottomRow * m.pitch
-        val right = m.width - m.margin - wide  // the return key's left edge
-        var x = m.margin
-        fun next(a: KeyAction, w: Float, style: KeyStyle, more: List<String> = emptyList(), long: KeyAction? = null) {
-            out.add(Key(a, Box(x, top, w, m.keyHeight), style, null, more, long))
-            x += w + g
-        }
-        next(KeyAction.Page, wide, KeyStyle.FUNCTION)
-        if (mode) next(KeyAction.Mode, k, KeyStyle.MODE)
         val comma = when (field) {
             FieldKind.EMAIL -> "@"
             FieldKind.URL -> "/"
             FieldKind.TEXT -> ","
         }
-        if (punctuation) next(KeyAction.Text(comma), k, KeyStyle.FUNCTION, long = KeyAction.Settings)
-        next(KeyAction.Emoji, k, KeyStyle.FUNCTION)  // where Gboard has it, after the comma
-        val after = if (punctuation) k + g else 0f  // the period, after space
-        next(KeyAction.Space, right - g - after - x, KeyStyle.LETTER)
-        if (punctuation) next(KeyAction.Text("."), k, KeyStyle.FUNCTION, if (field == FieldKind.TEXT) PERIOD_MORE else DOMAINS)
-        out.add(Key(KeyAction.Return, Box(right, top, wide, m.keyHeight), KeyStyle.ACTION))
+        class Slot(val a: KeyAction, val weight: Float, val style: KeyStyle, val more: List<String> = emptyList(), val long: KeyAction? = null)
+        val slots = buildList {
+            add(Slot(KeyAction.Page, 150f, KeyStyle.FUNCTION))
+            if (punctuation) add(Slot(KeyAction.Text(comma), 100f, KeyStyle.FUNCTION, long = KeyAction.Settings))
+            add(Slot(KeyAction.Emoji, 100f, KeyStyle.FUNCTION))
+            if (mode) add(Slot(KeyAction.Mode, 100f, KeyStyle.MODE))
+            add(Slot(KeyAction.Space, if (mode) 375f else 475f, KeyStyle.LETTER))
+            if (punctuation) add(Slot(KeyAction.Text("."), 100f, KeyStyle.FUNCTION, if (field == FieldKind.TEXT) PERIOD_MORE else DOMAINS))
+            add(Slot(KeyAction.Return, 150f, KeyStyle.ACTION))
+        }
+        val top = m.rowsTop + m.bottomRow * m.pitch
+        val unit = (m.width - 2 * m.margin - (slots.size - 1) * m.gap) / slots.sumOf { it.weight.toDouble() }.toFloat()
+        var x = m.margin
+        for (sl in slots) {
+            val w = sl.weight * unit
+            out.add(Key(sl.a, Box(x, top, w, m.keyHeight), sl.style, null, sl.more, sl.long))
+            x += w + m.gap
+        }
     }
 
     /**
@@ -236,13 +237,8 @@ object KeyLayout {
             }
             if (i == 3) out.add(Key(KeyAction.Backspace, Box(x, top, m.width - m.margin - x, m.keyHeight), KeyStyle.FUNCTION))
         }
-        // the bottom row on the same 12-key grid, so its edges line up with the keys above: ?123 2, emoji 1, space 7, return 2
-        val top = m.rowsTop + m.bottomRow * m.pitch
-        fun span(from: Int, n: Int) = Box(m.margin + from * (k + g), top, n * k + (n - 1) * g, m.keyHeight)
-        out.add(Key(KeyAction.Page, span(0, 2), KeyStyle.FUNCTION))
-        out.add(Key(KeyAction.Emoji, span(2, 1), KeyStyle.FUNCTION))
-        out.add(Key(KeyAction.Space, span(3, 7), KeyStyle.LETTER))
-        out.add(Key(KeyAction.Return, span(10, 2), KeyStyle.ACTION))
+        // Gboard's Khmer layout keeps its usual bottom row: ?123, comma, emoji, space, period, return (no ខ/EN key here)
+        bottomRow(m, out, mode = false, punctuation = true)
         return out
     }
 
