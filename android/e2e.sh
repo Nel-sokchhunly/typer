@@ -273,8 +273,7 @@ scenario_leave() { # the caret leaves a Phrase: it goes in as Khmer; undo brings
     sleep 0.4
     check "leave: the caret stayed where the tap put it" "kទៅសាលា" "$(field_text)"
     tap $(key_at delete); sleep 0.4
-    tap $(ui bounds "undo Khmer, sala" 2>/dev/null || echo) 2>/dev/null  # gone after a key: nothing to tap
-    check "leave: a key ends the undo" "ទៅសាលា" "$(field_text)"
+    if ui labels | grep -q "^undo Khmer"; then log "FAIL leave: a key ends the undo"; FAILED=1; else log "PASS leave: a key ends the undo"; fi
 
     open_app || { FAILED=1; return; }
     type_keys tov
