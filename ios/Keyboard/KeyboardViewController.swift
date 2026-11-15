@@ -76,17 +76,19 @@ final class KeyboardModel: ObservableObject {
         let keys = KeyLayout.keys(width: width, page: .letters, upper: false, globe: false, bar: [])
         guard let page = keys.first(where: { $0.action == .page }) else { return [] }
         let top = KeyLayout.barTop + EmojiSearchBar.fieldHeight + 4 + EmojiSearchBar.resultsHeight + 4
-        let gap: CGFloat = 6, keyHeight = (height - 4 - top - 3 * gap) / 4
+        // normal-size keys at the bottom, as on the letters page; shorter only if the panel is too short for them
+        let gap = KeyLayout.rowGap, keyHeight = min(KeyLayout.keyHeight, (height - 4 - top - 3 * gap) / 4)
+        let keysTop = height - 4 - 4 * keyHeight - 3 * gap
         return keys.filter { $0.action != .emoji && $0.action != .mode }.map { k in
             let row = ((k.rect.minY - KeyLayout.rowsTop) / (KeyLayout.keyHeight + KeyLayout.rowGap)).rounded()
-            var r = CGRect(x: k.rect.minX, y: top + row * (keyHeight + gap), width: k.rect.width, height: keyHeight)
+            var r = CGRect(x: k.rect.minX, y: keysTop + row * (keyHeight + gap), width: k.rect.width, height: keyHeight)
             if k.action == .space { r = CGRect(x: page.rect.maxX + KeyLayout.gap, y: r.minY, width: r.maxX - page.rect.maxX - KeyLayout.gap, height: r.height) }
             return Key(action: k.action, rect: r)
         }
     }
 
-    /// The Khmer layout's letters take one row more.
-    var height: CGFloat { layout == .khmer && page == .letters ? KeyLayout.khmerHeight : KeyLayout.height }
+    /// The Khmer layout's letters take one row more; the Emoji panel (and its search) always has that height.
+    var height: CGFloat { showEmoji || layout == .khmer && page == .letters ? KeyLayout.khmerHeight : KeyLayout.height }
 
     /// The bar's rightmost slot: abc keeps the Latin while composing; idle, it switches layouts.
     var slotLabel: String { typed.isEmpty && layout == .sing ? "កខគ" : "abc" }
@@ -166,7 +168,7 @@ final class KeyboardViewController: UIInputViewController {
                 onHold: { [unowned self] in emojiHeld($0) },
                 onSearch: { [unowned self] in keyFeedback(); model.emojiQuery = ""; model.emojiSearching = true },
                 onGlobe: { [unowned self] in advanceToNextInputMode() },
-                onLetters: { [unowned self] in keyFeedback(); model.showEmoji = false; model.page = .letters },
+                onLetters: { [unowned self] in keyFeedback(); model.showEmoji = false; model.page = .letters; refresh() },  // refresh: back to the layout's height
                 onDelete: { [unowned self] in keyFeedback(); textDocumentProxy.deleteBackward() }))  // a grapheme, ZWJ emoji included
         hosting.view.translatesAutoresizingMaskIntoConstraints = false
         hosting.view.backgroundColor = .clear
