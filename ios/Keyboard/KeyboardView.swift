@@ -79,8 +79,8 @@ struct KeyboardView: View {
         case .symbols: return Look(text: model.page == .numbers ? "#+=" : "123", fontSize: 16)
         case .page: return Look(text: model.emojiSearching ? "ABC" : model.page == .letters ? "123" : model.layout == .khmer ? "កខគ" : "ABC", fontSize: 16)
         case .emoji: return Look(image: "face.smiling")
-        case .clipboard: return Look(image: "clipboard", style: model.showClipboard ? .mode : .function, label: "Clipboard")  // yellow while its panel is open
-        case .fresh: return Look(image: "clipboard", label: "Paste \(model.fresh ?? "")")  // drawn in keyView: icon and text
+        case .clipboard: return Look(image: "clipboard", style: model.showClipboard ? .mode : .switcher, label: "Clipboard")  // a utility key like the layout switch; yellow while its panel is open
+        case .fresh: return Look(image: "clipboard", style: .switcher, label: "Paste \(model.fresh ?? "")")  // drawn in keyView: icon and text
         case .backspace: return Look(image: "delete.left")
         case .globe: return Look(image: "globe")
         case .mode: return Look(text: model.mode, style: .mode, fontSize: 16)
