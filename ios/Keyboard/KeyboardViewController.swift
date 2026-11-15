@@ -40,6 +40,9 @@ final class KeyboardModel: ObservableObject {
 
     /// Keys currently held down, for the highlight and pop-up preview.
     @Published var pressed: [Key] = []
+    /// The open long-press panel and its highlighted option.
+    @Published var panel: LongPressPanel?
+    @Published var panelSelected = 0
 
     enum Shift { case off, once, lock }
     typealias Page = KeyPage
@@ -140,6 +143,7 @@ final class KeyboardViewController: UIInputViewController {
         layer.press = { [unowned self] in keyFeedback() }
         layer.fire = { [unowned self] in fire($0) }
         layer.pressedChanged = { [unowned self] in if model.pressed != $0 { model.pressed = $0 } }
+        layer.panelChanged = { [unowned self] in model.panel = $0; model.panelSelected = $1 }
         view.addSubview(layer)
         NSLayoutConstraint.activate([
             layer.leadingAnchor.constraint(equalTo: view.leadingAnchor),

@@ -12,7 +12,11 @@ public enum KeyAction: Hashable {
 public struct Key: Equatable {
     public let action: KeyAction
     public let rect: CGRect
-    public init(action: KeyAction, rect: CGRect) { self.action = action; self.rect = rect }
+    /// Long-press list (Khmer layout letters only); empty: no long-press.
+    public let longPress: [String]
+    public init(action: KeyAction, rect: CGRect, longPress: [String] = []) {
+        self.action = action; self.rect = rect; self.longPress = longPress
+    }
 }
 
 /// Key frames in the keyboard view's coordinates. The SwiftUI keys are drawn from these and the UIKit touch layer
@@ -47,8 +51,9 @@ public enum KeyLayout {
         let kw = (inner - 9 * gap) / 10
         let fw = (inner - 7 * kw - 8 * gap) / 2  // function key beside the letters of row 3
         var out: [Key] = []
-        func add(_ a: KeyAction, _ x: CGFloat, _ y: CGFloat, _ width: CGFloat, _ height: CGFloat = keyHeight) {
-            out.append(Key(action: a, rect: CGRect(x: x, y: y, width: width, height: height)))
+        func add(_ a: KeyAction, _ x: CGFloat, _ y: CGFloat, _ width: CGFloat, _ height: CGFloat = keyHeight,
+                 longPress: [String] = []) {
+            out.append(Key(action: a, rect: CGRect(x: x, y: y, width: width, height: height), longPress: longPress))
         }
 
         if !bar.isEmpty {
@@ -65,7 +70,7 @@ public enum KeyLayout {
                 let y = rowsTop + CGFloat(i) * (keyHeight + rowGap)
                 var x = margin
                 if i == 3 { add(.shift, x, y, kw); x += kw + gap }
-                for s in row { add(.char(s), x, y, kw); x += kw + gap }
+                for s in row { add(.char(s), x, y, kw, longPress: KhmerKeys.longPress[s] ?? []); x += kw + gap }
                 if i == 3 { add(.backspace, x, y, kw) }
             }
         }
@@ -107,6 +112,33 @@ public enum KeyLayout {
             hypot(max(r.minX - p.x, 0, p.x - r.maxX), max(r.minY - p.y, 0, p.y - r.maxY))
         }
         return keys.min { dist($0.rect) < dist($1.rect) }
+    }
+}
+
+/// A held key's long-press panel: the key's own text then its list, one cell each, in a row above the key. Cell 0
+/// sits over the key and the list runs toward the keyboard's wider half (leftward near the right edge, like Gboard);
+/// the row is then shifted inside the keyboard if it overhangs.
+public struct LongPressPanel: Equatable {
+    public static let cellHeight: CGFloat = 48
+    public let options: [String]
+    /// `cells[i]` shows `options[i]`.
+    public let cells: [CGRect]
+
+    public init(key: Key, width: CGFloat) {
+        let own: [String] = if case .char(let t) = key.action { [t] } else { [] }
+        options = own + key.longPress
+        let r = key.rect, cw = r.width + 8
+        let step = r.midX < width / 2 ? cw : -cw
+        let y = max(0, r.minY - Self.cellHeight - 4)
+        let xs = options.indices.map { r.midX - cw / 2 + CGFloat($0) * step }
+        let lo = xs.min()!, hi = xs.max()! + cw, m = KeyLayout.margin
+        let dx = lo < m ? m - lo : hi > width - m ? width - m - hi : 0
+        cells = xs.map { CGRect(x: $0 + dx, y: y, width: cw, height: Self.cellHeight) }
+    }
+
+    /// The option under a finger at `x`; past either end, the end cell.
+    public func index(at x: CGFloat) -> Int {
+        cells.indices.min { abs(cells[$0].midX - x) < abs(cells[$1].midX - x) }!
     }
 }
 

@@ -3,14 +3,18 @@ import UIKit
 /// The one UIKit view that takes every touch on the keys. SwiftUI per-key gestures drop or delay fast, overlapping
 /// touches in a keyboard extension, and the gaps between keys hit nothing; here every touch resolves to the nearest key
 /// (KeyLayout.hit) and KeyTouches decides what fires. Touches outside the key area fall through to the SwiftUI bar and panel.
+/// Holding a key with a long-press list 0.4 s opens its LongPressPanel; that touch then picks an option instead.
 final class TouchLayer: UIView {
     var keys: (CGFloat) -> [Key] = { _ in [] }
     var press: () -> Void = {}
     var fire: (KeyAction) -> Void = { _ in }
     var pressedChanged: ([Key]) -> Void = { _ in }
+    var panelChanged: (LongPressPanel?, Int) -> Void = { _, _ in }
 
     private var tracker = KeyTouches<ObjectIdentifier>()
     private var repeater: Task<Void, Never>?
+    private var hold: (id: ObjectIdentifier, task: Task<Void, Never>)?
+    private var panel: (id: ObjectIdentifier, panel: LongPressPanel, selected: Int)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -21,7 +25,7 @@ final class TouchLayer: UIView {
         backgroundColor = UIColor(white: 0.5, alpha: 0.015)
     }
     required init?(coder: NSCoder) { fatalError() }
-    deinit { repeater?.cancel() }
+    deinit { repeater?.cancel(); hold?.task.cancel() }
 
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
         guard bounds.contains(point), let top = keys(bounds.width).map(\.rect.minY).min() else { return false }
@@ -36,34 +40,73 @@ final class TouchLayer: UIView {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         for t in touches.sorted(by: { $0.timestamp < $1.timestamp }) {
-            if let k = key(t) { run(tracker.down(ObjectIdentifier(t), k)) }
+            closePanel(typing: true)  // like rollover: a new touch finishes the open panel
+            hold?.task.cancel(); hold = nil
+            guard let k = key(t) else { continue }
+            run(tracker.down(ObjectIdentifier(t), k))
+            if !k.longPress.isEmpty { startHold(ObjectIdentifier(t), k) }
         }
         pressedChanged(tracker.pressed)
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         for t in touches {
-            if let k = key(t) { run(tracker.move(ObjectIdentifier(t), k)) }
+            if let p = panel, p.id == ObjectIdentifier(t) {
+                let i = p.panel.index(at: t.location(in: self).x)
+                if i != p.selected { panel?.selected = i; panelChanged(p.panel, i) }
+            } else if let k = key(t) { run(tracker.move(ObjectIdentifier(t), k)) }
         }
         pressedChanged(tracker.pressed)
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         for t in touches.sorted(by: { $0.timestamp < $1.timestamp }) {
-            if let k = key(t) { run(tracker.up(ObjectIdentifier(t), k)) } else { run(tracker.cancel(ObjectIdentifier(t))) }
+            endHold(t)
+            if panel?.id == ObjectIdentifier(t) { closePanel(typing: true) }
+            else if let k = key(t) { run(tracker.up(ObjectIdentifier(t), k)) } else { run(tracker.cancel(ObjectIdentifier(t))) }
         }
         pressedChanged(tracker.pressed)
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for t in touches { run(tracker.cancel(ObjectIdentifier(t))) }
+        for t in touches {
+            endHold(t)
+            if panel?.id == ObjectIdentifier(t) { closePanel(typing: false) }
+            run(tracker.cancel(ObjectIdentifier(t)))
+        }
         pressedChanged(tracker.pressed)
     }
 
     private func reset() {
         repeater?.cancel()
+        hold?.task.cancel(); hold = nil
         tracker = KeyTouches()
+        closePanel(typing: false)
         pressedChanged([])
+    }
+
+    /// Opens the panel if the touch still holds `key` after 0.4 s; the tracker lets go of it, so it fires nothing itself.
+    private func startHold(_ id: ObjectIdentifier, _ key: Key) {
+        hold = (id, Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard let self, !Task.isCancelled, tracker.pressed == [key] else { return }
+            _ = tracker.cancel(id)
+            let p = LongPressPanel(key: key, width: bounds.width)
+            panel = (id, p, 0)
+            pressedChanged(tracker.pressed)
+            panelChanged(p, 0)
+        })
+    }
+
+    private func endHold(_ t: UITouch) {
+        if hold?.id == ObjectIdentifier(t) { hold?.task.cancel(); hold = nil }
+    }
+
+    private func closePanel(typing: Bool) {
+        guard let p = panel else { return }
+        panel = nil
+        panelChanged(nil, 0)
+        if typing { fire(.char(p.panel.options[p.selected])) }
     }
 
     private func run(_ effects: [KeyEffect]) {

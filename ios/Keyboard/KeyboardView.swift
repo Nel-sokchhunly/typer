@@ -36,6 +36,7 @@ struct KeyboardView: View {
                                 .offset(x: key.rect.minX, y: key.rect.minY)
                         }
                         ForEach(keys.filter(isPreviewed), id: \.action) { key in preview(key) }
+                        if let p = model.panel { longPressPanel(p) }
                     }
                     .allowsHitTesting(false)
                 }
@@ -95,6 +96,26 @@ struct KeyboardView: View {
             .background(RoundedRectangle(cornerRadius: 8).fill(KeyStyle.letter.background))
             .shadow(color: .black.opacity(0.35), radius: 2, x: 0, y: 1)
             .offset(x: key.rect.minX - 3, y: key.rect.minY - 46)
+    }
+
+    /// The held key's options; the highlighted one types on release.
+    private func longPressPanel(_ p: LongPressPanel) -> some View {
+        let all = p.cells.reduce(p.cells[0]) { $0.union($1) }
+        return ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 8).fill(KeyStyle.letter.background)
+                .shadow(color: .black.opacity(0.35), radius: 2, x: 0, y: 1)
+                .frame(width: all.width, height: all.height)
+            ForEach(p.cells.indices, id: \.self) { i in
+                let label = KhmerKeys.optionLabel(for: p.options[i])
+                let selected = i == model.panelSelected
+                Text(label).font(.system(size: label.count > 1 ? 12 : 26))  // ZWJ, ZWNJ: small
+                    .foregroundColor(selected ? .white : .primary)
+                    .frame(width: p.cells[i].width, height: p.cells[i].height)
+                    .background(selected ? RoundedRectangle(cornerRadius: 6).fill(Color.accentColor) : nil)
+                    .offset(x: p.cells[i].minX - all.minX, y: 0)
+            }
+        }
+        .offset(x: all.minX, y: all.minY)
     }
 
     // MARK: candidate bar
