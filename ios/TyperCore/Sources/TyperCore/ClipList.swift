@@ -3,8 +3,11 @@ import Foundation
 /// One Clip: the copied text and when the Keyboard first noticed it.
 public struct Clip: Codable, Equatable {
     public let text: String
-    public let at: Date
-    public init(text: String, at: Date) { self.text = text; self.at = at }
+    public var at: Date
+    /// When it was Pinned; nil for a recent Clip. Absent in files written before Pinned clips, which still load.
+    public var pinnedAt: Date?
+    public init(text: String, at: Date, pinnedAt: Date? = nil) { self.text = text; self.at = at; self.pinnedAt = pinnedAt }
+    public var isPinned: Bool { pinnedAt != nil }
 
     /// How the Clipboard panel shows it: whitespace collapsed to single spaces (one line; the view adds the ellipsis).
     public var line: String { text.split(whereSeparator: \.isWhitespace).joined(separator: " ") }
@@ -33,7 +36,8 @@ public final class FileClipStore: ClipStore {
     }
 }
 
-/// The Clipboard panel's list: text only, newest first. Time is passed in so tests control it.
+/// The Clipboard panel's list: text only; Pinned clips first (latest pinned first), then recent ones newest first.
+/// Time is passed in so tests control it. Pinned clips never expire and sit outside the cap.
 public final class ClipList {
     public static let limit = 10
     public static let maxLength = 5_000
@@ -43,18 +47,38 @@ public final class ClipList {
     public init(store: ClipStore) { self.store = store }
 
     /// Blank text is ignored, long text is cut; a Clip with the same text moves to the top.
+    /// Text equal to a Pinned clip adds nothing.
     public func add(_ text: String, now: Date) {
         guard !text.allSatisfy(\.isWhitespace) else { return }
         let text = String(text.prefix(Self.maxLength))
-        store.clips = Array(([Clip(text: text, at: now)] + store.clips.filter { $0.text != text }).prefix(Self.limit))
+        let all = store.clips
+        guard !all.contains(where: { $0.isPinned && $0.text == text }) else { return }
+        let recent = all.filter { !$0.isPinned && $0.text != text }
+        store.clips = all.filter(\.isPinned) + Array(([Clip(text: text, at: now)] + recent).prefix(Self.limit))
     }
 
-    /// The Clips still kept, newest first; expired ones are dropped for good.
+    /// The Clips still kept: Pinned first, then recent ones; expired recent ones are dropped for good.
     public func list(now: Date) -> [Clip] {
-        let kept = store.clips.filter { now.timeIntervalSince($0.at) <= Self.keep }
-        if kept.count != store.clips.count { store.clips = kept }
-        return kept
+        let all = store.clips
+        let kept = all.filter { $0.isPinned || now.timeIntervalSince($0.at) <= Self.keep }
+        if kept.count != all.count { store.clips = kept }
+        return kept.filter(\.isPinned).sorted { $0.pinnedAt! > $1.pinnedAt! } + kept.filter { !$0.isPinned }
     }
 
-    public func clearAll() { store.clips = [] }
+    public func pin(_ text: String, now: Date) {
+        store.clips = store.clips.map { $0.text == text && !$0.isPinned ? Clip(text: $0.text, at: $0.at, pinnedAt: now) : $0 }
+    }
+
+    /// Back among the recent Clips as if just noticed (at the top, a fresh hour); the cap applies again.
+    public func unpin(_ text: String, now: Date) {
+        let all = store.clips
+        guard let c = all.first(where: { $0.isPinned && $0.text == text }) else { return }
+        let recent = all.filter { !$0.isPinned }
+        store.clips = all.filter { $0.isPinned && $0.text != text } + Array(([Clip(text: c.text, at: now)] + recent).prefix(Self.limit))
+    }
+
+    public func delete(_ text: String) { store.clips = store.clips.filter { $0.text != text } }
+
+    /// Removes the recent Clips; Pinned clips stay.
+    public func clearAll() { store.clips = store.clips.filter(\.isPinned) }
 }

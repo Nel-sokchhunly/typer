@@ -52,4 +52,60 @@ final class ClipListTests: XCTestCase {
         ClipList(store: FileClipStore(url: url)).add("hi", now: t0)
         XCTAssertEqual(ClipList(store: FileClipStore(url: url)).list(now: t0).map(\.text), ["hi"])
     }
+
+    func testPinnedFirstMostRecentlyPinnedFirst() {
+        clips.add("a", now: t0); clips.add("b", now: t0 + 1); clips.add("c", now: t0 + 2)
+        clips.pin("a", now: t0 + 3); clips.pin("c", now: t0 + 4)
+        XCTAssertEqual(texts(t0 + 5), ["c", "a", "b"])
+        XCTAssertEqual(clips.list(now: t0 + 5).map(\.isPinned), [true, true, false])
+    }
+
+    func testPinnedNeverExpireAndSurviveTheCap() {
+        clips.add("p", now: t0); clips.pin("p", now: t0)
+        for i in 0..<12 { clips.add("c\(i)", now: t0 + Double(i)) }
+        XCTAssertEqual(texts(t0 + 12).count, 11)
+        XCTAssertEqual(texts(t0 + 100_000), ["p"])
+    }
+
+    func testNoCapOnPins() {
+        for i in 0..<15 { clips.add("c\(i)", now: t0); clips.pin("c\(i)", now: t0 + Double(i)) }
+        XCTAssertEqual(texts(t0 + 20).count, 15)
+    }
+
+    func testClearAllKeepsPins() {
+        clips.add("a", now: t0); clips.add("b", now: t0); clips.pin("a", now: t0)
+        clips.clearAll()
+        XCTAssertEqual(texts(t0), ["a"])
+    }
+
+    func testCopyEqualToPinnedAddsNothingAndKeepsPlace() {
+        clips.add("a", now: t0); clips.add("b", now: t0); clips.pin("a", now: t0); clips.pin("b", now: t0 + 1)
+        clips.add("a", now: t0 + 2)
+        XCTAssertEqual(texts(t0 + 3), ["b", "a"])
+    }
+
+    func testUnpinReturnsToTopOfRecentWithFreshHour() {
+        clips.add("a", now: t0); clips.pin("a", now: t0); clips.add("b", now: t0 + 1)
+        clips.unpin("a", now: t0 + 2)
+        XCTAssertEqual(texts(t0 + 3), ["a", "b"])
+        XCTAssertEqual(clips.list(now: t0 + 3).map(\.isPinned), [false, false])
+        XCTAssertEqual(texts(t0 + 2 + 3_601), [])
+    }
+
+    func testDeleteRemovesPinnedOrRecent() {
+        clips.add("a", now: t0); clips.add("b", now: t0); clips.pin("a", now: t0)
+        clips.delete("a"); clips.delete("b")
+        XCTAssertEqual(texts(t0), [])
+    }
+
+    func testFileStoreKeepsPinsAndLoadsOldFileWithoutThem() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("clips-\(UUID()).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try JSONEncoder().encode([OldClip(text: "old", at: t0)]).write(to: url)
+        let list = ClipList(store: FileClipStore(url: url))
+        XCTAssertEqual(list.list(now: t0).map(\.isPinned), [false])
+        list.pin("old", now: t0 + 1)
+        XCTAssertEqual(ClipList(store: FileClipStore(url: url)).list(now: t0 + 100_000).map(\.text), ["old"])
+    }
+    private struct OldClip: Codable { let text: String; let at: Date }
 }

@@ -39,7 +39,7 @@ final class KeyboardModel: ObservableObject {
     }
     /// The Clipboard panel is open in place of the keys; `clips` is what it shows, fixed while open.
     @Published var showClipboard = false
-    var clips: [Clip] = []
+    @Published var clips: [Clip] = []
     /// The Clipboard button may show: Full Access and not a password field (the bar still hides it while composing).
     var clipboardAllowed = false
     @Published var needsGlobe = false
@@ -178,7 +178,13 @@ final class KeyboardViewController: UIInputViewController {
                 onSlot: { [unowned self] in slotTapped() },
                 onEmoji: { [unowned self] in emojiPicked($0) },
                 onClip: { [unowned self] in clipPicked($0) },
-                onClearClips: { [unowned self] in keyFeedback(); clipList.clearAll(); model.clips = [] },
+                onClearClips: { [unowned self] in keyFeedback(); clipList.clearAll(); model.clips = clipList.list(now: Date()) },
+                onPinClip: { [unowned self] c in
+                    keyFeedback()
+                    if c.isPinned { clipList.unpin(c.text, now: Date()) } else { clipList.pin(c.text, now: Date()) }
+                    model.clips = clipList.list(now: Date())
+                },
+                onDeleteClip: { [unowned self] in keyFeedback(); clipList.delete($0.text); model.clips = clipList.list(now: Date()) },
                 onHold: { [unowned self] in emojiHeld($0) },
                 onSearch: { [unowned self] in keyFeedback(); model.emojiQuery = ""; model.emojiSearching = true },
                 onGlobe: { [unowned self] in advanceToNextInputMode() },

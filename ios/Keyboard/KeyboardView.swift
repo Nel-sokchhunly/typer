@@ -9,6 +9,8 @@ struct KeyboardView: View {
     let onEmoji: (String) -> Void
     let onClip: (String) -> Void
     let onClearClips: () -> Void
+    let onPinClip: (Clip) -> Void  // pins, or unpins when already Pinned
+    let onDeleteClip: (Clip) -> Void
     let onHold: (EmojiHold) -> Void
     let onSearch: () -> Void
     let onGlobe: () -> Void
@@ -239,7 +241,14 @@ struct KeyboardView: View {
     private var clipboardPanel: some View {
         scrollPanel {
             ForEach(Array(model.clips.enumerated()), id: \.offset) { _, c in
-                panelRow(AttributedString(c.line), plain: true) { onClip(c.text) }
+                let pin = c.isPinned ? "Unpin" : "Pin"
+                panelRow(AttributedString(c.line), plain: true, pinned: c.isPinned) { onClip(c.text) }
+                    .contextMenu {  // long-press
+                        Button(pin) { onPinClip(c) }
+                        Button("Delete", role: .destructive) { onDeleteClip(c) }
+                    }
+                    .accessibilityAction(named: pin) { onPinClip(c) }
+                    .accessibilityAction(named: "Delete") { onDeleteClip(c) }
             }
             if model.clips.isEmpty {
                 Text("Text you copy shows here for an hour").font(.system(size: 16)).foregroundColor(.secondary)
@@ -263,7 +272,7 @@ struct KeyboardView: View {
     }
 
     private func panelRow(_ text: AttributedString, number: Int? = nil, bold: Bool = false, tag: String? = nil,
-                          plain: Bool = false, _ action: @escaping () -> Void) -> some View {
+                          plain: Bool = false, pinned: Bool = false, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if !plain {  // a Clip row is one line with no number column
@@ -273,6 +282,10 @@ struct KeyboardView: View {
                 Text(text).font(.system(size: 20, weight: bold ? .bold : .regular)).lineSpacing(6)
                     .multilineTextAlignment(.leading).lineLimit(plain ? 1 : nil)  // tail ellipsis
                 Spacer(minLength: 0)
+                if pinned {
+                    Image(systemName: "pin.fill").font(.system(size: 12)).foregroundColor(.secondary)
+                        .accessibilityLabel("Pinned")
+                }
                 if let tag {
                     Text(tag).font(.system(size: 12)).foregroundColor(.secondary)
                         .padding(.horizontal, 6).padding(.vertical, 2)
