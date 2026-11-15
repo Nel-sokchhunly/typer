@@ -5,10 +5,12 @@ import android.content.res.Configuration
 import android.os.Build
 
 /**
- * The Keyboard's colours. By default Typer's own palette, the same as the iOS app (yellow #f5c842, ink, cream, warm
- * greys), light and dark. With "Match my wallpaper" on (Android 12+, [ThemeChoice]) the Material 3 roles from the
- * phone's dynamic colour instead (mapping in android/docs/reference.md): Android 14+ the system's roles, 12-13 the
- * nearest tones of the system palettes. Either way the ខ/EN key and the top Suggestion are Typer yellow.
+ * The Keyboard's colours, from the [ThemeChoice]. Typer: Typer's own palette, the same as the iOS app (yellow
+ * #f5c842, ink, cream, warm greys), light and dark. Material You (Android 12+): the Material 3 roles from the phone's
+ * dynamic colour (mapping in android/docs/reference.md): Android 14+ the system's roles, 12-13 the nearest tones of
+ * the system palettes. Light and Dark: plain grey keys with blue accents, like Gboard's own Light and Dark themes.
+ * `mode`: the ខ/EN key, the top Suggestion and the glide trail (Typer yellow only in the Typer theme); `layout`: the
+ * bar's កខគ / abc switch (ink with yellow in the Typer theme).
  */
 class KeyboardTheme(
     val dark: Boolean,
@@ -23,19 +25,25 @@ class KeyboardTheme(
     val onSurfaceVariant: Int,
     val primary: Int,
     val popup: Int,
+    val mode: Int = 0xFFF5C842.toInt(),  // Typer yellow
+    val onMode: Int = 0xFF1A1A1A.toInt(),
+    val layout: Int = 0xFF1A1A1A.toInt(),  // ink
+    val onLayout: Int = 0xFFF5C842.toInt(),
 ) {
-    val mode = 0xFFF5C842.toInt()  // Typer yellow
-    val onMode = 0xFF1A1A1A.toInt()
 
     companion object {
         fun from(context: Context): KeyboardTheme {
             val dark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
                 Configuration.UI_MODE_NIGHT_YES
-            return when {
-                !ThemeChoice.materialYou(context) -> if (dark) typerDark else typerLight
-                Build.VERSION.SDK_INT >= 34 -> system34(context, dark)
-                Build.VERSION.SDK_INT >= 31 -> palette31(context, dark)
-                else -> if (dark) typerDark else typerLight
+            return when (ThemeChoice.get(context)) {
+                ThemeChoice.TYPER -> if (dark) typerDark else typerLight
+                ThemeChoice.LIGHT -> plainLight
+                ThemeChoice.DARK -> plainDark
+                ThemeChoice.MATERIAL_YOU -> when {
+                    Build.VERSION.SDK_INT >= 34 -> system34(context, dark)
+                    Build.VERSION.SDK_INT >= 31 -> palette31(context, dark)
+                    else -> if (dark) typerDark else typerLight
+                }
             }
         }
 
@@ -57,6 +65,10 @@ class KeyboardTheme(
                 onSurfaceVariant = r(android.R.color.system_on_surface_variant_light, android.R.color.system_on_surface_variant_dark),
                 primary = r(android.R.color.system_primary_light, android.R.color.system_primary_dark),
                 popup = r(android.R.color.system_surface_container_lowest_light, android.R.color.system_surface_container_highest_dark),
+                mode = r(android.R.color.system_primary_container_light, android.R.color.system_primary_container_dark),
+                onMode = r(android.R.color.system_on_primary_container_light, android.R.color.system_on_primary_container_dark),
+                layout = r(android.R.color.system_primary_light, android.R.color.system_primary_dark),
+                onLayout = r(android.R.color.system_on_primary_light, android.R.color.system_on_primary_dark),
             )
         }
 
@@ -76,6 +88,10 @@ class KeyboardTheme(
                 onSurfaceVariant = c(ctx, android.R.color.system_neutral2_700),
                 primary = c(ctx, android.R.color.system_accent1_600),
                 popup = c(ctx, android.R.color.system_neutral1_0),
+                mode = c(ctx, android.R.color.system_accent1_100),
+                onMode = c(ctx, android.R.color.system_accent1_900),
+                layout = c(ctx, android.R.color.system_accent1_600),
+                onLayout = c(ctx, android.R.color.system_accent1_0),
             ) else KeyboardTheme(
                 dark = true,
                 background = c(ctx, android.R.color.system_neutral1_900),
@@ -89,8 +105,50 @@ class KeyboardTheme(
                 onSurfaceVariant = c(ctx, android.R.color.system_neutral2_200),
                 primary = c(ctx, android.R.color.system_accent1_200),
                 popup = c(ctx, android.R.color.system_neutral1_800),
+                mode = c(ctx, android.R.color.system_accent1_700),
+                onMode = c(ctx, android.R.color.system_accent1_100),
+                layout = c(ctx, android.R.color.system_accent1_200),
+                onLayout = c(ctx, android.R.color.system_accent1_800),
             )
         }
+
+        // Plain Light and Dark, like Gboard's own: neutral greys, Google-blue accents (Material 3 baseline tones).
+        val plainLight = KeyboardTheme(
+            dark = false,
+            background = 0xFFE8EAED.toInt(),
+            letterKey = 0xFFFFFFFF.toInt(),
+            onLetter = 0xFF1F1F1F.toInt(),
+            functionKey = 0xFFD3D6DB.toInt(),
+            onFunction = 0xFF1F1F1F.toInt(),
+            action = 0xFF0B57D0.toInt(),
+            onAction = 0xFFFFFFFF.toInt(),
+            outlineVariant = 0xFFC4C7C5.toInt(),
+            onSurfaceVariant = 0xFF444746.toInt(),
+            primary = 0xFF0B57D0.toInt(),
+            popup = 0xFFFFFFFF.toInt(),
+            mode = 0xFFD3E3FD.toInt(),
+            onMode = 0xFF041E49.toInt(),
+            layout = 0xFF0B57D0.toInt(),
+            onLayout = 0xFFFFFFFF.toInt(),
+        )
+        val plainDark = KeyboardTheme(
+            dark = true,
+            background = 0xFF1F1F1F.toInt(),
+            letterKey = 0xFF3C3C3C.toInt(),
+            onLetter = 0xFFE3E3E3.toInt(),
+            functionKey = 0xFF2B2B2B.toInt(),
+            onFunction = 0xFFE3E3E3.toInt(),
+            action = 0xFFA8C7FA.toInt(),
+            onAction = 0xFF062E6F.toInt(),
+            outlineVariant = 0xFF444746.toInt(),
+            onSurfaceVariant = 0xFFC4C7C5.toInt(),
+            primary = 0xFFA8C7FA.toInt(),
+            popup = 0xFF3C3C3C.toInt(),
+            mode = 0xFF0842A0.toInt(),
+            onMode = 0xFFD3E3FD.toInt(),
+            layout = 0xFFA8C7FA.toInt(),
+            onLayout = 0xFF062E6F.toInt(),
+        )
 
         // Typer's palette, from the iOS app (ios/App/TyperApp.swift): yellow f5c842, ink 1a1a1a, cream edeae3,
         // page f7f5f0 / 1d1c1a, card ffffff / 2a2926, muted 5f5b53 / a8a294; keys a step apart like the iOS Keyboard.

@@ -134,7 +134,7 @@ fun CompanionScreen(khmer: Boolean, onKhmerChange: (Boolean) -> Unit) {
                 }
                 TryIt(copy, khmer)  // right after the steps: set up, then try it
                 Section(copy.keyboardTitle) {
-                    if (ThemeChoice.available) WallpaperCard(copy)
+                    ThemeCard(copy)
                     VibrationCard(copy)
                     FontCard(copy)
                     PrefSwitch(copy.autoCapTitle, copy.autoCapDetail, KeyboardPrefs::autoCap, KeyboardPrefs::setAutoCap)
@@ -332,42 +332,15 @@ private fun StepCard(number: Int, step: Step, done: Boolean?, doneLabel: String,
     }
 }
 
-/** "Match my wallpaper": the Keyboard uses the phone's Material You colours instead of Typer yellow. */
+/** "Theme", as on Gboard: Typer, Material You (Android 12+ only), Light or Dark. */
 @Composable
-private fun WallpaperCard(copy: Copy) {
+private fun ThemeCard(copy: Copy) {
     val context = LocalContext.current
-    var on by remember { mutableStateOf(ThemeChoice.materialYou(context)) }
-    val colors = MaterialTheme.colorScheme
-    Card {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .toggleable(value = on, role = Role.Switch, onValueChange = {
-                    on = it
-                    ThemeChoice.setMaterialYou(context, it)
-                })
-                .padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Txt(copy.wallpaperTitle, 17, weight = FontWeight.SemiBold)
-                Txt(copy.wallpaperDetail, 15, color = colors.onSurfaceVariant)
-            }
-            Switch(
-                checked = on,
-                onCheckedChange = null,
-                colors = SwitchDefaults.colors(
-                    checkedTrackColor = TyperYellow,
-                    checkedThumbColor = TyperInk,
-                    checkedBorderColor = TyperInk,
-                    uncheckedTrackColor = Color.Transparent,
-                    uncheckedThumbColor = colors.onSurfaceVariant,
-                    uncheckedBorderColor = colors.outline,
-                ),
-            )
-        }
+    var choice by remember { mutableStateOf(ThemeChoice.get(context)) }
+    val offered = ThemeChoice.offered
+    ChoiceCard(copy.themeTitle, copy.themeDetail, offered.map { copy.themeOptions[it.ordinal] }, offered.indexOf(choice)) { i ->
+        choice = offered[i]
+        ThemeChoice.set(context, choice)
     }
 }
 
