@@ -80,7 +80,7 @@ struct KeyboardView: View {
         case .page: return Look(text: model.emojiSearching ? "ABC" : model.page == .letters ? "123" : model.layout == .khmer ? "កខគ" : "ABC", fontSize: 16)
         case .emoji: return Look(image: "face.smiling")
         case .clipboard: return Look(image: "clipboard", style: model.showClipboard ? .mode : .switcher, label: "Clipboard")  // a utility key like the layout switch; yellow while its panel is open
-        case .fresh: return Look(image: "clipboard", style: .switcher, label: "Paste \(model.fresh ?? "")")  // drawn in keyView: icon and text
+        case .fresh: return Look(image: "clipboard", style: .letter, label: "Paste \(model.fresh ?? "")")  // drawn in keyView: icon and text
         case .backspace: return Look(image: "delete.left")
         case .globe: return Look(image: "globe")
         case .mode: return Look(text: model.mode, style: .mode, fontSize: 16)
@@ -101,6 +101,7 @@ struct KeyboardView: View {
     private func keyView(_ key: Key) -> some View {
         let l = look(key.action)
         let previewed = isPreviewed(key)
+        let bar = key.action == .fresh
         // light: letters press grey, function keys white; dark (every key one grey): any key presses lighter
         let pressedBackground = dynamic(light: l.style == .letter ? KeyStyle.functionLight : .white, dark: UIColor(white: 0.42, alpha: 1))
         return Group {
@@ -121,11 +122,18 @@ struct KeyboardView: View {
             else { Color.clear }  // a blank key (space) still needs a view to draw its background on
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(isPressed(key) && !previewed ? pressedBackground : l.style.background)
+        .background(isPressed(key) && !previewed ? pressedBackground : bar ? Color.clear : l.style.background)
         .cornerRadius(5)
-        .shadow(color: .black.opacity(0.3), radius: 0, x: 0, y: 1)
+        .shadow(color: .black.opacity(bar ? 0 : 0.3), radius: 0, x: 0, y: 1)
+        .overlay {  // the Fresh clip reads like an iOS QuickType suggestion: plain text between thin dividers
+            if bar {
+                HStack { divider; Spacer(); divider }
+            }
+        }
         .opacity(key.action == .mode && !model.canToggle || key.action == .slot && model.layoutForced ? 0.4 : 1)  // dimmed when the mode is forced (password, email, number) or a Phrase is open
     }
+
+    private var divider: some View { Rectangle().fill(Color.secondary.opacity(0.4)).frame(width: 0.5).padding(.vertical, 8) }
 
     /// The character above the finger.
     private func preview(_ key: Key) -> some View {
