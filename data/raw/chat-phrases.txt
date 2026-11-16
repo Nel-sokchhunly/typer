@@ -1,0 +1,3 @@
+# Khmer chat sentences, one per line. Separate words with spaces; English words stay as typed.
+# Each sentence's word patterns are added to the language model (data/build.py, CHAT_WEIGHT).
+# Never copy eval/test.tsv sentences here: the eval would just test what it learned.

@@ -29,7 +29,7 @@ const CANDIDATES_PER_TOKEN: usize = 15;
 const BEAM: usize = 30;
 const BACKOFF: f32 = 0.4_f32;
 const LM_WEIGHT: f32 = 0.5; // <1 flattens the news-register LM so exact chat spellings can win
-const EXACT_BONUS: f32 = 2.0;
+const EXACT_BONUS: f32 = 2.5;
 const RAW_PENALTY: f32 = -20.0; // keep the typed latin token when nothing fits
 const USER_BOOST: f32 = 100.0; // one pick counts like 100 corpus occurrences
 const MAX_JOIN: usize = 3; // one Khmer word may be typed as up to 3 latin tokens ("pirn ng" -> ប៉ុណ្ណឹង)
@@ -39,6 +39,7 @@ const JOIN_PENALTY: f32 = 2.0; // offsets the LM term a one-word path saves over
 const NEGATIONS: [&str; 5] = ["អត់", "មិន", "គ្មាន", "ពុំ", "កុំ"];
 const NEG_CLOSE: &str = "ទេ";
 const NEG_BONUS: f32 = 1.0; // ទេ after an open negation ("ot mean te" -> អត់មានទេ, not អត់មានតែ)
+const LAST_WORD_CHOICES: usize = 5; // suggestion slots that first go to the best phrase with its last word swapped
 const EN_SWITCH: f32 = 1.0; // cost of switching from Khmer into English; raise if English steals Khmer phrases
 
 fn is_vowel(c: u8) -> bool {
@@ -194,6 +195,7 @@ pub struct Engine {
     user_dir: Option<PathBuf>,
     total: f32,
     english: HashMap<String, f32>, // normalized English word or "w1 w2" -> count
+    keep: HashSet<String>,         // chat English that stays English (bro), unless it's an exact Khmer spelling
     en_total: f32,                 // unigrams only
     // typed text -> candidates; while typing only the last token changes, so the rest are hits
     cache: RefCell<HashMap<String, Vec<(String, f32)>>>,
@@ -277,12 +279,16 @@ impl Engine {
             read_counts(&u.join("user.tsv"), &mut user);
         }
         let total = counts[0].values().sum::<u64>() as f32;
-        let english: HashMap<String, f32> = fs::read_to_string(dir.join("english.tsv"))
-            .unwrap_or_default() // optional: without it, English words fall back to raw latin
-            .lines()
-            .filter_map(|l| l.split_once('\t'))
-            .filter_map(|(w, c)| Some((w.to_string(), c.parse().ok()?)))
-            .collect();
+        let (mut english, mut keep) = (HashMap::new(), HashSet::new());
+        // optional: without it, English words fall back to raw latin. "word<TAB>count[<TAB>keep]"
+        for line in fs::read_to_string(dir.join("english.tsv")).unwrap_or_default().lines() {
+            let mut f = line.split('\t');
+            let (Some(w), Some(Ok(c))) = (f.next(), f.next().map(str::parse::<f32>)) else { continue };
+            if f.next() == Some("keep") {
+                keep.insert(w.to_string());
+            }
+            english.insert(w.to_string(), c);
+        }
         let en_total = english.iter().filter(|(w, _)| !w.contains(' ')).map(|(_, c)| c).sum();
         let mut by_roman: Vec<u32> = (0..spellings.len() as u32).collect();
         by_roman.sort_by(|&a, &b| spellings[a as usize].0.cmp(&spellings[b as usize].0));
@@ -297,6 +303,7 @@ impl Engine {
             user_dir: user_dir.map(Path::to_path_buf),
             total,
             english,
+            keep,
             en_total,
             cache: RefCell::default(),
             settings: RefCell::default(),
@@ -544,6 +551,9 @@ impl Engine {
                 } else if len == 1 {
                     let mut c = self.candidates(toks[i], MAX_DIST);
                     let english = english_on && self.english.contains_key(&normalize(toks[i]));
+                    if english && self.keep.contains(&normalize(toks[i])) && !c.iter().any(|(_, s)| *s == EXACT_BONUS) {
+                        c.clear(); // Khmer near-misses (bro ~ bros = បុរស) never replace kept English
+                    }
                     c.push((toks[i].to_string(), if english { 0.0 } else { RAW_PENALTY })); // English: exact spelling
                     c
                 } else {
@@ -578,7 +588,7 @@ impl Engine {
         }
         beam.sort_by(|a, b| b.score.total_cmp(&a.score));
         let mut out: Vec<Suggestion> = Vec::new();
-        for p in beam {
+        let words_of = |p: &Path_| {
             let mut words = Vec::new();
             let mut node = Some(&p.last);
             while let Some(nd) = node {
@@ -587,14 +597,28 @@ impl Engine {
             }
             words.truncate(words.len() - 2); // the two <s>
             words.reverse();
-            // ហើយៗ, then ហើយហើយ for the words written out twice
-            for text in [join(&words, true), join(&words, false)] {
-                if out.len() < k && !text.is_empty() && !out.iter().any(|s| s.text == text) {
-                    out.push(Suggestion { text, words: words.clone() });
+            words
+        };
+        // first LAST_WORD_CHOICES slots: the best phrase with only its last word swapped, so the word
+        // just typed keeps its alternatives (video ng -> video ហ្នឹង) even when variants of earlier
+        // words score higher; the rest by score
+        let all: Vec<Vec<String>> = beam.iter().map(words_of).collect();
+        let head = |w: &[String]| w[..w.len().saturating_sub(1)].to_vec();
+        let best_head = all.first().map(|w| head(w)).unwrap_or_default();
+        for pass in 0..2 {
+            for words in &all {
+                if out.len() >= k || (pass == 0 && out.len() >= LAST_WORD_CHOICES) {
+                    break;
                 }
-            }
-            if out.len() == k {
-                break;
+                if pass == 0 && head(words) != best_head {
+                    continue;
+                }
+                // ហើយៗ, then ហើយហើយ for the words written out twice
+                for text in [join(words, true), join(words, false)] {
+                    if out.len() < k && !text.is_empty() && !out.iter().any(|s| s.text == text) {
+                        out.push(Suggestion { text, words: words.clone() });
+                    }
+                }
             }
         }
         out
@@ -670,6 +694,13 @@ mod tests {
         // a doubled spelling that is itself a word stays one word
         assert!(e.suggest("haha", 9).iter().any(|s| s.text == "haha"));
         assert_eq!(e.suggest("neanea", 1)[0].text, "នានា");
+        // the word just typed keeps its alternatives, on the best reading of the words before it
+        let s = e.suggest("instead of ah sing khmer in video ng", 9);
+        assert!(s.iter().any(|s| s.text == "instead of អាសុីងខ្មែរ in video ហ្នឹង"), "{s:?}");
+        // chat English on the keep list stays English; ch is ឆ/ឈ, j is ច/ជ
+        assert_eq!(e.suggest("nhe nhai mes bro", 1)[0].text, "រញ៉េរញ៉ៃម្ល៉េះ bro");
+        assert_eq!(e.suggest("cha", 1)[0].text, "ឆា");
+        assert_eq!(e.suggest("jg tv", 1)[0].text, "ចង់ទៅ");
     }
 
     #[test]

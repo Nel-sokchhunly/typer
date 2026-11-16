@@ -2,7 +2,8 @@
 
 out/lexicon.tsv  khmer_word<TAB>roman1,roman2,...   (spelling data)
 out/ngrams.tsv   n<TAB>w1 w2 w3<TAB>count            (Khmer language model, n=1..3)
-out/english.tsv  w1 [w2]<TAB>count                    (English 1-2 grams, for English words typed in Khmer mode)
+out/english.tsv  w1 [w2]<TAB>count[<TAB>keep]        (English 1-2 grams, for English words typed in Khmer mode;
+                                                      "keep" = from raw/keep-english.txt, always stays English)
 out/generated.tsv  same as lexicon.tsv, for words whose spellings are rule-generated (can be switched off)
 
 Words with no recorded spelling (data/raw/words.txt, one Khmer word per line) get rule-based
@@ -22,6 +23,8 @@ RAW = HERE / "raw"
 OUT = HERE / "out"
 NON_KHMER = re.compile(r"[^ក-៿᧠-᧿]")  # drops ZWSP, punctuation, latin
 MARKERS = {"<s>", "<oth>", "<unk>"}
+CHAT_WEIGHT = 100  # one chat sentence counts like 100 corpus occurrences, as one pick does in the engine
+USER_MIN_COUNT = 200  # ~ឆា; a count of 1 never beats a corpus word after an English token
 
 
 def clean_word(w):
@@ -64,6 +67,28 @@ def build():
             if khmer and rs:
                 romans[khmer] |= rs
                 ngrams.setdefault((1, khmer), 1)  # unseen in corpus: minimal count
+                if path.name == "user-romans.txt":  # reported as typed in chat: common enough to win in context
+                    ngrams[(1, khmer)] = max(ngrams[(1, khmer)], USER_MIN_COUNT)
+
+    # Chat typists write ch for ឆ/ឈ and j for ច/ជ, while sources spell them chh and ch:
+    # add those variants (ឆា chha -> cha, ចង់ chng -> jng), unless another word already spells that way.
+    real = {r: k for k, v in romans.items() for r in v}
+    for w, rs in romans.items():
+        cj = re.search("[ចជ]", w) and not re.search("[ឆឈ]", w)
+        for r in list(rs):
+            v = r.replace("chh", "ch") if "chh" in r else re.sub("ch(?!h)", "j", r) if cj else r
+            if real.get(v, w) == w:
+                rs.add(v)
+
+    # Chat sentences (one per line, words space-separated, English words allowed): their 1-3 grams
+    # teach the news-register LM how people chat ("video ហ្នឹង", not "video និង"). Keep them out of eval/.
+    for line in open(RAW / "chat-phrases.txt", encoding="utf-8"):
+        if line.startswith("#") or not line.strip():
+            continue
+        ws = ["<s>", "<s>"] + ["<oth>" if re.fullmatch(r"[A-Za-z']+", w) else clean_word(w) for w in line.split()]
+        for i in range(2, len(ws)):
+            for n in range(1, 4):
+                ngrams[(n, " ".join(ws[i + 1 - n:i + 1]))] += CHAT_WEIGHT
 
     # ្ត and ្ដ (subscript ta/da) look alike and sources mix them: ម្តាយ (old dataset) vs ម្ដាយ (corpus).
     # Fold each twin into whichever spelling the corpus uses more.
@@ -90,6 +115,12 @@ def build():
             romans[w] = set(rs)
             ngrams.setdefault((1, w), 1)
 
+    # The sources undercount <oth> (English word) as a context: 4536 vs "<oth> និង" 11366, so
+    # P(និង | English word) came out > 1. Count it at least as often as the bigrams it starts.
+    # ponytail: <oth> only; <unk> is off just as much, but raising it (+500k) inflates the unigram total and flips close calls
+    starts = sum(c for (n, ws), c in ngrams.items() if n == 2 and ws.startswith("<oth> "))
+    ngrams[(1, "<oth>")] = max(ngrams.get((1, "<oth>"), 0), starts)
+
     romans = {k: v for k, v in romans.items() if v}
     OUT.mkdir(exist_ok=True)
     # generated spellings go in their own file, so the engine can switch them off
@@ -100,9 +131,11 @@ def build():
     with open(OUT / "ngrams.tsv", "w", encoding="utf-8") as f:
         for (n, ws), c in sorted(ngrams.items(), key=lambda t: (t[0][0], -t[1])):
             f.write(f"{n}\t{ws}\t{c}\n")
+    # chat English that must stay English (bro), even where a Khmer word is spelled one letter off
+    keep = {l.strip().lower() for l in open(RAW / "keep-english.txt", encoding="utf-8")} - {""}
     with open(OUT / "english.tsv", "w", encoding="utf-8") as f:
         for w, c in sorted(english.items(), key=lambda t: -t[1]):
-            f.write(f"{w}\t{c}\n")
+            f.write(f"{w}\t{c}\tkeep\n" if w in keep else f"{w}\t{c}\n")
     return romans, ngrams, english, generated
 
 
