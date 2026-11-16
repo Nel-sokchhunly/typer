@@ -290,6 +290,7 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         view?.heightScale = KeyboardPrefs.height(this).scale
         view?.systemFont = FontChoice.get(this) == FontChoice.SYSTEM
         colorNavigationBar(theme)
+        recheckInsets()
         loadUserWords()
         refresh()
     }
@@ -325,6 +326,22 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
                 emptyList()
             }
         }
+    }
+
+    /**
+     * The navigation bar inset can be reported late (or as 0 for a moment) while another app opens: check it when the
+     * Keyboard's window shows and again after the app's open animation, and lay out again if it changed.
+     */
+    private fun recheckInsets() {
+        val v = view ?: return
+        v.post { v.recheckInsets() }
+        main.postDelayed({ view?.recheckInsets() }, 300)
+        main.postDelayed({ view?.recheckInsets() }, 1000)
+    }
+
+    override fun onWindowShown() {
+        super.onWindowShown()
+        recheckInsets()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {

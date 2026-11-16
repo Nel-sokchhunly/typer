@@ -20,6 +20,8 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowInsets
+import android.view.WindowManager
+import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
@@ -274,6 +276,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     /** The navigation bar (or gesture area) under the keys, in px; the background is drawn behind it. */
     private var bottomInset = 0
+    /** The navigation bar inset as dispatched to the view (onApplyWindowInsets). */
+    private var dispatchedInset = 0
 
     private val tracker = KeyTouches(step = 10f)
     private val handler = Handler(Looper.getMainLooper())
@@ -307,7 +311,51 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             metrics = m
             keysCache = null
         }
+        bottomInset = navInset()
         setMeasuredDimension(w, (metrics.height * d).toInt() + bottomInset)
+    }
+
+    /**
+     * The navigation bar (and gesture navigation's hide/switch bar) under the Keyboard, asked of the window itself.
+     * Some hosts (the Pixel launcher's search) leave the view's dispatched insets at 0 while the system still draws
+     * that bar over the bottom row, so the larger of the two wins.
+     */
+    private fun windowInset(): Int {
+        if (Build.VERSION.SDK_INT < 30) return 0
+        val types = WindowInsets.Type.navigationBars() or WindowInsets.Type.tappableElement()
+        val root = rootWindowInsets?.getInsets(types)?.bottom ?: 0
+        val window = try {
+            context.getSystemService(WindowManager::class.java)?.currentWindowMetrics?.windowInsets?.getInsets(types)?.bottom ?: 0
+        } catch (e: Exception) { 0 }  // not a window context on some builds
+        if (window != lastLogged.first || root != lastLogged.second || dispatchedInset != lastLogged.third) {
+            lastLogged = Triple(window, root, dispatchedInset)
+            Log.d("TyperInsets", "bottom inset: dispatched=$dispatchedInset root=$root window=$window")
+        }
+        return maxOf(root, window)
+    }
+    private var lastLogged = Triple(-1, -1, -1)
+
+    /**
+     * The inset to keep the keys clear of. While another app opens, the system can report 0 for a moment; a Keyboard
+     * laid out then sat under the navigation bar until the next layout. A bar under the Keyboard doesn't come and go
+     * within one orientation, so a 0 falls back to the last real value seen in this orientation.
+     */
+    private fun navInset(): Int {
+        val now = maxOf(dispatchedInset, windowInset())
+        val portrait = resources.configuration.orientation != android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        if (now > 0) {
+            lastReal[if (portrait) 0 else 1] = now
+            return now
+        }
+        return lastReal[if (portrait) 0 else 1]
+    }
+
+    /** The last non-zero inset per orientation (portrait, landscape), kept while the Keyboard's process lives. */
+    private val lastReal = IntArray(2)
+
+    /** Measure again if the navigation bar inset is not what the Keyboard was laid out with. */
+    fun recheckInsets() {
+        if (navInset() != bottomInset) requestLayout()
     }
 
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
@@ -318,10 +366,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         } else {
             @Suppress("DEPRECATION") insets.systemWindowInsetBottom
         }
-        if (bottom != bottomInset) {
-            bottomInset = bottom
-            requestLayout()
-        }
+        dispatchedInset = bottom
+        requestLayout()  // always: the earlier layout may have used a transient value
         return insets
     }
 
