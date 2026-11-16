@@ -1,11 +1,14 @@
 package com.chhunly.typer
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.os.Bundle
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
 import android.view.inputmethod.EditorInfo
+import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -43,6 +46,17 @@ class FieldsActivity : Activity() {
         field("url", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI, EditorInfo.IME_ACTION_GO)
         field("search", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES, EditorInfo.IME_ACTION_SEARCH)
         field("incognito", InputType.TYPE_CLASS_TEXT, EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING)
+        // copies "Typer clip 1", "Typer clip 2", ... (clipboard history); not focusable, so the field keeps the Keyboard
+        var copies = 0
+        root.addView(Button(this).apply {
+            text = "copy"
+            contentDescription = "copy sample"
+            isFocusable = false
+            setOnClickListener {
+                copies++
+                getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("sample", "Typer clip $copies"))
+            }
+        })
         setContentView(root)
     }
 }

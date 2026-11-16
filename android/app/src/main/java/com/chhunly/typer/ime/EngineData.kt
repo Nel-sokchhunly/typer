@@ -13,6 +13,16 @@ object EngineData {
 
     fun userDir(context: Context): File = File(context.filesDir, "user")
 
+    /**
+     * "Reset what Typer learned", from the Companion app: deletes user.tsv (the learned counts) and picks.tsv (the
+     * log of picks). The Keyboard's engine checks user.tsv before each Suggestion and re-reads it when it changes or
+     * disappears, so the reset takes effect on the next keystroke without restarting the Keyboard.
+     */
+    fun resetLearning(context: Context) {
+        val dir = userDir(context)
+        for (name in listOf("user.tsv", "picks.tsv")) File(dir, name).delete()
+    }
+
     /** The data directory, copied if needed; null if the assets are missing (the Keyboard then types Latin). */
     fun dataDir(context: Context): File? {
         val dir = File(context.filesDir, "data")

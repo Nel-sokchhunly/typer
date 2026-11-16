@@ -16,6 +16,33 @@ class EnglishWords private constructor(
     private val counts: HashMap<String, Long>,
     private val bigrams: HashMap<String, Long>,
 ) {
+    /** Next-word suggestions: the words seen most after each word (bigrams), most common first. */
+    private val following: Map<String, List<String>> by lazy {
+        val m = HashMap<String, ArrayList<Pair<String, Long>>>()
+        for ((pair, c) in bigrams) {
+            val sp = pair.indexOf(' ')
+            if (sp > 0) m.getOrPut(pair.substring(0, sp)) { ArrayList() } += pair.substring(sp + 1) to c
+        }
+        m.mapValues { (_, v) -> v.sortedByDescending { it.second }.take(3).map { it.first } }
+    }
+
+    /** Up to three words likely to follow, once the caret is after a word and a space ("I am |"); else empty. */
+    fun next(before: String?): List<String> {
+        if (before == null || !before.endsWith(" ") || before.endsWith("  ")) return emptyList()
+        val prev = before.trimEnd().takeLastWhile { it.isLetter() || it == '\'' }.lowercase()
+        if (prev.isEmpty()) return emptyList()
+        return following[prev] ?: emptyList()
+    }
+
+    /** Glide typing over the same word counts; built on first use (off the main thread, see TyperIME). */
+    val glide: GlideDecoder by lazy { GlideDecoder(counts) }
+
+    /** Builds the lazy indexes now (call off the main thread). */
+    fun warm() {
+        glide
+        following
+    }
+
     fun suggest(before: String?, userWords: List<String>): List<String> {
         if (before == null) return emptyList()
         val word = before.takeLastWhile { it.isLetter() || it == '\'' }

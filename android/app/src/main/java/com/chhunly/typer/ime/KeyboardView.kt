@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.text.TextPaint
 import android.text.TextUtils
 import android.view.HapticFeedbackConstants
@@ -19,6 +20,8 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowInsets
+import android.view.WindowManager
+import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
@@ -55,6 +58,14 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         fun onDragStart()
         fun onCaret(clusters: Int)
         fun onDragEnd()
+        /** An emoji tapped on the emoji page or in search results. */
+        fun onEmoji(emoji: String)
+        /** Open or close emoji search (the letters type the query). */
+        fun onEmojiSearch(open: Boolean)
+        /** A glide over the letters: its path (dp), each letter's key centre (dp) and a letter key's width. */
+        fun onGlide(xs: FloatArray, ys: FloatArray, keys: Map<Char, Pair<Float, Float>>, keyWidth: Float)
+        /** A row of clipboard history: a clip index, or the clips' count for "Clear all". */
+        fun onClip(index: Int)
     }
 
     enum class Shift { OFF, ONCE, LOCK }
@@ -83,18 +94,62 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         val returnKind: ReturnKind = ReturnKind.NEWLINE,
         /** The field has an action (search, send, ...): the return key is drawn in primary. */
         val returnAction: Boolean = false,
+        /** The emoji page is open (instead of the keys). */
+        val emoji: Boolean = false,
+        /** Emoji search: the letters type [query], [results] show above it. */
+        val emojiSearch: Boolean = false,
+        val query: String = "",
+        val results: List<String> = emptyList(),
+        val recents: List<String> = emptyList(),
+        /** Base emoji -> the skin tone last chosen for it. */
+        val tones: Map<String, String> = emptyMap(),
+        /** The letters ?123 and the emoji page go back to: the Sing layout (LETTERS) or the Khmer layout (KHMER). */
+        val letters: KeyPage = KeyPage.LETTERS,
+        /** Password, email or number field: the Sing layout only; the bar's កខគ is dimmed and does nothing. */
+        val layoutLocked: Boolean = false,
+        /** Glide typing is on: English mode, the letters, a plain text field. */
+        val glide: Boolean = false,
+        /** After a glide: the bar shows the glided word first (yellow), then its alternatives, none in quotes. */
+        val glided: Boolean = false,
+        /** Clipboard history is open in the keys' place; [clips] newest first. */
+        val clipboard: Boolean = false,
+        val clips: List<String> = emptyList(),
+        /** Text copied in the last minute: the idle bar offers it as a one-tap paste. */
+        val freshClip: String? = null,
+        /** The Latin of a Phrase that just went in as Khmer when the caret left it: the idle bar offers it back. */
+        val undo: String? = null,
+        /** Next-word suggestions after a word, idle (they take the punctuation's place; Khmer keeps ។). */
+        val next: List<String> = emptyList(),
+        /** The field's kind: email fields get @, URL fields /, and both .com on the period's long press. */
+        val field: com.chhunly.typer.core.FieldKind = com.chhunly.typer.core.FieldKind.TEXT,
+        /** An emoji for the word just typed, shown in the bar beside the words. */
+        val emojiSuggestion: String? = null,
     ) {
         val composing get() = typed.isNotEmpty()
-        val panelOpen get() = showAll && composing
+        val panelOpen get() = (showAll && composing) || clipboard
+        val khmerLayout get() = letters == KeyPage.KHMER
+        /** What the bar's last slot is now: keep-Latin abc, or the layout switch (កខគ, or abc back to Sing). */
+        val lastSlot get() = if (composing) "latin" else if (khmerLayout) "abc" else "kkk"
     }
+
+    /** When the bar's last slot last changed its meaning: taps on it are ignored for [SLOT_SETTLE] ms after. */
+    private var lastSlotChanged = 0L
 
     var state = State()
         set(value) {
             if (field == value) return
-            val relayout = field.page != value.page || (field.shift != Shift.OFF) != (value.shift != Shift.OFF)
+            val relayout = field.page != value.page || (field.shift != Shift.OFF) != (value.shift != Shift.OFF) ||
+                field.emoji != value.emoji || field.emojiSearch != value.emojiSearch || field.letters != value.letters ||
+                field.field != value.field
+            if (field.lastSlot != value.lastSlot) lastSlotChanged = SystemClock.uptimeMillis()
             if (field.panelOpen != value.panelOpen) panelScroll = 0f
+            if (field.emoji != value.emoji) { emojiScroll = 0f; tonePopup = null }
+            val resize = field.emojiSearch != value.emojiSearch || rowsFor(field) != rowsFor(value)
+            if (field.page != value.page) morePopup = null
             field = value
+            tracker.glide = value.glide && value.page == KeyPage.LETTERS && !value.emoji && !value.emojiSearch
             if (relayout) keysCache = null
+            if (resize) requestLayout()
             invalidate()
         }
 
@@ -109,8 +164,14 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     /** Kantumruy Pro (SIL OFL), Typer's font for Khmer and Latin; a variable font, so weights are set per draw. */
     private val kantumruy: Typeface? = if (Build.VERSION.SDK_INT >= 26) runCatching { resources.getFont(R.font.kantumruy_pro) }.getOrNull() else null
 
+    /** The phone's font instead of Kantumruy Pro ([FontChoice]); read when the Keyboard opens. */
+    var systemFont = false
+        set(value) {
+            if (field != value) { field = value; invalidate() }
+        }
+
     private fun font(bold: Boolean) {
-        val k = kantumruy
+        val k = kantumruy.takeUnless { systemFont }
         if (k != null && Build.VERSION.SDK_INT >= 26) {
             text.typeface = k
             text.fontVariationSettings = if (bold) "'wght' 700" else "'wght' 450"
@@ -119,14 +180,104 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         }
     }
 
+    /** The Khmer page has a fifth row (Khmer digits); the emoji page and search use the letters' four. */
+    private fun rowsFor(s: State) = when {
+        s.emoji || s.emojiSearch -> 4
+        s.page == KeyPage.KHMER -> 5
+        s.page == KeyPage.LETTERS && numberRow -> 5
+        else -> 4
+    }
+
+    /** From the Companion app ([KeyboardPrefs]), set when the Keyboard opens: a number row, key sound, height. */
+    var numberRow = false
+        set(value) { if (field != value) { field = value; keysCache = null; requestLayout() } }
+    var keySound = false
+    var heightScale = 1f
+        set(value) { if (field != value) { field = value; requestLayout() } }
+    private val audio by lazy { context.getSystemService(android.media.AudioManager::class.java) }
+
+    private fun clickSound(key: Key?) {
+        if (!keySound) return
+        audio?.playSoundEffect(when (key?.action) {
+            KeyAction.Backspace -> android.media.AudioManager.FX_KEYPRESS_DELETE
+            KeyAction.Return -> android.media.AudioManager.FX_KEYPRESS_RETURN
+            KeyAction.Space -> android.media.AudioManager.FX_KEYPRESS_SPACEBAR
+            else -> android.media.AudioManager.FX_KEYPRESS_STANDARD
+        }, -1f)
+    }
+
+    /** An open long-press popup (Khmer alternates): its key, options with boxes (dp), the picked one, its finger. */
+    private class More(val key: Key, val options: List<Pair<String, Box>>, var picked: Int, val pointer: Int)
+    private var morePopup: More? = null
+
+    /**
+     * The popup's first option sits over the key, the rest run right, or left when they don't fit to the right (the
+     * period, keys near the edge); so a long press released without sliding types the first option.
+     */
+    private fun openMore(key: Key, pointer: Int) {
+        val k = minOf(key.box.width, (metrics.width - 2 * metrics.margin) / key.more.size)
+        val n = key.more.size
+        val top = (key.box.top - metrics.keyHeight - 4f).coerceAtLeast(0f)
+        val start = key.box.centerX - k / 2
+        val rightward = start + n * k <= metrics.width - metrics.margin
+        val options = key.more.mapIndexed { i, s ->
+            val left = if (rightward) start + i * k else start - i * k
+            s to Box(left.coerceIn(metrics.margin, metrics.width - metrics.margin - k), top, k, metrics.keyHeight)
+        }
+        morePopup = More(key, options, 0, pointer)
+    }
+
+    private fun movedMore(x: Float) {
+        val m = morePopup ?: return
+        val i = m.options.indices.minByOrNull { abs(m.options[it].second.centerX - x) } ?: return
+        if (i != m.picked) { m.picked = i; haptic(HapticFeedbackConstants.CLOCK_TICK) }
+    }
+
+    private fun drawMore(canvas: Canvas, m: More) {
+        val first = m.options.first().second
+        val all = RectF(px(m.options.minOf { it.second.left }), px(first.top), px(m.options.maxOf { it.second.right }), px(first.bottom))
+        fill.color = 0x33000000
+        canvas.drawRoundRect(RectF(all.left, all.top + px(1.5f), all.right, all.bottom + px(1.5f)), px(12f), px(12f), fill)
+        fill.color = theme.popup
+        canvas.drawRoundRect(all, px(12f), px(12f), fill)
+        for ((i, o) in m.options.withIndex()) {
+            val r = rectOf(o.second)
+            if (i == m.picked) {
+                fill.color = theme.primary
+                canvas.drawRoundRect(RectF(r.left + px(3f), r.top + px(3f), r.right - px(3f), r.bottom - px(3f)), px(9f), px(9f), fill)
+            }
+            drawLabel(canvas, KeyLayout.label(o.first), r.centerX(), r.centerY(), 22f, if (i == m.picked) theme.onAction else theme.onLetter)
+        }
+    }
+
     private val sp = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP, 1f, resources.displayMetrics)
     private var metrics = Metrics(360f, 800f)
     private var keysCache: List<Key>? = null
     private val keys: List<Key>
-        get() = keysCache ?: KeyLayout.keys(metrics, state.page, state.shift != Shift.OFF).also { keysCache = it }
+        get() = keysCache ?: (if (state.emoji && !state.emojiSearch) KeyLayout.emojiRow(metrics)
+        else KeyLayout.keys(metrics, if (state.emojiSearch) KeyPage.LETTERS else state.page, state.shift != Shift.OFF, state.khmerLayout, numberRow && !state.emojiSearch, state.field)).also { keysCache = it }
+
+    /** Emoji data, set by the service once loaded off the main thread; the emoji key does nothing until then. */
+    var emojiData: com.chhunly.typer.core.EmojiData? = null
+        set(value) {
+            field = value
+            emoji = value?.let { EmojiPanel(it) }
+        }
+    private var emoji: EmojiPanel? = null
+    private var emojiScroll = 0f
+    /** The open skin-tone panel: its options and their boxes (dp). */
+    private var tonePopup: List<Pair<String, Box>>? = null
+    private val scroller = android.widget.OverScroller(context)
+    private var velocity: android.view.VelocityTracker? = null
+    private var emojiDown: Pair<Float, Float>? = null  // where an emoji-page touch started (dp)
+    private var emojiScrolling = false
+    private var emojiLongPress: Runnable? = null
+    private var emojiLongPressed = false
 
     /** The navigation bar (or gesture area) under the keys, in px; the background is drawn behind it. */
     private var bottomInset = 0
+    /** The navigation bar inset as dispatched to the view (onApplyWindowInsets). */
+    private var dispatchedInset = 0
 
     private val tracker = KeyTouches(step = 10f)
     private val handler = Handler(Looper.getMainLooper())
@@ -155,12 +306,56 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
         val screenH = resources.displayMetrics.heightPixels / d
-        val m = Metrics(w / d, screenH)
-        if (m.width != metrics.width || m.pitch != metrics.pitch) {
+        val m = Metrics(w / d, screenH, if (state.emojiSearch) SEARCH_ROW else 0f, rowsFor(state), heightScale)
+        if (m.width != metrics.width || m.pitch != metrics.pitch || m.extraTop != metrics.extraTop || m.rows != metrics.rows) {
             metrics = m
             keysCache = null
         }
+        bottomInset = navInset()
         setMeasuredDimension(w, (metrics.height * d).toInt() + bottomInset)
+    }
+
+    /**
+     * The navigation bar (and gesture navigation's hide/switch bar) under the Keyboard, asked of the window itself.
+     * Some hosts (the Pixel launcher's search) leave the view's dispatched insets at 0 while the system still draws
+     * that bar over the bottom row, so the larger of the two wins.
+     */
+    private fun windowInset(): Int {
+        if (Build.VERSION.SDK_INT < 30) return 0
+        val types = WindowInsets.Type.navigationBars() or WindowInsets.Type.tappableElement()
+        val root = rootWindowInsets?.getInsets(types)?.bottom ?: 0
+        val window = try {
+            context.getSystemService(WindowManager::class.java)?.currentWindowMetrics?.windowInsets?.getInsets(types)?.bottom ?: 0
+        } catch (e: Exception) { 0 }  // not a window context on some builds
+        if (window != lastLogged.first || root != lastLogged.second || dispatchedInset != lastLogged.third) {
+            lastLogged = Triple(window, root, dispatchedInset)
+            Log.d("TyperInsets", "bottom inset: dispatched=$dispatchedInset root=$root window=$window")
+        }
+        return maxOf(root, window)
+    }
+    private var lastLogged = Triple(-1, -1, -1)
+
+    /**
+     * The inset to keep the keys clear of. While another app opens, the system can report 0 for a moment; a Keyboard
+     * laid out then sat under the navigation bar until the next layout. A bar under the Keyboard doesn't come and go
+     * within one orientation, so a 0 falls back to the last real value seen in this orientation.
+     */
+    private fun navInset(): Int {
+        val now = maxOf(dispatchedInset, windowInset())
+        val portrait = resources.configuration.orientation != android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        if (now > 0) {
+            lastReal[if (portrait) 0 else 1] = now
+            return now
+        }
+        return lastReal[if (portrait) 0 else 1]
+    }
+
+    /** The last non-zero inset per orientation (portrait, landscape), kept while the Keyboard's process lives. */
+    private val lastReal = IntArray(2)
+
+    /** Measure again if the navigation bar inset is not what the Keyboard was laid out with. */
+    fun recheckInsets() {
+        if (navInset() != bottomInset) requestLayout()
     }
 
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
@@ -171,10 +366,8 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         } else {
             @Suppress("DEPRECATION") insets.systemWindowInsetBottom
         }
-        if (bottom != bottomInset) {
-            bottomInset = bottom
-            requestLayout()
-        }
+        dispatchedInset = bottom
+        requestLayout()  // always: the earlier layout may have used a transient value
         return insets
     }
 
@@ -195,16 +388,237 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     override fun onDraw(canvas: Canvas) {
         canvas.drawColor(theme.background)
-        drawStrip(canvas)
-        if (state.panelOpen) drawPanel(canvas) else drawKeys(canvas)
+        val panel = emoji
+        when {
+            state.emoji && state.emojiSearch && panel != null -> {
+                drawSearchRows(canvas)
+                drawKeys(canvas)
+            }
+            state.emoji && panel != null -> drawEmojiPage(canvas, panel)
+            else -> {
+                drawStrip(canvas)
+                if (state.panelOpen) drawPanel(canvas) else drawKeys(canvas)
+            }
+        }
+    }
+
+    // ---- emoji page ----
+
+    private val emojiPaint = TextPaint(Paint.ANTI_ALIAS_FLAG)
+
+    private fun drawEmojiPage(canvas: Canvas, panel: EmojiPanel) {
+        val m = metrics
+        panel.layout(m, state.recents, state.tones)
+        emojiScroll = emojiScroll.coerceIn(0f, panel.maxScroll(m))
+        // tab bar in the strip's place
+        val current = panel.sectionAt(emojiScroll)
+        for ((i, tab) in panel.tabs.withIndex()) {
+            val r = rectOf(panel.tabBox(m, i))
+            when {
+                tab.section < 0 -> drawIcon(canvas, R.drawable.ic_search, r.centerX(), r.centerY(), theme.onSurfaceVariant, 22f)
+                tab.icon == null -> drawIcon(canvas, R.drawable.ic_recent, r.centerX(), r.centerY(), theme.onSurfaceVariant, 22f)
+                else -> panel.drawEmoji(canvas, emojiPaint, tab.icon, r, 20f * sp)
+            }
+            if (tab.section == current) {
+                fill.color = theme.mode  // Typer yellow marks the section in view
+                canvas.drawRoundRect(RectF(r.left + px(6f), r.bottom - px(5f), r.right - px(6f), r.bottom - px(2f)), px(2f), px(2f), fill)
+            }
+        }
+        // grid
+        val vp = rectOf(panel.viewport(m))
+        canvas.save()
+        canvas.clipRect(vp)
+        font(true)
+        text.textSize = 13f * sp
+        text.color = theme.onSurfaceVariant
+        text.textAlign = Paint.Align.LEFT
+        for ((title, top) in panel.visibleTitles(m, emojiScroll)) {
+            canvas.drawText(title.uppercase(), px(m.margin + 6f), px(top + panel.titleHeight - 9f), text)
+        }
+        text.textAlign = Paint.Align.CENTER
+        val size = panel.cellHeight(m) * 0.6f * d
+        for ((e, b) in panel.visibleCells(m, emojiScroll)) panel.drawEmoji(canvas, emojiPaint, e, rectOf(b), size)
+        canvas.restore()
+        // bottom row: letters, space, delete
+        val pressed = tracker.pressed
+        for (key in keys) drawKey(canvas, key, key in pressed)
+        // skin-tone panel on top
+        tonePopup?.let { options ->
+            val first = options.first().second
+            val last = options.last().second
+            val r = RectF(px(options.minOf { it.second.left }) - px(6f), px(first.top) - px(6f),
+                px(options.maxOf { it.second.right }) + px(6f), px(last.bottom) + px(6f))
+            fill.color = 0x33000000
+            canvas.drawRoundRect(RectF(r.left, r.top + px(2f), r.right, r.bottom + px(2f)), px(14f), px(14f), fill)
+            fill.color = theme.popup
+            canvas.drawRoundRect(r, px(14f), px(14f), fill)
+            for ((e, b) in options) panel.drawEmoji(canvas, emojiPaint, e, rectOf(b), size)
+        }
+    }
+
+    /** Emoji search: results above, the query with a close button below, the letters under them. */
+    private fun drawSearchRows(canvas: Canvas) {
+        val m = metrics
+        val panel = emoji ?: return
+        val cw = panel.cellWidth(m)
+        val size = min(cw, SEARCH_ROW) * 0.6f * d
+        state.results.take(panel.cols).forEachIndexed { i, e ->
+            panel.drawEmoji(canvas, emojiPaint, e, rectOf(Box(m.margin + i * cw, 0f, cw, SEARCH_ROW)), size)
+        }
+        if (state.results.isEmpty()) {
+            font(false)
+            text.textSize = 14f * sp
+            text.color = theme.onSurfaceVariant
+            canvas.drawText(if (state.query.isBlank()) "Type to search emoji, in English or Khmer" else "No emoji found",
+                px(m.width / 2), px(SEARCH_ROW / 2 + 5f), text)
+        }
+        val field = searchField()
+        val r = rectOf(field)
+        fill.color = theme.letterKey
+        canvas.drawRoundRect(r, r.height() / 2, r.height() / 2, fill)
+        drawIcon(canvas, R.drawable.ic_search, r.left + px(20f), r.centerY(), theme.onSurfaceVariant, 20f)
+        font(false)
+        text.textSize = 17f * sp
+        text.textAlign = Paint.Align.LEFT
+        text.color = if (state.query.isEmpty()) theme.onSurfaceVariant else theme.onLetter
+        canvas.drawText(state.query.ifEmpty { "Search emoji" }, r.left + px(40f), r.centerY() - (text.ascent() + text.descent()) / 2, text)
+        text.textAlign = Paint.Align.CENTER
+        val close = rectOf(searchClose())
+        drawIcon(canvas, R.drawable.ic_close, close.centerX(), close.centerY(), theme.onSurfaceVariant, 22f)
+    }
+
+    private fun searchField(): Box {
+        val m = metrics
+        return Box(m.margin, SEARCH_ROW + 4f, m.width - 2 * m.margin - 52f, m.stripHeight - 8f)
+    }
+
+    private fun searchClose(): Box {
+        val m = metrics
+        return Box(m.width - m.margin - 48f, SEARCH_ROW, 48f, m.stripHeight)
+    }
+
+    private fun searchResultAt(x: Float, y: Float): String? {
+        val panel = emoji ?: return null
+        if (y >= SEARCH_ROW) return null
+        val i = ((x - metrics.margin) / panel.cellWidth(metrics)).toInt()
+        return state.results.take(panel.cols).getOrNull(i)
+    }
+
+    /** Touches on the emoji page's tab bar and grid (the bottom row goes through the key tracker). */
+    private fun emojiTouch(e: MotionEvent, x: Float, y: Float): Boolean {
+        val panel = emoji ?: return false
+        val m = metrics
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                scroller.forceFinished(true)
+                emojiDown = x to y
+                emojiScrolling = false
+                emojiLongPressed = false
+                velocity?.recycle()
+                velocity = android.view.VelocityTracker.obtain().also { it.addMovement(e) }
+                val cell = if (tonePopup == null) panel.cellAt(m, x, y, emojiScroll) else null
+                if (cell != null && emojiData?.variants?.containsKey(emojiData?.base(cell.first) ?: cell.first) == true) {
+                    val r = Runnable {
+                        emojiLongPressed = true
+                        haptic(HapticFeedbackConstants.LONG_PRESS)
+                        val data = emojiData ?: return@Runnable
+                        tonePopup = panel.tonePanel(m, data.base(cell.first), cell.second)
+                        invalidate()
+                    }
+                    emojiLongPress = r
+                    handler.postDelayed(r, LONG_PRESS)
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                velocity?.addMovement(e)
+                val (dx, dy) = emojiDown ?: return true
+                if (!emojiScrolling && abs(y - dy) * d > slop && tonePopup == null && panel.viewport(m).contains(dx, dy)) {
+                    emojiScrolling = true
+                    emojiLongPress?.let { handler.removeCallbacks(it) }
+                }
+                if (emojiScrolling) {
+                    emojiScroll = (emojiScroll - (y - (emojiDown?.second ?: y))).coerceIn(0f, panel.maxScroll(m))
+                    emojiDown = dx to y
+                    invalidate()
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                emojiLongPress?.let { handler.removeCallbacks(it) }
+                val start = emojiDown
+                emojiDown = null
+                if (emojiScrolling) {
+                    velocity?.let { v ->
+                        v.addMovement(e)
+                        v.computeCurrentVelocity(1000)
+                        scroller.fling(0, px(emojiScroll).toInt(), 0, -v.yVelocity.toInt(), 0, 0, 0, px(panel.maxScroll(m)).toInt())
+                        postInvalidateOnAnimation()
+                    }
+                } else if (!emojiLongPressed && start != null) {
+                    val popup = tonePopup
+                    when {
+                        popup != null -> {
+                            tonePopup = null
+                            popup.firstOrNull { it.second.contains(x, y) }?.let { tap(); listener.onEmoji(it.first) }
+                        }
+                        y < m.rowsTop -> panel.tabs.indices.firstOrNull { panel.tabBox(m, it).contains(x, metrics.stripTop + m.stripHeight / 2) }?.let { i ->
+                            tap()
+                            val tab = panel.tabs[i]
+                            if (tab.section < 0) listener.onEmojiSearch(true)
+                            else emojiScroll = panel.scrollFor(tab.section).coerceIn(0f, panel.maxScroll(m))
+                        }
+                        else -> panel.cellAt(m, x, y, emojiScroll)?.let { tap(); listener.onEmoji(it.first) }
+                    }
+                }
+                velocity?.recycle()
+                velocity = null
+                invalidate()
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                emojiLongPress?.let { handler.removeCallbacks(it) }
+                emojiDown = null
+                velocity?.recycle()
+                velocity = null
+            }
+        }
+        return true
+    }
+
+    private fun tap() = haptic(HapticFeedbackConstants.KEYBOARD_TAP)
+
+    override fun computeScroll() {
+        if (scroller.computeScrollOffset()) {
+            emojiScroll = scroller.currY / d
+            postInvalidateOnAnimation()
+        }
     }
 
     private fun drawKeys(canvas: Canvas) {
         val pressed = tracker.pressed
         for (key in keys) drawKey(canvas, key, key in pressed)
         val shown = longShown
-        if (shown != null) drawLongPress(canvas, shown.first, shown.second)
+        val more = morePopup
+        if (more != null) drawMore(canvas, more)
+        else if (shown != null) drawLongPress(canvas, shown.first, shown.second)
         else pressed.firstOrNull { previewed(it) }?.let { drawPreview(canvas, it) }
+        if (trail.size > 1) drawTrail(canvas)
+    }
+
+    /** The glide trail: the finger's path in Typer yellow, its older part thinner. */
+    private val trail = ArrayList<Pair<Float, Float>>()
+    private val trailPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+
+    private fun drawTrail(canvas: Canvas) {
+        trailPaint.color = theme.mode
+        val n = trail.size
+        val from = maxOf(1, n - 80)
+        for (i in from until n) {
+            trailPaint.strokeWidth = px(2f + 5f * (i - from) / (n - from))
+            canvas.drawLine(px(trail[i - 1].first), px(trail[i - 1].second), px(trail[i].first), px(trail[i].second), trailPaint)
+        }
     }
 
     private fun previewed(key: Key) = key.action is KeyAction.Text
@@ -234,10 +648,21 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         val cy = r.centerY()
         when (val a = key.action) {
             is KeyAction.Text -> {
-                drawLabel(canvas, a.text, cx, cy, if (a.text.length == 1) 26f else 22f, fg, alpha, onBaseline = a.text.length == 1)
-                key.hint?.let {
+                val khmerPage = state.page == KeyPage.KHMER && !state.emoji
+                val label = if (khmerPage) KeyLayout.label(a.text) else a.text
+                val size = when {
+                    khmerPage -> if (label.length <= 2) 22f else 19f
+                    a.text.length == 1 -> 26f
+                    else -> 22f
+                }
+                drawLabel(canvas, label, cx, cy, size, fg, alpha, onBaseline = a.text.length == 1 && !khmerPage)
+                if (key.long == KeyAction.Settings) drawIcon(canvas, R.drawable.ic_settings, r.right - px(9f), r.top + px(9f), theme.onSurfaceVariant, 11f)
+                if (key.long == KeyAction.Emoji) drawIcon(canvas, R.drawable.ic_emoji, cx, r.top + px(12f), fg, 14f)  // Gboard's comma: emoji on top
+                // hints drawn as on Gboard: the top row's digits, and every alternate on the Khmer layout (not accents)
+                key.hint?.takeIf { khmerPage || it[0].isDigit() }?.let { hint ->
+                    val it = KeyLayout.label(hint).removePrefix("\u25CC")
                     font(false)
-                    text.textSize = 12f * sp
+                    text.textSize = (if (it.length > 2) 8f else 12f) * sp
                     text.color = theme.onSurfaceVariant
                     text.textAlign = Paint.Align.RIGHT
                     canvas.drawText(it, r.right - px(4f), r.top + px(14f), text)
@@ -251,10 +676,12 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             }, cx, cy, fg)
             KeyAction.Backspace -> drawIcon(canvas, R.drawable.ic_backspace, cx, cy, fg)
             KeyAction.Return -> drawIcon(canvas, state.returnKind.icon, cx, cy, fg)
-            KeyAction.Page -> drawLabel(canvas, if (state.page == KeyPage.LETTERS) "?123" else "ABC", cx, cy, 16f, fg, alpha, bold = true)
+            KeyAction.Page -> drawLabel(canvas, pageLabel(), cx, cy, 16f, fg, alpha, bold = true)
+            KeyAction.Emoji -> drawIcon(canvas, R.drawable.ic_emoji, cx, cy, fg)
             KeyAction.Symbols -> drawLabel(canvas, if (state.page == KeyPage.NUMBERS) "=\\<" else "?123", cx, cy, 16f, fg, alpha, bold = true)
-            KeyAction.Mode -> drawLabel(canvas, state.mode, cx, cy, if (state.mode == "EN") 16f else 20f, fg, alpha, bold = true)
-            KeyAction.Space -> Unit  // blank, like Gboard
+            KeyAction.Mode -> drawIcon(canvas, R.drawable.ic_language, cx, cy, fg, 24f, alpha)  // Gboard's globe: Sing <-> English
+            KeyAction.Space -> drawLabel(canvas, if (state.mode == "EN" && !state.khmerLayout) "English" else "ខ្មែរ", cx, cy, 14f, theme.onSurfaceVariant)  // the language, as Gboard shows it
+            KeyAction.Settings -> Unit  // only a long press, never a key of its own
         }
     }
 
@@ -270,12 +697,14 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         text.alpha = 255
     }
 
-    private fun drawIcon(canvas: Canvas, id: Int, cx: Float, cy: Float, color: Int, sizeDp: Float = 24f) {
+    private fun drawIcon(canvas: Canvas, id: Int, cx: Float, cy: Float, color: Int, sizeDp: Float = 24f, alpha: Int = 255) {
         val icon = icons.getOrPut(id) { context.getDrawable(id)!!.mutate() }
         val h = px(sizeDp) / 2
         icon.setBounds((cx - h).toInt(), (cy - h).toInt(), (cx + h).toInt(), (cy + h).toInt())
         icon.setTint(color)
+        icon.alpha = alpha
         icon.draw(canvas)
+        icon.alpha = 255
     }
 
     /** The character above the finger: a round bubble sitting on the key (reference.md: about 57 dp on Gboard). */
@@ -294,39 +723,60 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
     }
 
     private fun drawPreview(canvas: Canvas, key: Key) {
-        val label = (key.action as KeyAction.Text).text
+        val label = (key.action as KeyAction.Text).text.let { if (state.page == KeyPage.KHMER) KeyLayout.label(it) else it }
         val r = bubble(key)
         drawBubbleBackground(canvas, r)
         drawLabel(canvas, label, r.centerX(), r.centerY(), 26f, theme.onLetter, onBaseline = label.length == 1)
     }
 
     /** Long press: the hint digit, selected (primary circle), as Gboard shows it. */
+    /** ?123 on the letters; on the other pages the way back: ABC to the Sing layout, កខគ to the Khmer layout. */
+    private fun pageLabel() = when {
+        (state.page == KeyPage.LETTERS || state.page == KeyPage.KHMER) && !state.emoji -> "?123"
+        state.khmerLayout -> LAYOUT_KHMER
+        else -> "ABC"
+    }
+
     private fun drawLongPress(canvas: Canvas, key: Key, hint: String) {
         val r = bubble(key)
         drawBubbleBackground(canvas, r)
         fill.color = theme.primary
         canvas.drawCircle(r.centerX(), r.centerY(), r.width() * 0.36f, fill)
-        drawLabel(canvas, hint, r.centerX(), r.centerY(), 22f, theme.onAction)
+        val label = KeyLayout.label(hint)
+        drawLabel(canvas, label, r.centerX(), r.centerY(), if (label.length > 2) 14f else 22f, theme.onAction)
     }
 
     // ---- strip ----
 
     private fun stripSlots(): List<StripSlot> = when {
         state.composing -> StripLayout.composing(metrics)
-        state.words.isNotEmpty() -> StripLayout.words(metrics, state.words.size)
-        else -> StripLayout.punctuation(metrics, if (state.mode == "EN") KeyLayout.englishPunctuation else KeyLayout.punctuation)
+        state.undo != null && !state.clipboard ->
+            StripLayout.punctuation(metrics, emptyList(), StripAction.Undo)
+        state.words.isNotEmpty() && !state.clipboard -> StripLayout.words(metrics, state.words.size, state.glided, state.emojiSuggestion != null)
+        state.next.isNotEmpty() && !state.clipboard && state.freshClip == null ->
+            StripLayout.next(metrics, state.next.size, if (state.mode == "EN" || state.khmerLayout) emptyList() else listOf("។"), state.emojiSuggestion != null)
+        state.khmerLayout -> StripLayout.punctuation(metrics, KeyLayout.khmerLayoutPunctuation, StripAction.Paste.takeIf { state.freshClip != null })
+        else -> StripLayout.punctuation(metrics, if (state.mode == "EN") KeyLayout.englishPunctuation else KeyLayout.punctuation,
+            StripAction.Paste.takeIf { state.freshClip != null })
     }
 
     private fun stripLabel(a: StripAction): String = when (a) {
         is StripAction.Suggestion -> state.suggestions.getOrNull(a.index) ?: if (a.index == 0) state.typed else ""
         StripAction.Latin -> "abc"
+        StripAction.Layout -> if (state.khmerLayout) "abc" else LAYOUT_KHMER
+        StripAction.Clipboard -> ""
+        StripAction.Paste -> oneLine(state.freshClip ?: "")
+        StripAction.Undo -> state.undo ?: ""
+        is StripAction.Next -> state.next.getOrNull(a.index) ?: ""
+        StripAction.Emoji -> state.emojiSuggestion ?: ""
         StripAction.Expand -> state.suggestions.size.toString()
         is StripAction.Punctuation -> a.text
-        is StripAction.Word -> state.words.getOrNull(a.index)?.let { if (a.index == 0) "“$it”" else it } ?: ""
+        is StripAction.Word -> state.words.getOrNull(a.index)?.let { if (a.index == 0 && !state.glided) "“$it”" else it } ?: ""
     }
 
     /** Typer yellow: the top Suggestion (or the Phrase itself until Suggestions arrive) and the best English word. */
-    private fun emphasised(a: StripAction) = (a is StripAction.Suggestion && a.index == 0) || (a is StripAction.Word && a.index == 1)
+    private fun emphasised(a: StripAction) = (a is StripAction.Suggestion && a.index == 0) ||
+        (a is StripAction.Word && a.index == (if (state.glided) 0 else 1))
 
     /**
      * The strip, as on iOS: pills. The top Suggestion (and the best English word) is Typer yellow with ink text in the
@@ -339,9 +789,17 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             val r = rectOf(slot.box)
             val a = slot.action
             val yellow = emphasised(a)
-            val (bg, fg) = if (yellow) theme.mode to theme.onMode else theme.functionKey to theme.onFunction
+            val (bg, fg) = when {
+                a == StripAction.Layout -> theme.layout to theme.onLayout  // its own look: not a punctuation key, not ខ
+                a == StripAction.Clipboard && state.clipboard -> theme.mode to theme.onMode  // open: yellow, like a selected tab
+                yellow -> theme.mode to theme.onMode
+                else -> theme.functionKey to theme.onFunction
+            }
+            val dim = a == StripAction.Layout && state.layoutLocked && !state.khmerLayout
             fill.color = bg
+            if (dim) fill.alpha = 102
             canvas.drawRoundRect(r, radius, radius, fill)
+            fill.alpha = 255
             if (stripDown == slot) {  // pressed: the state layer, as on the keys
                 fill.color = fg
                 fill.alpha = 26
@@ -354,6 +812,18 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                     drawIcon(canvas, if (state.showAll) R.drawable.ic_collapse else R.drawable.ic_expand, r.centerX() + px(11f), r.centerY(), fg, 18f)
                 }
                 StripAction.Latin -> drawLabel(canvas, "abc", r.centerX(), r.centerY(), 16f, fg, bold = true)
+                StripAction.Layout -> drawLabel(canvas, stripLabel(a), r.centerX(), r.centerY(), 16f, fg, if (dim) 102 else 255, bold = true)
+                StripAction.Clipboard -> drawIcon(canvas, R.drawable.ic_clipboard, r.centerX(), r.centerY(), fg, 20f)
+                StripAction.Paste, StripAction.Undo -> {
+                    drawIcon(canvas, if (a == StripAction.Undo) R.drawable.ic_undo else R.drawable.ic_clipboard, r.left + px(18f), r.centerY(), fg, 16f)
+                    font(false)
+                    text.textSize = 15f * sp
+                    text.color = fg
+                    text.textAlign = Paint.Align.LEFT
+                    val shown = TextUtils.ellipsize(stripLabel(a), text, r.width() - px(44f), TextUtils.TruncateAt.END).toString()
+                    canvas.drawText(shown, r.left + px(32f), stripBaseline(r, shown.any { it in 'ក'..'៿' }), text)
+                    text.textAlign = Paint.Align.CENTER
+                }
                 else -> drawStripText(canvas, stripLabel(a), r, false, a is StripAction.Punctuation, fg, start = a is StripAction.Suggestion)  // regular weight: the yellow says it's the top one
             }
         }
@@ -370,11 +840,11 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         font(bold)
         text.color = color
         text.textSize = size * sp
-        val pad = px(12f)
+        val pad = px(if (punct) 4f else 12f)  // a punctuation mark is one glyph: it may use the whole pill
         val avail = r.width() - 2 * pad
         val w = text.measureText(s)
-        if (w > avail) text.textSize = max(size * 0.7f * sp, text.textSize * avail / w)
-        val shown = TextUtils.ellipsize(s, text, avail, TextUtils.TruncateAt.START).toString()
+        if (w > avail) text.textSize = max(size * (if (punct) 0.5f else 0.7f) * sp, text.textSize * avail / w)
+        val shown = if (punct) s else TextUtils.ellipsize(s, text, avail, TextUtils.TruncateAt.START).toString()
         if (start) {
             text.textAlign = Paint.Align.LEFT
             canvas.drawText(shown, r.left + pad, stripBaseline(r, khmer), text)
@@ -395,7 +865,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     private val rowHeight get() = 52f
     private fun panelBox() = Box(0f, metrics.rowsTop, metrics.width, metrics.height - metrics.rowsTop)
-    private fun panelRows() = state.suggestions.size + 1  // + the Latin row
+    private fun panelRows() = if (state.clipboard) state.clips.size + 1 else state.suggestions.size + 1  // + the Latin row, or Clear all / the empty note
 
     private fun drawPanel(canvas: Canvas) {
         val box = panelBox()
@@ -408,6 +878,10 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             val top = r.top + px(i * rowHeight) - panelScroll
             if (top > r.bottom || top + px(rowHeight) < r.top) continue
             val row = RectF(r.left + px(metrics.margin), top, r.right - px(metrics.margin), top + px(rowHeight))
+            if (state.clipboard) {
+                drawClipRow(canvas, i, row)
+                continue
+            }
             val latin = i == state.suggestions.size
             text.textAlign = Paint.Align.RIGHT
             if (!latin) drawPanelText(canvas, (i + 1).toString(), row.left + px(28f), row, 14f, theme.onSurfaceVariant, false)
@@ -424,6 +898,31 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         }
         canvas.restore()
     }
+
+    /** A clipboard row: the clip on one line; after the clips, Clear all (or a note when there are none). */
+    private fun drawClipRow(canvas: Canvas, i: Int, row: RectF) {
+        font(false)
+        text.textSize = 17f * sp
+        if (i < state.clips.size) {
+            drawIcon(canvas, R.drawable.ic_clipboard, row.left + px(24f), row.centerY(), theme.onSurfaceVariant, 18f)
+            text.color = theme.onLetter
+            text.textAlign = Paint.Align.LEFT
+            val s = oneLine(state.clips[i])
+            val shown = TextUtils.ellipsize(s, text, row.width() - px(56f), TextUtils.TruncateAt.END).toString()
+            canvas.drawText(shown, row.left + px(44f), stripBaseline(row, s.any { it in 'ក'..'៿' }), text)
+            fill.color = theme.outlineVariant
+            canvas.drawRect(row.left + px(12f), row.bottom - px(0.5f), row.right - px(12f), row.bottom + px(0.5f), fill)
+        } else {
+            text.color = theme.onSurfaceVariant
+            text.textAlign = Paint.Align.CENTER
+            if (state.clips.isNotEmpty()) font(true)
+            val note = if (state.clips.isEmpty()) "Text you copy shows here for an hour" else "Clear all"
+            canvas.drawText(note, row.centerX(), stripBaseline(row, false), text)
+        }
+        text.textAlign = Paint.Align.CENTER
+    }
+
+    private fun oneLine(s: String) = s.replace(Regex("\\s+"), " ").trim()
 
     private fun drawPanelText(canvas: Canvas, s: String, x: Float, row: RectF, sizeSp: Float, color: Int, bold: Boolean, right: Float = row.right) {
         font(bold)
@@ -449,6 +948,20 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         val id = e.getPointerId(i)
         val x = e.getX(i) / d
         val y = e.getY(i) / d
+        if (state.emoji && !state.emojiSearch && emoji != null) {
+            // the grid and tab bar own a touch that starts above the bottom row; the bottom row goes to the keys
+            val bottomTop = metrics.rowsTop + 3 * metrics.pitch - metrics.rowGap / 2
+            if (emojiDown != null || (e.actionMasked == MotionEvent.ACTION_DOWN && (y < bottomTop || tonePopup != null))) return emojiTouch(e, x, y)
+        }
+        if (state.emoji && state.emojiSearch && y < metrics.rowsTop - 2f) {
+            if (e.actionMasked == MotionEvent.ACTION_UP) {
+                when {
+                    searchClose().contains(x, y) -> { tap(); listener.onEmojiSearch(false) }
+                    else -> searchResultAt(x, y)?.let { tap(); listener.onEmoji(it) }
+                }
+            }
+            return true
+        }
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> when {
                 y < metrics.rowsTop - 2f -> if (e.actionMasked == MotionEvent.ACTION_DOWN) {
@@ -462,9 +975,13 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                     panelLastY = panelDownY
                     panelScrolling = false
                 }
-                else -> KeyLayout.hit(x, y, keys)?.let { run(id, tracker.down(id, it, x)) }
+                else -> {
+                    morePopup = null  // a new touch closes a popup without typing
+                    KeyLayout.hit(x, y, keys)?.let { run(id, tracker.down(id, it, x, y)) }
+                }
             }
             MotionEvent.ACTION_MOVE -> {
+                morePopup?.let { m -> e.findPointerIndex(m.pointer).takeIf { it >= 0 }?.let { movedMore(e.getX(it) / d) } }
                 if (state.panelOpen && panelDownY >= 0) {
                     val py = e.findPointerIndex(ownPointer).let { if (it >= 0) e.getY(it) else panelLastY }
                     if (!panelScrolling && abs(py - panelDownY) > slop) panelScrolling = true
@@ -476,7 +993,9 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                 } else {
                     for (p in 0 until e.pointerCount) {
                         val px = e.getX(p) / d
-                        KeyLayout.hit(px, e.getY(p) / d, keys)?.let { run(e.getPointerId(p), tracker.move(e.getPointerId(p), it, px)) }
+                        val py = e.getY(p) / d
+                        KeyLayout.hit(px, py, keys)?.let { run(e.getPointerId(p), tracker.move(e.getPointerId(p), it, px, py)) }
+                        if (tracker.gliding) trail += px to py
                     }
                 }
             }
@@ -487,7 +1006,9 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                     owner && strip != null -> {
                         stripDown = null
                         invalidate()
-                        if (strip.box.contains(x, y.coerceAtMost(metrics.stripHeight - 1f).coerceAtLeast(0f)) && y < metrics.rowsTop + 8f) {
+                        val settling = (strip.action == StripAction.Latin || strip.action == StripAction.Layout) &&
+                            SystemClock.uptimeMillis() - lastSlotChanged < SLOT_SETTLE  // a fast double tap on abc keeps Latin once
+                        if (!settling && strip.box.contains(x, y.coerceAtMost(metrics.stripHeight - 1f).coerceAtLeast(0f)) && y < metrics.rowsTop + 8f) {
                             haptic(HapticFeedbackConstants.KEYBOARD_TAP)
                             listener.onStrip(strip.action)
                         }
@@ -496,10 +1017,17 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
                         panelDownY = -1f
                         if (!panelScrolling) panelIndexAt(y)?.let { row ->
                             haptic(HapticFeedbackConstants.KEYBOARD_TAP)
-                            listener.onPanel(if (row == state.suggestions.size) -1 else row)
+                            if (state.clipboard) listener.onClip(row) else listener.onPanel(if (row == state.suggestions.size) -1 else row)
                         }
                     }
-                    else -> KeyLayout.hit(x, y, keys)?.let { run(id, tracker.up(id, it)) }
+                    else -> {
+                        val more = morePopup?.takeIf { it.pointer == id }
+                        if (more != null) {
+                            morePopup = null
+                            listener.onHint(more.options[more.picked].first)
+                        }
+                        KeyLayout.hit(x, y, keys)?.let { run(id, tracker.up(id, it)) }
+                    }
                 }
                 if (e.actionMasked == MotionEvent.ACTION_UP) endTouches()
             }
@@ -516,6 +1044,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     private fun endTouches() {
         longShown = null
+        morePopup = null
         longPressing?.let { handler.removeCallbacks(it) }
         longPressing = null
     }
@@ -534,7 +1063,10 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     private fun run(id: Int, effects: List<KeyEffect>) {
         for (fx in effects) when (fx) {
-            KeyEffect.Press -> haptic(HapticFeedbackConstants.KEYBOARD_TAP)
+            KeyEffect.Press -> {
+                haptic(HapticFeedbackConstants.KEYBOARD_TAP)
+                clickSound(tracker.pressed.firstOrNull())
+            }
             is KeyEffect.Fire -> {
                 if (Build.VERSION.SDK_INT >= 27) haptic(HapticFeedbackConstants.KEYBOARD_RELEASE)
                 listener.onKey(fx.action)
@@ -566,8 +1098,12 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             }
             is KeyEffect.FireHint -> {
                 haptic(HapticFeedbackConstants.LONG_PRESS)
-                longShown = keys.firstOrNull { it.hint == fx.text }?.let { it to fx.text }
+                longShown = fx.key to fx.text
                 listener.onHint(fx.text)
+            }
+            is KeyEffect.ShowMore -> {
+                haptic(HapticFeedbackConstants.LONG_PRESS)
+                openMore(fx.key, id)
             }
             KeyEffect.DragStarted -> {
                 haptic(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -575,6 +1111,21 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             }
             is KeyEffect.MoveCaret -> listener.onCaret(fx.clusters)
             KeyEffect.DragEnded -> listener.onDragEnd()
+            KeyEffect.GlideStarted -> {
+                longPressing?.let { handler.removeCallbacks(it) }
+                longPressing = null
+                trail.clear()
+            }
+            is KeyEffect.Glide -> {
+                trail.clear()
+                val centres = HashMap<Char, Pair<Float, Float>>()
+                for (k in keys) {
+                    val t = (k.action as? KeyAction.Text)?.text ?: continue
+                    if (t.length == 1 && t[0].lowercaseChar() in 'a'..'z') centres[t[0].lowercaseChar()] = k.box.centerX to k.box.centerY
+                }
+                listener.onGlide(fx.xs, fx.ys, centres, metrics.keyWidth)
+            }
+            KeyEffect.GlideCancelled -> trail.clear()
         }
     }
 
@@ -590,6 +1141,9 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
      * SYSTEM follows the phone's touch-feedback setting (no FLAG_IGNORE_GLOBAL_SETTING), with a tap on press and a
      * lighter one on release. LIGHT and STRONG are a fixed tick or click on press only; OFF is silent.
      */
+    /** The space-bar drag reached the Phrase's edge: one firm tick. */
+    fun bump() = haptic(HapticFeedbackConstants.LONG_PRESS)
+
     private fun haptic(constant: Int) {
         when (haptics) {
             HapticsChoice.SYSTEM -> performHapticFeedback(constant)
@@ -620,9 +1174,44 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
 
     private fun targets(): List<Target> {
         val out = ArrayList<Target>()
+        val panel = emoji
+        val data = emojiData
+        if (state.emoji && panel != null && data != null) {
+            if (state.emojiSearch) {
+                state.results.take(panel.cols).forEachIndexed { i, e ->
+                    out += Target(EMOJI + i, data.label(e), Box(metrics.margin + i * panel.cellWidth(metrics), 0f, panel.cellWidth(metrics), SEARCH_ROW)) { listener.onEmoji(e) }
+                }
+                out += Target(STRIP, "close emoji search", searchClose()) { listener.onEmojiSearch(false) }
+                for ((i, k) in keys.withIndex()) out += Target(KEYS + i, describe(k), k.box, key = true) { listener.onKey(k.action) }
+                return out
+            }
+            panel.layout(metrics, state.recents, state.tones)
+            tonePopup?.let { opts ->
+                opts.forEachIndexed { i, (e, b) -> out += Target(EMOJI + i, data.label(e), b) { tonePopup = null; listener.onEmoji(e) } }
+                return out
+            }
+            panel.tabs.forEachIndexed { i, tab ->
+                out += Target(STRIP + i, tab.label, panel.tabBox(metrics, i)) {
+                    if (tab.section < 0) listener.onEmojiSearch(true)
+                    else { emojiScroll = panel.scrollFor(tab.section).coerceIn(0f, panel.maxScroll(metrics)); invalidate() }
+                }
+            }
+            panel.visibleCells(metrics, emojiScroll).forEachIndexed { i, (e, b) -> out += Target(EMOJI + i, data.label(e), b) { listener.onEmoji(e) } }
+            for ((i, k) in keys.withIndex()) out += Target(KEYS + i, describe(k), k.box, key = true) { listener.onKey(k.action) }
+            return out
+        }
         for ((i, s) in stripSlots().withIndex()) {
             val label = when (val a = s.action) {
                 StripAction.Latin -> "abc, keep Latin"
+                StripAction.Clipboard -> if (state.clipboard) "close clipboard" else "clipboard"
+                StripAction.Emoji -> "emoji, ${state.emojiSuggestion?.let { emojiData?.label(it) } ?: ""}"
+                StripAction.Paste -> "paste, ${stripLabel(StripAction.Paste)}"
+                StripAction.Undo -> "undo Khmer, ${stripLabel(StripAction.Undo)}"
+                StripAction.Layout -> when {
+                    state.khmerLayout -> "Sing layout"
+                    state.layoutLocked -> "Khmer layout, not in this field"
+                    else -> "Khmer layout"
+                }
                 StripAction.Expand -> "all suggestions, ${state.suggestions.size}"
                 else -> stripLabel(a)
             }
@@ -632,9 +1221,15 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             for (i in 0 until panelRows()) {
                 val top = metrics.rowsTop + i * rowHeight - panelScroll / d
                 if (top + rowHeight <= metrics.rowsTop || top >= metrics.height) continue
+                val box = Box(0f, max(top, metrics.rowsTop), metrics.width, rowHeight)
+                if (state.clipboard) {
+                    if (i < state.clips.size) out += Target(PANEL + i, "paste, ${oneLine(state.clips[i])}", box) { listener.onClip(i) }
+                    else if (state.clips.isNotEmpty()) out += Target(PANEL + i, "clear clipboard history", box) { listener.onClip(i) }
+                    continue
+                }
                 val latin = i == state.suggestions.size
                 val label = if (latin) "${state.typed}, keep Latin" else state.suggestions[i]
-                out += Target(PANEL + i, label, Box(0f, max(top, metrics.rowsTop), metrics.width, rowHeight)) {
+                out += Target(PANEL + i, label, box) {
                     listener.onPanel(if (latin) -1 else i)
                 }
             }
@@ -657,10 +1252,16 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         }
         KeyAction.Backspace -> "delete"
         KeyAction.Return -> state.returnKind.label
-        KeyAction.Page -> if (state.page == KeyPage.LETTERS) "numbers and symbols" else "letters"
+        KeyAction.Page -> when {
+            (state.page == KeyPage.LETTERS || state.page == KeyPage.KHMER) && !state.emoji -> "numbers and symbols"
+            state.khmerLayout -> "Khmer letters"
+            else -> "letters"
+        }
+        KeyAction.Emoji -> "emoji"
         KeyAction.Symbols -> if (state.page == KeyPage.NUMBERS) "more symbols" else "numbers"
         KeyAction.Mode -> if (state.mode == "EN") "English mode" else "Khmer mode"
         KeyAction.Space -> "space"
+        KeyAction.Settings -> "Typer settings"
     }
 
     private var a11yFocused = NO_ID
@@ -748,7 +1349,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         val x = event.x / d
         val y = event.y / d
         val ts = targets()
-        val under = if (y < metrics.rowsTop || state.panelOpen) ts.firstOrNull { it.box.contains(x, y) }
+        val under = if (y < metrics.rowsTop || state.panelOpen || state.emoji) ts.firstOrNull { it.box.contains(x, y) }
         else KeyLayout.hit(x, y, keys)?.let { k -> ts.firstOrNull { it.id == KEYS + keys.indexOf(k) } }
         when (event.actionMasked) {
             MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> if (under?.id != hovered) {
@@ -772,9 +1373,15 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
         const val REPEAT_START = 400L
         const val REPEAT_INTERVAL = 50L
         const val LONG_PRESS = 300L
+        /** The bar's last slot ignores taps this long after its meaning changes (abc -> កខគ), so a double tap can't jump layouts. */
+        const val SLOT_SETTLE = 300L
+        const val LAYOUT_KHMER = "កខគ"
         private const val KEYS = 1
         private const val STRIP = 1000
         private const val PANEL = 2000
+        private const val EMOJI = 3000
+        /** Height of the emoji search results row above the query (dp). */
+        const val SEARCH_ROW = 48f
         private const val NO_ID = Int.MIN_VALUE
         /** The platform's keyboard-key class: screen readers treat it as a key and don't append "Button". */
         private const val KEY_CLASS = "android.inputmethodservice.Keyboard\$Key"

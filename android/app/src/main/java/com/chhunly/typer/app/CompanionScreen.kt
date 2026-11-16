@@ -37,7 +37,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -67,6 +69,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.contentDataType
+import androidx.compose.ui.autofill.ContentDataType
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.TextStyle
@@ -75,7 +79,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.chhunly.typer.R
+import com.chhunly.typer.ime.FontChoice
+import com.chhunly.typer.ime.EngineData
 import com.chhunly.typer.ime.HapticsChoice
+import com.chhunly.typer.ime.KeyboardPrefs
 import com.chhunly.typer.ime.ThemeChoice
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -127,8 +134,15 @@ fun CompanionScreen(khmer: Boolean, onKhmerChange: (Boolean) -> Unit) {
                 }
                 TryIt(copy, khmer)  // right after the steps: set up, then try it
                 Section(copy.keyboardTitle) {
-                    if (ThemeChoice.available) WallpaperCard(copy)
+                    ThemeCard(copy)
                     VibrationCard(copy)
+                    FontCard(copy)
+                    PrefSwitch(copy.autoCapTitle, copy.autoCapDetail, KeyboardPrefs::autoCap, KeyboardPrefs::setAutoCap)
+                    PrefSwitch(copy.doubleSpaceTitle, copy.doubleSpaceDetail, KeyboardPrefs::doubleSpace, KeyboardPrefs::setDoubleSpace)
+                    PrefSwitch(copy.numberRowTitle, copy.numberRowDetail, KeyboardPrefs::numberRow, KeyboardPrefs::setNumberRow)
+                    PrefSwitch(copy.keySoundTitle, copy.keySoundDetail, KeyboardPrefs::keySound, KeyboardPrefs::setKeySound)
+                    HeightCard(copy)
+                    ResetLearningCard(copy)
                 }
                 Section(copy.featuresTitle) {
                     copy.features.forEachIndexed { i, feature -> FeatureCard(i, feature) }
@@ -318,28 +332,78 @@ private fun StepCard(number: Int, step: Step, done: Boolean?, doneLabel: String,
     }
 }
 
-/** "Match my wallpaper": the Keyboard uses the phone's Material You colours instead of Typer yellow. */
+/** "Theme", as on Gboard: Typer, Material You (Android 12+ only), Light or Dark. */
 @Composable
-private fun WallpaperCard(copy: Copy) {
+private fun ThemeCard(copy: Copy) {
     val context = LocalContext.current
-    var on by remember { mutableStateOf(ThemeChoice.materialYou(context)) }
+    var choice by remember { mutableStateOf(ThemeChoice.get(context)) }
+    val offered = ThemeChoice.offered
+    ChoiceCard(copy.themeTitle, copy.themeDetail, offered.map { copy.themeOptions[it.ordinal] }, offered.indexOf(choice)) { i ->
+        choice = offered[i]
+        ThemeChoice.set(context, choice)
+    }
+}
+
+/** "Key vibration": System, Off, Light or Strong, as a compact segmented choice. */
+@Composable
+private fun VibrationCard(copy: Copy) {
+    val context = LocalContext.current
+    var choice by remember { mutableStateOf(HapticsChoice.get(context)) }
+    ChoiceCard(copy.vibrationTitle, copy.vibrationDetail, copy.vibrationOptions, HapticsChoice.entries.indexOf(choice)) { i ->
+        choice = HapticsChoice.entries[i]
+        HapticsChoice.set(context, choice)
+    }
+}
+
+@Composable
+private fun FontCard(copy: Copy) {
+    val context = LocalContext.current
+    val setFont = LocalSetFont.current
+    var choice by remember { mutableStateOf(FontChoice.get(context)) }
+    ChoiceCard(copy.fontTitle, copy.fontDetail, copy.fontOptions, FontChoice.entries.indexOf(choice)) { i ->
+        choice = FontChoice.entries[i]
+        setFont(choice)
+    }
+}
+
+/** An on/off Keyboard setting from [KeyboardPrefs]. */
+@Composable
+private fun PrefSwitch(title: String, detail: String, get: (Context) -> Boolean, set: (Context, Boolean) -> Unit) {
+    val context = LocalContext.current
+    var on by remember { mutableStateOf(get(context)) }
+    SwitchCard(title, detail, on) {
+        on = it
+        set(context, it)
+    }
+}
+
+@Composable
+private fun HeightCard(copy: Copy) {
+    val context = LocalContext.current
+    var choice by remember { mutableStateOf(KeyboardPrefs.height(context)) }
+    ChoiceCard(copy.heightTitle, copy.heightDetail, copy.heightOptions, KeyboardPrefs.Height.entries.indexOf(choice)) { i ->
+        choice = KeyboardPrefs.Height.entries[i]
+        KeyboardPrefs.setHeight(context, choice)
+    }
+}
+
+/** A setting that is on or off: title, detail and a switch in Typer yellow; the whole row toggles it. */
+@Composable
+private fun SwitchCard(title: String, detail: String, on: Boolean, onChange: (Boolean) -> Unit) {
     val colors = MaterialTheme.colorScheme
     Card {
         Row(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 48.dp)
-                .toggleable(value = on, role = Role.Switch, onValueChange = {
-                    on = it
-                    ThemeChoice.setMaterialYou(context, it)
-                })
+                .toggleable(value = on, role = Role.Switch, onValueChange = onChange)
                 .padding(14.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Txt(copy.wallpaperTitle, 17, weight = FontWeight.SemiBold)
-                Txt(copy.wallpaperDetail, 15, color = colors.onSurfaceVariant)
+                Txt(title, 17, weight = FontWeight.SemiBold)
+                Txt(detail, 15, color = colors.onSurfaceVariant)
             }
             Switch(
                 checked = on,
@@ -357,17 +421,15 @@ private fun WallpaperCard(copy: Copy) {
     }
 }
 
-/** "Key vibration": System, Off, Light or Strong, as a compact segmented choice. */
+/** A setting with a few options: title, detail, and a segmented row with the chosen option in Typer yellow. */
 @Composable
-private fun VibrationCard(copy: Copy) {
-    val context = LocalContext.current
-    var choice by remember { mutableStateOf(HapticsChoice.get(context)) }
+private fun ChoiceCard(title: String, detail: String, options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
     val colors = MaterialTheme.colorScheme
     Card {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Txt(copy.vibrationTitle, 17, weight = FontWeight.SemiBold)
-                Txt(copy.vibrationDetail, 15, color = colors.onSurfaceVariant)
+                Txt(title, 17, weight = FontWeight.SemiBold)
+                Txt(detail, 15, color = colors.onSurfaceVariant)
             }
             Row(
                 Modifier
@@ -376,27 +438,24 @@ private fun VibrationCard(copy: Copy) {
                     .clip(RoundedCornerShape(12.dp))
                     .background(colors.surfaceVariant),
             ) {
-                HapticsChoice.entries.forEachIndexed { i, option ->
-                    val selected = choice == option
+                options.forEachIndexed { i, option ->
+                    val isSelected = i == selected
                     Box(
                         Modifier
                             .weight(1f)
                             .heightIn(min = 48.dp)
                             .padding(3.dp)
                             .clip(RoundedCornerShape(9.dp))
-                            .background(if (selected) TyperYellow else Color.Transparent)
-                            .selectable(selected = selected, role = Role.RadioButton, onClick = {
-                                choice = option
-                                HapticsChoice.set(context, option)
-                            })
+                            .background(if (isSelected) TyperYellow else Color.Transparent)
+                            .selectable(selected = isSelected, role = Role.RadioButton, onClick = { onSelect(i) })
                             .padding(horizontal = 2.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         Txt(
-                            copy.vibrationOptions[i],
+                            option,
                             14,
-                            weight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (selected) TyperInk else colors.onSurface,
+                            weight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) TyperInk else colors.onSurface,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                             maxLines = 1,
                         )
@@ -404,6 +463,39 @@ private fun VibrationCard(copy: Copy) {
                 }
             }
         }
+    }
+}
+
+/** "Reset what Typer learned": asks first, then deletes the learned files; the Keyboard notices on its next keystroke. */
+@Composable
+private fun ResetLearningCard(copy: Copy) {
+    val context = LocalContext.current
+    var asking by remember { mutableStateOf(false) }
+    var done by remember { mutableStateOf(false) }
+    val colors = MaterialTheme.colorScheme
+    Card {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Txt(copy.resetTitle, 17, weight = FontWeight.SemiBold)
+            Txt(copy.resetDetail, 15, color = colors.onSurfaceVariant)
+            if (done) Txt(copy.resetDone, 14, weight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+            else PillButton(copy.resetButton, { asking = true }, Modifier.padding(top = 8.dp))
+        }
+    }
+    if (asking) {
+        AlertDialog(
+            onDismissRequest = { asking = false },
+            text = { Txt(copy.resetConfirm, 17) },
+            confirmButton = {
+                TextButton(onClick = {
+                    EngineData.resetLearning(context)
+                    asking = false
+                    done = true
+                }) { Txt(copy.resetButton, 16, weight = FontWeight.Bold, color = colors.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { asking = false }) { Txt(copy.resetCancel, 16, weight = FontWeight.SemiBold, color = colors.onSurface) }
+            },
+        )
     }
 }
 
@@ -422,6 +514,8 @@ private fun TryIt(copy: Copy, khmer: Boolean) {
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("try")
+                // not an autofill field: focusing it then never waits on the system's autofill service (an ANR on a busy phone)
+                .semantics { contentDataType = ContentDataType.None }
                 .clip(CardShape)
                 .background(colors.surface)
                 .border(2.5.dp, if (focused) TyperYellow else Color.Transparent, CardShape)

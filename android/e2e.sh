@@ -75,7 +75,7 @@ if cmd == "first":  # the strip's first slot: the first node after the Keyboard'
             print(labels[i + 1]); sys.exit(0)
     sys.exit(1)
 if cmd == "rect":
-    hit = [n for n in nodes if n.get("content-desc") == args[0]]
+    hit = [n for n in nodes if n.get("content-desc") == args[0]] or [n for n in nodes if n.get("resource-id") == args[0]]
     if hit:
         print(*re.findall(r"\d+", hit[-1].get("bounds"))); sys.exit(0)
     sys.exit(1)
@@ -161,6 +161,15 @@ open_app() {
         [ $n -lt 4 ] || { log "  Keyboard did not open"; return 1; }
     done
     read_keys
+    sing_layout
+}
+
+# The scenarios start on the Sing layout. A device left on the Khmer layout is switched to Sing once, and back at the end.
+WAS_KHMER=0
+KEEP_LAYOUT=0
+sing_layout() {
+    [ $KEEP_LAYOUT = 1 ] && return 0
+    if xy=$(ui bounds "Sing layout"); then tap $xy; WAS_KHMER=1; sleep 0.5; read_keys; fi
 }
 
 check() { # check <name> <expected substring> <actual>
@@ -200,6 +209,7 @@ open_fields() { # the debug fields screen; tap the field with this label
         [ $n -lt 4 ] || { log "  Keyboard did not open"; return 1; }
     done
     read_keys
+    sing_layout
 }
 
 # ---- scenarios ----
@@ -224,6 +234,80 @@ scenario_phrase() { # a whole Phrase, committed by return: knhom tov sala rean -
     sleep 0.5
     check phrase "ខ្ញុំទៅសាលារៀន" "$(field_text)"
     shot phrase
+}
+
+scenario_caret() { # mid-Phrase caret: a space-bar drag or a tap inside the Phrase keeps it; keys go where the caret is
+    open_app || { FAILED=1; return; }
+    type_keys "knhm tov"
+    set -- $(key_at space)
+    "$ADB" shell input motionevent DOWN $1 $2
+    sleep 0.5  # hold: the caret follows the finger, inside the Phrase
+    for i in 1 2 3 4 5; do "$ADB" shell input motionevent MOVE $(($1 - 30 * i)) $2; done
+    "$ADB" shell input motionevent UP $(($1 - 150)) $2
+    check "caret: a space-bar drag keeps the Phrase" "|abc, keep Latin|" "|$(ui labels | tr '\n' '|')"
+    type_keys o
+    check "caret: a key goes where the drag left the caret" "knhom tov" "$(field_text)"
+    shot caret-drag
+    set -- $(ui rect try)
+    tap $(($1 + 24)) $((($2 + $4) / 2))  # the field's left edge: the caret lands at the Phrase's start
+    sleep 0.5
+    check "caret: a tap inside the Phrase keeps it" "|abc, keep Latin|" "|$(ui labels | tr '\n' '|')"
+    tap $(return_key); sleep 0.5
+    check "caret: return puts the whole Phrase in as Khmer" "ខ្ញុំទៅ" "$(field_text)"
+    shot caret
+}
+
+scenario_leave() { # the caret leaves a Phrase: it goes in as Khmer; undo brings the Latin back; the drag stops at the edge first
+    open_app || { FAILED=1; return; }
+    type_keys tov
+    tap $(return_key); sleep 0.5  # ទៅ
+    type_keys sala
+    wait_for "សាលា" 30 >/dev/null
+    set -- $(ui rect try)
+    tap $(($1 + 24)) $((($2 + $4) / 2))  # the field's start: before ទៅ, outside the Phrase
+    sleep 0.6
+    check "leave: a tap outside the Phrase puts it in as Khmer" "ទៅសាលា" "$(field_text)"
+    check "leave: the bar offers the Latin back" "|undo Khmer, sala|" "|$(ui labels | tr '\n' '|')"
+    shot leave-undo
+    type_keys k  # the caret stayed where tapped: k starts a Phrase before ទៅ
+    sleep 0.4
+    check "leave: the caret stayed where the tap put it" "kទៅសាលា" "$(field_text)"
+    tap $(key_at delete); sleep 0.4
+    if ui labels | grep -q "^undo Khmer"; then log "FAIL leave: a key ends the undo"; FAILED=1; else log "PASS leave: a key ends the undo"; fi
+
+    open_app || { FAILED=1; return; }
+    type_keys tov
+    tap $(return_key); sleep 0.5
+    type_keys sala
+    wait_for "សាលា" 30 >/dev/null
+    set -- $(ui rect try)
+    tap $(($1 + 24)) $((($2 + $4) / 2))
+    sleep 0.6
+    xy=$(ui bounds "undo Khmer, sala") && tap $xy
+    sleep 0.6
+    check "leave: undo brings the Latin Phrase back" "ទៅsala" "$(field_text)"
+    check "leave: undo makes it a Phrase again" "|abc, keep Latin|" "|$(ui labels | tr '\n' '|')"
+    tap $(return_key); sleep 0.5
+    check "leave: return after undo puts it in as Khmer" "ទៅសាលា" "$(field_text)"
+
+    open_app || { FAILED=1; return; }
+    type_keys tov
+    tap $(return_key); sleep 0.5
+    type_keys knhom
+    wait_for "ខ្ញុំ" 30 >/dev/null
+    set -- $(key_at space)
+    "$ADB" shell input motionevent DOWN $1 $2
+    sleep 0.5
+    for i in 1 2 3 4 5 6; do "$ADB" shell input motionevent MOVE $(($1 - 30 * i)) $2; sleep 0.1; done  # to the edge and one past
+    sleep 0.4
+    check "leave: the drag stops at the Phrase's edge" "|abc, keep Latin|" "|$(ui labels | tr '\n' '|')"
+    for i in 7 8 9 10 11 12 13; do "$ADB" shell input motionevent MOVE $(($1 - 30 * i)) $2; sleep 0.1; done  # past the detent
+    "$ADB" shell input motionevent UP $(($1 - 390)) $2
+    sleep 0.6
+    check "leave: pushing on puts it in as Khmer" "ទៅខ្ញុំ" "$(field_text)"
+    type_keys x; sleep 0.4
+    check "leave: and the drag carried on into the text" "xទៅខ្ញុំ" "$(field_text)"
+    shot leave
 }
 
 scenario_learn() { # Pick a non-first Suggestion from the panel; after a Keyboard restart it ranks first
@@ -257,6 +341,35 @@ scenario_learn() { # Pick a non-first Suggestion from the panel; after a Keyboar
     check "learn: after restart, first Suggestion" "អាអាចម៍" "$(ui first)"
     shot learn
     xy=$(ui bounds "abc, keep Latin") && tap $xy  # leave the field clean
+}
+
+scenario_reset() { # learn a Pick, then the Companion app's Reset clears it: files gone, and the very next keystroke ranks as before
+    scenario_learn; [ $FAILED = 0 ] || return
+    "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null  # the Keyboard's process keeps running
+    wait_for try 30 >/dev/null || { log "FAIL reset: no Companion app"; FAILED=1; return; }
+    n=0
+    until xy=$(ui bounds "Reset"); do
+        n=$((n + 1))
+        [ $n -lt 6 ] || { log "FAIL reset: no Reset button"; FAILED=1; shot reset; return; }
+        "$ADB" shell input swipe 540 1600 540 700 300
+        sleep 0.5
+    done
+    tap $xy
+    wait_for "Cancel" 10 >/dev/null || { log "FAIL reset: no confirm dialog"; FAILED=1; shot reset; return; }
+    shot reset-confirm
+    tap $(ui bounds "Reset")  # the dialog's button: the dialog's window is the last in the dump
+    sleep 0.5
+    wait_for "Reset done" 10 >/dev/null && log "PASS reset: the card says Reset done" || { log "FAIL reset: no Reset done"; FAILED=1; }
+    shot reset-done
+    check "reset: learned files deleted" "gone" "$("$ADB" shell run-as $PKG ls files/user/user.tsv files/user/picks.tsv 2>/dev/null | grep -q tsv && echo kept || echo gone)"
+    open_app || { FAILED=1; return; }  # no restart_keyboard: the running engine must notice by itself
+    type_keys "ah ach"
+    sleep 1.5
+    first=$(ui first)
+    [ "$first" != "អាអាចម៍" ] && log "PASS reset: without a restart, first Suggestion back to '$first'" ||
+        { log "FAIL reset: អាអាចម៍ still first after Reset"; FAILED=1; }
+    shot reset
+    xy=$(ui bounds "abc, keep Latin") && tap $xy
 }
 
 scenario_password() { # a password field stays Latin and writes nothing to picks.tsv
@@ -319,7 +432,9 @@ scenario_keys() { # long-press digit, key preview, pages, shift and caps lock, s
     check "keys: numbers and symbols pages" "25€" "$(ui desctext search)"
 
     open_fields url || { FAILED=1; return; }
-    check "keys: URL field starts English" "English mode" "$(ui labels | tr '\n' '|')"
+    check "keys: a URL field follows the mode like any text field (Khmer)" "Khmer mode" "$(ui labels | tr '\n' '|')"
+    check "keys: a URL field offers the Khmer layout" "|Khmer layout|" "|$(ui labels | tr '\n' '|')"
+    tap $(key_at "Khmer mode"); sleep 0.4; read_keys  # English for the Latin checks below
     type_keys abcd
     set -- $(key_at space)
     "$ADB" shell input motionevent DOWN $1 $2
@@ -336,13 +451,19 @@ scenario_keys() { # long-press digit, key preview, pages, shift and caps lock, s
     tap $(key_at "caps lock"); read_keys; type_keys d
     check "keys: shift once, caps lock, off (typed where the drag left the caret)" "abxABCdcd" "$(ui desctext url)"
     tap $(key_at "English mode"); sleep 0.4
-    check "keys: a URL field can switch to Khmer" "Khmer mode" "$(ui labels | tr '\n' '|')"
+    check "keys: back to Khmer mode" "Khmer mode" "$(ui labels | tr '\n' '|')"
 
     open_fields email || { FAILED=1; return; }
     tap $(key_at "English mode"); sleep 0.4
     check "keys: email stays English" "English mode" "$(ui labels | tr '\n' '|')"
     type_keys knhom
     check "keys: email types Latin" "knhom" "$(ui desctext email)"
+    tap $(key_at delete); tap $(key_at delete); tap $(key_at delete); tap $(key_at delete); tap $(key_at delete)
+    tap $(ui bounds "Khmer layout, not in this field") || { FAILED=1; return; }
+    sleep 0.4; read_keys
+    key_at q >/dev/null && ! key_at ១ >/dev/null && log "PASS keys: email keeps the Sing layout, its កខគ does nothing" ||
+        { log "FAIL keys: the Khmer layout opened in an email field"; FAILED=1; }
+    shot keys-email
 }
 
 scenario_companion() { # the Companion app: setup steps report Done, Open Settings works, light/dark, Khmer/English
@@ -429,6 +550,8 @@ talkback() { # talkback on|off
         "$ADB" shell pm grant com.google.android.marvin.talkback android.permission.POST_NOTIFICATIONS 2>/dev/null || true
         "$ADB" shell settings put secure enabled_accessibility_services $TALKBACK
         "$ADB" shell settings put secure accessibility_enabled 1
+        _t=0  # TalkBack can take a while to start; wait until it really explores by touch
+        until [ "$("$ADB" shell settings get secure touch_exploration_enabled | tr -d '\r')" = 1 ] || [ $_t -ge 20 ]; do sleep 0.5; _t=$((_t + 1)); done
     else
         "$ADB" shell settings put secure enabled_accessibility_services '""'
         "$ADB" shell settings put secure accessibility_enabled 0
@@ -481,6 +604,343 @@ scenario_talkback() {
     else log "FAIL talkback: wanted exactly 'ខ្ញុំ', field holds '$text'"; FAILED=1; fi
 }
 
+scenario_emoji() { # the emoji page: pick, recently used, skin tones (remembered), search, back to the letters
+    "$ADB" shell run-as $PKG rm -f shared_prefs/typer_emoji.xml
+    restart_keyboard
+    open_app || { FAILED=1; return; }
+    set -- $(key_at comma); hold $1 $2 0.7  # as on Gboard with its globe key: the emoji page is on the comma's long press
+    xy=$(wait_for "grinning face" 20) || { log "FAIL emoji: the emoji page did not open"; FAILED=1; shot emoji; return; }
+    shot emoji-page
+    tap $xy
+    sleep 0.5
+    check "emoji: tap an emoji" "😀" "$(field_text)"
+    check "emoji: recently used appears" "Recently used" "$(ui labels | tr '\n' '|')"
+    tap $(ui bounds "People & Body")
+    xy=$(wait_for "waving hand" 10) || { log "FAIL emoji: no waving hand in People & Body"; FAILED=1; return; }
+    set -- $xy; "$ADB" shell "input motionevent DOWN $1 $2; sleep 0.7; input motionevent UP $1 $2"  # long press: the tone panel stays open
+    xy=$(wait_for "waving hand: medium skin tone" 10) || { log "FAIL emoji: no skin-tone panel"; FAILED=1; shot emoji-tones; return; }
+    shot emoji-tones
+    tap $xy
+    sleep 0.5
+    check "emoji: pick a skin tone" "😀👋🏽" "$(field_text)"
+    check "emoji: the grid remembers the tone" "waving hand: medium skin tone" "$(ui labels | tr '\n' '|')"
+    tap $(ui bounds "search emoji")
+    wait_for "close emoji search" 10 >/dev/null || { log "FAIL emoji: search did not open"; FAILED=1; return; }
+    read_keys
+    type_keys heart
+    xy=$(wait_for "red heart" 10) || { log "FAIL emoji: search found no red heart"; FAILED=1; shot emoji-search; return; }
+    shot emoji-search
+    tap $xy
+    sleep 0.5
+    check "emoji: search and pick" "😀👋🏽❤️" "$(field_text)"
+    tap $(ui bounds "close emoji search")
+    sleep 0.5
+    tap $(ui bounds letters)
+    wait_for "numbers and symbols" 10 >/dev/null && log "PASS emoji: ABC goes back to the letters" || { log "FAIL emoji: still on the emoji page"; FAILED=1; }
+}
+
+
+# set_font <Kantumruy Pro|System>: choose the font on the Companion app's card (scrolling to it)
+set_font() {
+    "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null
+    wait_for try 30 >/dev/null || return 1
+    n=0
+    until xy=$(ui bounds "Kantumruy Pro"); do
+        "$ADB" shell input swipe 540 1700 540 1150 300
+        sleep 0.6
+        n=$((n + 1))
+        [ $n -lt 10 ] || { log "  no font setting on screen"; return 1; }
+    done
+    set -- $xy
+    if [ "$FONT" = System ]; then tap $(( $(screen_width) - $1 )) $2; else tap $1 $2; fi  # the card is centred
+    sleep 0.5
+}
+
+# setting <label>: open the Companion app, scroll to the setting with this text and tap it (a switch or an option)
+WAS_KHMER_APP=0
+setting() {
+    "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null
+    wait_for try 30 >/dev/null || return 1
+    # the cards are found by their English titles: a Companion app in Khmer is switched to English (and back after)
+    if ui labels | grep -qx "ភាសា៖ អង់គ្លេស"; then tap $(ui bounds EN); WAS_KHMER_APP=1; sleep 0.5; fi
+    n=0
+    until xy=$(ui bounds "$1"); do
+        "$ADB" shell input swipe 540 1700 540 1150 300
+        sleep 0.6
+        n=$((n + 1))
+        [ $n -lt 14 ] || { log "  no setting '$1' on screen"; return 1; }
+    done
+    tap $xy
+    sleep 0.5
+}
+
+# en_fields: the debug search field (it asks for sentence capitals), in English mode
+en_fields() {
+    open_fields search || return 1
+    ui labels | grep -qx "English mode" || tap $(key_at "Khmer mode")
+    wait_for "English mode" 10 >/dev/null; read_keys
+}
+
+scenario_settings() { # double-space period and auto-cap (English), the auto-cap switch, number row, keyboard height
+    open_app || { FAILED=1; return; }
+    set -- $(ui rect "Typer keyboard"); normal=$(($4 - $2))
+    en_fields || { FAILED=1; return; }
+    type_keys hi; tap $(key_at space); tap $(key_at space); sleep 0.5
+    check "settings: double space types a period" "hi. " "$(ui desctext search)"
+    check "settings: auto-cap after the period" "|shift on|" "|$(ui labels | tr '\n' '|')"
+    tap $(key_at "English mode")
+    setting "Auto-capitalisation" || { FAILED=1; return; }
+    en_fields || { FAILED=1; return; }
+    type_keys hi; tap $(key_at space); tap $(key_at space); sleep 0.5
+    check "settings: double space still types a period" "hi. " "$(ui desctext search)"
+    ui labels | grep -qx "shift on" && { log "FAIL settings: auto-cap still on after switching it off"; FAILED=1; } || log "PASS settings: the auto-cap switch turns it off"
+    tap $(key_at "English mode")
+    setting "Auto-capitalisation"
+    setting "Number row" || { FAILED=1; return; }
+    open_app || { FAILED=1; return; }
+    set -- $(key_at 1); one=$2; set -- $(key_at q); q=$2
+    [ "$one" -lt "$q" ] && log "PASS settings: the number row sits above the letters" || { log "FAIL settings: no number row"; FAILED=1; }
+    shot settings-number-row
+    setting "Number row"
+    setting "Tall" || { FAILED=1; return; }
+    open_app || { FAILED=1; return; }
+    set -- $(ui rect "Typer keyboard"); tall=$(($4 - $2))
+    [ "$tall" -gt "$normal" ] && log "PASS settings: Tall makes the keyboard taller ($normal -> $tall px)" || { log "FAIL settings: height $normal -> $tall"; FAILED=1; }
+    setting "Normal"
+    if [ $WAS_KHMER_APP = 1 ]; then  # the Companion app back in Khmer, as it was
+        "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null
+        tap $(wait_for "ខ្មែរ" 20); WAS_KHMER_APP=0
+    fi
+}
+
+screen_width() { "$ADB" shell wm size | tail -1 | sed -E 's/.* ([0-9]+)x.*/\1/'; }
+
+scenario_font() { # the font setting changes the Keyboard's letters between Kantumruy Pro and the phone's font
+    for FONT in System "Kantumruy Pro"; do
+        set_font || { FAILED=1; return; }
+        "$ADB" shell run-as $PKG cat shared_prefs/typer_keyboard.xml 2>/dev/null | grep -q "SYSTEM" && saved=SYSTEM || saved=TYPER
+        log "  font set to $FONT (saved: $saved)"
+        open_app || { FAILED=1; return; }
+        shot "font-$( [ "$FONT" = System ] && echo system || echo typer)"
+    done
+    python3 - "$OUT/font-system.png" "$OUT/font-typer.png" <<'PY' && log "PASS font: the Keyboard's letters change with the setting" || { log "FAIL font: the Keyboard looks the same in both fonts"; FAILED=1; }
+import struct, sys, zlib
+def rows(path):  # decode the PNG's pixel rows without extra modules (8-bit RGBA or RGB, no interlace)
+    data = open(path, "rb").read(); i = 8; idat = b""
+    while i < len(data):
+        n, kind = struct.unpack(">I4s", data[i:i + 8]); body = data[i + 8:i + 8 + n]
+        if kind == b"IHDR": w, h, depth, ctype = struct.unpack(">IIBB", body[:10])
+        if kind == b"IDAT": idat += body
+        i += 12 + n
+    raw = zlib.decompress(idat); bpp = 4 if ctype == 6 else 3; stride = w * bpp; out = []; prev = bytearray(stride); p = 0
+    for _ in range(h):
+        f = raw[p]; line = bytearray(raw[p + 1:p + 1 + stride]); p += 1 + stride
+        for x in range(stride):
+            a = line[x - bpp] if x >= bpp else 0; b = prev[x]; c = prev[x - bpp] if x >= bpp else 0
+            if f == 1: line[x] = (line[x] + a) & 255
+            elif f == 2: line[x] = (line[x] + b) & 255
+            elif f == 3: line[x] = (line[x] + (a + b) // 2) & 255
+            elif f == 4:
+                pa, pb, pc = abs(b - c), abs(a - c), abs(a + b - 2 * c)
+                line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
+        out.append(bytes(line)); prev = line
+    return out
+a, b = rows(sys.argv[1]), rows(sys.argv[2])
+h = len(a); diff = sum(1 for y in range(int(h * 0.72), int(h * 0.92)) for i in range(0, len(a[y]), 16) if abs(a[y][i] - b[y][i]) > 40)
+print("differing samples in the key rows:", diff)
+sys.exit(0 if diff > 200 else 1)
+PY
+}
+
+scenario_khmer() { # the Khmer layout: កខគ in the bar, ខ្មែរ key by key, delete one code point inside a stack, popup, 123 and back, remembered across a restart, abc back to Sing
+    open_app || { FAILED=1; return; }
+    tap $(wait_for "Khmer layout" 10) || { log "FAIL khmer: no កខគ in the bar"; FAILED=1; shot khmer-fail; return; }
+    wait_for ១ 10 >/dev/null || { log "FAIL khmer: កខគ did not open the Khmer layout"; FAILED=1; shot khmer-fail; return; }
+    read_keys
+    shot khmer-page
+    key_at "Khmer mode" >/dev/null && { log "FAIL khmer: the ខ/EN key shows on the Khmer layout"; FAILED=1; } || log "PASS khmer: no ខ/EN key on the Khmer layout"
+    check "khmer: the bar ends with abc back to Sing" "Sing layout" "$(ui labels | tr '\n' '|')"
+    for k in ខ ្ ម; do tap $(key_at "$k"); done
+    tap $(key_at shift); sleep 0.3; read_keys
+    shot khmer-shift
+    tap $(key_at ែ); sleep 0.3; read_keys
+    tap $(key_at រ)
+    sleep 0.5
+    check "khmer: ខ្មែរ typed key by key" "ខ្មែរ" "$(field_text)"
+    tap $(key_at delete); sleep 0.3
+    check "khmer: delete removes the last character" "ខ្មែ" "$(field_text)"
+    tap $(key_at delete); sleep 0.3
+    tap $(key_at delete); sleep 0.3
+    check "khmer: delete inside a stack removes one code point at a time (ខ្មែ -> ខ្ម -> ខ្)" "ខ្" "$(field_text)"
+    [ "$(field_text)" = "ខ្" ] || { log "FAIL khmer: wanted exactly ខ្, got '$(field_text)'"; FAILED=1; }
+    set -- $(key_at ១)
+    "$ADB" shell "input motionevent DOWN $1 $2; sleep 0.7"
+    shot khmer-popup
+    w=$(( ($(screen_width) - 20) / 12 ))
+    "$ADB" shell "input motionevent MOVE $(($1 + w)) $2; sleep 0.2; input motionevent UP $(($1 + w)) $2"
+    sleep 0.5
+    check "khmer: long press and slide picks an alternate" "ខ្៱" "$(field_text)"
+    tap $(key_at "numbers and symbols"); sleep 0.4; read_keys
+    shot khmer-numbers
+    tap $(key_at "Khmer letters") || { log "FAIL khmer: no កខគ way back on the 123 page"; FAILED=1; return; }
+    wait_for ១ 10 >/dev/null && log "PASS khmer: 123 page's កខគ goes back to the Khmer layout" || { log "FAIL khmer: 123 did not go back to the Khmer layout"; FAILED=1; }
+    restart_keyboard
+    KEEP_LAYOUT=1; open_app || { FAILED=1; return; }; KEEP_LAYOUT=0
+    wait_for ១ 10 >/dev/null && log "PASS khmer: the Khmer layout is remembered after the Keyboard restarts" || { log "FAIL khmer: layout not remembered"; FAILED=1; shot khmer-fail; }
+    tap $(ui bounds "Sing layout")
+    wait_for "Khmer mode" 10 >/dev/null && read_keys && key_at q >/dev/null && log "PASS khmer: abc goes back to the Sing layout" || { log "FAIL khmer: not back on the Sing layout"; FAILED=1; }
+}
+
+# glide <word>: one finger down on the first letter, through the centre of each letter key in turn, up on the last
+glide() {
+    pts=""
+    for c in $(printf '%s' "$1" | sed 's/./& /g'); do pts="$pts $(key_at "$c")"; done
+    python3 - $pts >"$OUT/glide.cmd" <<'PY2'
+import os, sys
+slow = os.environ.get("SLOW") == "1"
+v = list(map(int, sys.argv[1:]))
+pts = list(zip(v[0::2], v[1::2]))
+out = [f"input motionevent DOWN {pts[0][0]} {pts[0][1]}"]
+if slow:  # a real thumb: it drifts a little, rests, then sweeps
+    out += [f"input motionevent MOVE {pts[0][0] + 36} {pts[0][1]}", "sleep 0.4"]  # drifts ~12 dp, then rests past the 300 ms long press
+for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+    for i in range(1, 7):
+        out.append(f"input motionevent MOVE {x0 + (x1 - x0) * i // 6} {y0 + (y1 - y0) * i // 6}")
+out.append(f"input motionevent UP {pts[-1][0]} {pts[-1][1]}")
+print("; ".join(out))
+PY2
+    "$ADB" shell "$(cat "$OUT/glide.cmd")"
+    sleep 0.6
+}
+
+scenario_next() { # after a word the bar offers next words: Khmer after ខ្ញុំ (with ។ kept), English after "of "
+    open_app || { FAILED=1; return; }
+    type_keys knhom; sleep 1
+    tap $(ui bounds "$(ui first)"); sleep 0.8
+    labels=$(ui labels | tr '\n' '|')
+    log "  bar after $(field_text): $labels" | cut -c1-200
+    w=$(ui labels | sed -n '/^clipboard$/{n;p;q;}')
+    [ -n "$w" ] && [ "$w" != "។" ] || { log "FAIL next: no Khmer next word after $(field_text)"; FAILED=1; shot next-fail; return; }
+    check "next: Khmer keeps ។ beside the next words" "|។|Khmer layout|" "$labels"
+    shot next-khmer
+    tap $(ui bounds "$w"); sleep 0.5
+    check "next: a Khmer next word goes in as it is" "ខ្ញុំ$w" "$(field_text)"
+    tap $(key_at "Khmer mode"); wait_for "English mode" 10 >/dev/null; read_keys
+    type_keys " of "; sleep 0.8
+    check "next: English after 'of '" "|the|" "|$(ui labels | tr '\n' '|')"
+    shot next-english
+    tap $(ui bounds the); sleep 0.5
+    check "next: an English next word goes in with a space" " of the " "$(field_text)"
+    tap $(key_at "English mode")
+}
+
+scenario_emojisuggest() { # a word with an emoji: English "love" offers one while typing; Khmer ភ្លើង offers one after it
+    open_app || { FAILED=1; return; }
+    tap $(key_at "Khmer mode"); wait_for "English mode" 10 >/dev/null; read_keys
+    type_keys love; sleep 0.8
+    xy=$(ui prefix "emoji, ") || { log "FAIL emojisuggest: no emoji for love"; FAILED=1; shot emojisuggest-fail; return; }
+    log "  bar: $(ui labels | sed -n '2,6p' | tr '\n' '|')"
+    shot emojisuggest-english
+    tap $xy; sleep 0.5
+    check "emojisuggest: the emoji goes after the word" "love ❤️ " "$(field_text)"
+    tap $(key_at "English mode"); sleep 0.3
+    open_app || { FAILED=1; return; }
+    wait_for "Khmer mode" 10 >/dev/null || { log "FAIL emojisuggest: not back in Khmer mode"; FAILED=1; shot emojisuggest-fail; return; }
+    type_keys phleung; sleep 1
+    tap $(ui bounds "$(ui first)"); sleep 0.8
+    log "  Khmer: $(field_text), bar: $(ui labels | sed -n '2,7p' | tr '\n' '|')"
+    ui prefix "emoji, " >/dev/null && log "PASS emojisuggest: a Khmer word offers an emoji" || { log "FAIL emojisuggest: no emoji after $(field_text)"; FAILED=1; }
+    shot emojisuggest-khmer
+}
+
+# slide_pick <label> <dx>: hold the key, then slide dx px and lift (a long-press popup pick)
+slide_pick() {
+    set -- $(key_at "$1") "$2"
+    "$ADB" shell "input motionevent DOWN $1 $2; sleep 0.7; input motionevent MOVE $(($1 + $3)) $2; sleep 0.2; input motionevent UP $(($1 + $3)) $2"
+    sleep 0.4
+}
+
+scenario_longpress() { # accents, row-2 symbols, the period's punctuation, email @ and URL / with .com, comma opens settings
+    open_app || { FAILED=1; return; }
+    tap $(key_at "Khmer mode"); wait_for "English mode" 10 >/dev/null; read_keys
+    w=$(( ($(screen_width) - 20) / 10 ))
+    slide_pick e $((2 * w))
+    set -- $(key_at a); hold $1 $2 0.7
+    slide_pick period $((-w))
+    sleep 0.3
+    check "longpress: e slides to é, a holds to its first accent à, period slides to !" "éà!" "$(field_text)"
+    shot longpress
+    tap $(key_at "English mode")
+    open_fields email || { FAILED=1; return; }
+    key_at @ >/dev/null && ! key_at comma >/dev/null && log "PASS longpress: an email field has @ in the comma's place" || { log "FAIL longpress: no @ key in email"; FAILED=1; }
+    open_fields url || { FAILED=1; return; }
+    key_at / >/dev/null && log "PASS longpress: a URL field has / in the comma's place" || { log "FAIL longpress: no / key in url"; FAILED=1; }
+    ui labels | grep -qx "English mode" || { tap $(key_at "Khmer mode"); sleep 0.4; read_keys; }
+    type_keys a
+    slide_pick period $((-w))
+    check "longpress: the period slides to .com in a URL field" "a.com" "$(ui desctext url)"
+    ui labels | grep -qx "English mode" && tap $(key_at "English mode")
+    open_fields search || { FAILED=1; return; }
+    set -- $(key_at "Khmer mode"); hold $1 $2 0.7
+    sleep 1.5
+    check "longpress: holding the globe key opens Typer settings" "MainActivity" "$("$ADB" shell dumpsys window | grep -m1 mCurrentFocus)"
+}
+
+scenario_themes() { # each theme on the keyboard, for the eye (screenshots theme-*.png); ends on THEME_AFTER (default Typer)
+    for t in Typer "Material You" Light Dark; do
+        ui_t=$(printf '%s' "$t" | tr ' ' '-')
+        setting "$t" || { log "  no theme $t (Material You needs Android 12+)"; continue; }
+        open_app || { FAILED=1; return; }
+        shot "theme-$ui_t"
+        log "PASS themes: $t on screen (theme-$ui_t.png)"
+    done
+    setting "${THEME_AFTER:-Typer}"
+    if [ $WAS_KHMER_APP = 1 ]; then
+        "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null
+        tap $(wait_for "ខ្មែរ" 20); WAS_KHMER_APP=0
+    fi
+}
+
+scenario_clipboard() { # copy: the bar offers a one-tap paste; the clipboard button lists the clips newest first; tap pastes; Clear all
+    open_fields search || { FAILED=1; return; }
+    tap $(ui bounds "copy sample"); sleep 0.8
+    shot clipboard-fresh
+    tap $(wait_for "paste, Typer clip 1" 10) || { log "FAIL clipboard: no paste pill after copying"; FAILED=1; return; }
+    sleep 0.4
+    check "clipboard: the paste pill pastes" "Typer clip 1" "$(ui desctext search)"
+    tap $(ui bounds "copy sample"); sleep 0.8
+    tap $(wait_for clipboard 10) || { FAILED=1; return; }
+    sleep 0.4
+    shot clipboard
+    labels=$(ui labels | tr '\n' '|')
+    check "clipboard: newest first" "paste, Typer clip 2|paste, Typer clip 1|clear clipboard history" "$labels"
+    tap $(ui bounds "paste, Typer clip 1")
+    sleep 0.4
+    check "clipboard: a row pastes its clip" "Typer clip 1Typer clip 1" "$(ui desctext search)"
+    tap $(wait_for clipboard 10); sleep 0.3
+    tap $(ui bounds "clear clipboard history"); sleep 0.3
+    ui labels | grep -q "paste, Typer clip" && { log "FAIL clipboard: Clear all left clips"; FAILED=1; } || log "PASS clipboard: Clear all empties it"
+    tap $(ui bounds "close clipboard")
+}
+
+scenario_glide() { # English mode: glide hello and world (a space between), the bar's alternatives, backspace takes the glided word back
+    open_app || { FAILED=1; return; }
+    tap $(key_at "Khmer mode"); wait_for "English mode" 10 >/dev/null; read_keys
+    glide hello
+    check "glide: hello" "hello" "$(field_text)"
+    log "  bar after hello: $(ui labels | sed -n '2,4p' | tr '\n' '|')"
+    glide world
+    shot glide
+    check "glide: a second word gets a space before it" "hello world" "$(field_text)"
+    tap $(key_at delete); sleep 0.4
+    [ "$(field_text)" = "hello " ] && log "PASS glide: backspace takes the glided word back" || { log "FAIL glide: after backspace '$(field_text)'"; FAILED=1; }
+    for w in the keyboard quick; do glide $w; done
+    check "glide: the keyboard quick" "hello the keyboard quick" "$(field_text)"
+    SLOW=1 glide world
+    check "glide: a slow-starting glide is still a glide, not a long press" "quick world" "$(field_text)"
+    tap $(key_at "English mode")  # back to Khmer mode for later scenarios
+}
+
 # Screenshots of Typer in the same field the Gboard reference used (Contacts, First name; android/docs/reference.md),
 # light and dark, at 411 and 360 dp wide, idle and composing. Not a pass/fail check: for comparing by eye.
 scenario_compare() {
@@ -509,10 +969,13 @@ scenario_compare() {
 }
 
 log "Typer Android e2e $(date)  device: $("$ADB" shell getprop ro.product.model | tr -d '\r') API $("$ADB" shell getprop ro.build.version.sdk | tr -d '\r')"
-for s in ${*:-tracer phrase learn password english keys talkback}; do
+for s in ${*:-tracer phrase caret leave learn reset password english glide clipboard next emojisuggest settings longpress keys emoji font khmer talkback}; do
     log "-- $s"
     "scenario_$s"
 done
+if [ $WAS_KHMER = 1 ] && open_app >/dev/null 2>&1; then  # leave the device on the layout it had
+    WAS_KHMER=0; xy=$(ui bounds "Khmer layout") && tap $xy && log "back on the Khmer layout, as the device had it"
+fi
 "$ADB" logcat -d >"$OUT/logcat.txt" 2>/dev/null || true
 log "artifacts: $OUT"
 [ $FAILED = 0 ] && log "ALL PASSED" || log "FAILED"
