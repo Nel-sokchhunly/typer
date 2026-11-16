@@ -22,6 +22,11 @@ class EnglishWordsTest {
         assertEquals("birthday", s("happy bi")[1])
     }
 
+    @Test fun keepColumnDoesNotDropTheWord() {  // "bro<TAB>8042<TAB>keep": keep-English words from data/raw/keep-english.txt
+        val w = EnglishWords.load("bro\t8042\tkeep\nbrook\t5\n".byteInputStream())
+        assertEquals(listOf("br", "bro", "brook"), w.suggest("br", emptyList()))
+    }
+
     @Test fun capitalisedWordGetsCapitalisedSuggestions() = assertEquals(listOf("Hel", "Help", "Hell"), s("Hel"))
 
     @Test fun spellingFixOnlyWhenNothingCompletes() {

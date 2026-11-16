@@ -5,7 +5,7 @@ import kotlin.math.abs
 import kotlin.math.min
 
 /**
- * English word suggestions for English mode, from Typer's own data (data/out/english.tsv: "word<TAB>count" and
+ * English word suggestions for English mode, from Typer's own data (data/out/english.tsv: "word<TAB>count[<TAB>keep]" and
  * "w1 w2<TAB>count" lines), standing in for iOS's UITextChecker. Same contract as iOS's englishWords(before:):
  * [the word as typed, best, second], or empty when nothing helps. Prefix completions ranked by count (bigrams with
  * the previous word first); a spelling fix only when nothing completes the word and it isn't a word itself.
@@ -69,7 +69,7 @@ class EnglishWords private constructor(
                     val tab = line.indexOf('\t')
                     if (tab <= 0) continue
                     val w = line.substring(0, tab)
-                    val c = line.substring(tab + 1).toLongOrNull() ?: continue
+                    val c = line.substring(tab + 1).substringBefore('\t').toLongOrNull() ?: continue // "<TAB>keep" may follow
                     if (' ' in w) bigrams[w] = c else counts[w] = c
                 }
             }
