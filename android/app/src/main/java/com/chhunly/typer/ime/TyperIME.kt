@@ -1,19 +1,28 @@
 package com.chhunly.typer.ime
 
+import kotlin.math.abs
 import android.inputmethodservice.InputMethodService
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.content.ClipboardManager
+import android.content.Intent
 import android.provider.UserDictionary
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowInsetsController
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.ExtractedTextRequest
+import com.chhunly.typer.core.FieldKind
+import com.chhunly.typer.core.NextWords
+import com.chhunly.typer.core.ClipHistory
 import com.chhunly.typer.core.AutoCap
 import com.chhunly.typer.core.Composer
 import com.chhunly.typer.core.Engine
+import com.chhunly.typer.core.EmojiData
+import com.chhunly.typer.core.EmojiRecents
 import com.chhunly.typer.core.EnglishWords
 import com.chhunly.typer.core.FieldType
 import com.chhunly.typer.core.KeyAction
@@ -44,6 +53,18 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
 
     // layout state (iOS KeyboardModel)
     private var page = KeyPage.LETTERS
+    /**
+     * The layout the user chose with the bar's កខគ / abc: Sing's letters or the Khmer layout. Remembered across
+     * launches; only that switch changes it.
+     */
+    private var letters = KeyPage.LETTERS
+    /** Password, email and number fields: the Sing layout only, while focused; [letters] is kept for later. */
+    private var layoutLocked = false
+    /** Email, URL or other: the bottom row's @ or / and the period's long press. */
+    private var fieldKind = FieldKind.TEXT
+    private val keyboardPrefs by lazy { getSharedPreferences("typer_keyboard", MODE_PRIVATE) }
+    /** The letters page for this field: the chosen layout, or the Sing layout in a locked field. */
+    private fun lettersPage() = if (layoutLocked) KeyPage.LETTERS else letters
     private var shift = Shift.OFF
     /** The user set shift by hand since the last key; auto-cap leaves it alone until a key is typed. */
     private var shiftChosen = false
@@ -56,7 +77,26 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     /** English word suggestions allowed: plain text fields that don't turn suggestions off, not passwords. */
     private var wordsAllowed = false
     private var words: List<String> = emptyList()
+
+    // emoji page: data loaded once off the main thread; recents and chosen skin tones kept on the phone only
+    @Volatile private var emojiData: EmojiData? = null
+    private var emojiOpen = false
+    private var emojiSearch = false
+    private var query = ""
+    private var results: List<String> = emptyList()
+    private var recents: List<String> = emptyList()
+    private var tones: Map<String, String> = emptyMap()
+    private val emojiPrefs by lazy { getSharedPreferences("typer_emoji", MODE_PRIVATE) }
     private var dragCaret = -1
+    /** Space-bar drag mid-Phrase: clusters pushed past the Phrase's edge; at [DETENT] the Phrase goes in as Khmer. */
+    private var dragOver = 0
+
+    /**
+     * A Phrase that went in as Khmer because the caret left it: `khmer` at `start`, and the selection that followed.
+     * The bar offers the Latin back until the next key, tap, caret move, field change or hide.
+     */
+    private data class Undo(val latin: String, val khmer: String, val start: Int, val selStart: Int, val selEnd: Int)
+    private var undo: Undo? = null
 
     // English words: loaded once, off the main thread
     @Volatile private var english: EnglishWords? = null
@@ -73,6 +113,8 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
 
     override fun onCreate() {
         super.onCreate()
+        clipboardManager?.addPrimaryClipChangedListener(clipListener)
+        letters = if (keyboardPrefs.getString("layout", null) == KeyPage.KHMER.name) KeyPage.KHMER else KeyPage.LETTERS
         scheduler.async {
             val data = EngineData.dataDir(this)
             val e = Engine(data?.path ?: "/nonexistent", EngineData.userDir(this).path)
@@ -80,15 +122,93 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             engine.real = if (e.loaded) e else NoSuggestions
         }
         loader.execute {
+            val data = try {
+                EmojiData.load(asset("data/emoji.json"), asset("data/emoji-names.tsv"))
+            } catch (e: Exception) {  // missing or broken data: the emoji key does nothing
+                null
+            }
+            main.post {
+                emojiData = data
+                view?.emojiData = data
+            }
+        }
+        loader.execute {
+            nextWords = try {
+                assets.open("data/ngrams.tsv").use { NextWords.load(it) }
+            } catch (e: java.io.IOException) {
+                null
+            }
+        }
+        loader.execute {
             english = try {
-                assets.open("data/english.tsv").use { EnglishWords.load(it) }
+                assets.open("data/english.tsv").use { EnglishWords.load(it) }.also { it.warm() }  // build the glide and next-word indexes here, not on first use
             } catch (e: java.io.IOException) {
                 null
             }
         }
     }
 
+    // ---- clipboard history (in memory, an hour) ----
+
+    private val clips = ClipHistory()
+    private var clipboardOpen = false
+    private val clipboardManager by lazy { getSystemService(ClipboardManager::class.java) }
+    private val clipListener = ClipboardManager.OnPrimaryClipChangedListener { clipChanged() }
+
+    /** A new copy: kept unless Android marks it sensitive (a password manager's copy) or it is empty. */
+    private fun clipChanged() {
+        val clip = try { clipboardManager?.primaryClip } catch (e: SecurityException) { null } ?: return
+        if (clip.description.extras?.getBoolean("android.content.extra.IS_SENSITIVE") == true) return
+        if (clip.itemCount == 0) return
+        val text = clip.getItemAt(0).coerceToText(this)?.toString()?.take(MAX_CLIP) ?: return
+        if (text.isBlank()) return
+        clips.add(text, SystemClock.elapsedRealtime())
+        render()
+        main.postDelayed({ render() }, clips.freshMs + 100)  // the paste pill goes when the clip is no longer fresh
+    }
+
+    private fun paste(text: String) {
+        currentInputConnection?.commitText(text, 1)
+        refresh(afterKey = true)
+    }
+
+    override fun onClip(index: Int) {
+        val list = clips.list(SystemClock.elapsedRealtime())
+        if (index < list.size) {
+            clipboardOpen = false
+            paste(list[index])
+        } else if (list.isNotEmpty()) {
+            clips.clear()
+            render()
+        }
+    }
+
+    /** Khmer next-word suggestions, loaded off the main thread; none until then. */
+    @Volatile private var nextWords: NextWords? = null
+    private var next: List<String> = emptyList()
+
+    private var emojiSuggestion: String? = null
+
+    /** The bar's emoji for the word just typed: it goes after the word, with spaces in English; kept in recents. */
+    private fun emojiSuggested(e: String) {
+        val english = composer.mode == "EN"
+        currentInputConnection?.commitText(if (english) " $e " else e, 1)
+        recents = EmojiRecents.add(EmojiRecents.decode(emojiPrefs.getString("recents", null)), e)
+        emojiPrefs.edit().putString("recents", EmojiRecents.encode(recents)).apply()
+        refresh(afterKey = true)
+    }
+
+    /** A next word from the bar: Khmer goes in as it is (no spaces in Khmer), English with a space after. */
+    private fun nextTapped(i: Int) {
+        val w = next.getOrNull(i) ?: return
+        val english = composer.mode == "EN"
+        val word = if (english && shift == Shift.ONCE) w.replaceFirstChar { it.uppercaseChar() } else w
+        currentInputConnection?.commitText(if (english) "$word " else word, 1)
+        refresh(afterKey = true)
+    }
+
     override fun onDestroy() {
+        clipboardManager?.removePrimaryClipChangedListener(clipListener)
         scheduler.async { engine.loaded?.close() }
         loader.shutdown()
         super.onDestroy()
@@ -97,17 +217,31 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     /** No extract (fullscreen) editor, also in landscape: the Phrase is composed in the app's own field. */
     override fun onEvaluateFullscreenMode() = false
 
-    override fun onCreateInputView(): View = KeyboardView(this, this).also { view = it }
+    override fun onCreateInputView(): View = KeyboardView(this, this).also {
+        view = it
+        it.emojiData = emojiData
+    }
+
+    private fun asset(path: String) = assets.open(path).use { it.readBytes().toString(Charsets.UTF_8) }
 
     override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         proxy.selection(attribute.initialSelStart, attribute.initialSelEnd, -1, -1)
+        glided = null
+        undo = null
+        clipboardOpen = false
         val type = fieldType(attribute)
         val secure = secure(attribute)
         composer.fieldTraitsChanged(secure, type)
         val variation = attribute.inputType and InputType.TYPE_MASK_VARIATION
         val password = (attribute.inputType and InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_TEXT && variation in PASSWORDS
-        wordsAllowed = type == FieldType.TEXT && !password &&
+        layoutLocked = secure || password || type == FieldType.EMAIL || type == FieldType.NUMBER
+        fieldKind = when {
+            type == FieldType.EMAIL -> FieldKind.EMAIL
+            variation == InputType.TYPE_TEXT_VARIATION_URI -> FieldKind.URL
+            else -> FieldKind.TEXT
+        }
+        wordsAllowed = type == FieldType.TEXT && !password && variation != InputType.TYPE_TEXT_VARIATION_URI &&
             (attribute.inputType and InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_TEXT &&
             (attribute.inputType and InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS) == 0
         autoCap = when {
@@ -118,11 +252,12 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         }
         returnFor(attribute)
         if (!restarting) {
-            page = if (type == FieldType.NUMBER) KeyPage.NUMBERS else KeyPage.LETTERS
+            page = if (type == FieldType.NUMBER) KeyPage.NUMBERS else lettersPage()
             shift = Shift.OFF
             shiftChosen = false
             showAll = false
         }
+        if (layoutLocked && page == KeyPage.KHMER) page = KeyPage.LETTERS
     }
 
     /** The return key shows the field's action (search, send, go, ...), drawn in primary; else a newline. */
@@ -148,7 +283,14 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         val theme = KeyboardTheme.from(this)
         view?.theme = theme
         view?.haptics = HapticsChoice.get(this)
+        autoCapOn = KeyboardPrefs.autoCap(this)
+        doubleSpaceOn = KeyboardPrefs.doubleSpace(this)
+        view?.keySound = KeyboardPrefs.keySound(this)
+        view?.numberRow = KeyboardPrefs.numberRow(this)
+        view?.heightScale = KeyboardPrefs.height(this).scale
+        view?.systemFont = FontChoice.get(this) == FontChoice.SYSTEM
         colorNavigationBar(theme)
+        recheckInsets()
         loadUserWords()
         refresh()
     }
@@ -186,10 +328,29 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         }
     }
 
+    /**
+     * The navigation bar inset can be reported late (or as 0 for a moment) while another app opens: check it when the
+     * Keyboard's window shows and again after the app's open animation, and lay out again if it changed.
+     */
+    private fun recheckInsets() {
+        val v = view ?: return
+        v.post { v.recheckInsets() }
+        main.postDelayed({ view?.recheckInsets() }, 300)
+        main.postDelayed({ view?.recheckInsets() }, 1000)
+    }
+
+    override fun onWindowShown() {
+        super.onWindowShown()
+        recheckInsets()
+    }
+
     override fun onFinishInputView(finishingInput: Boolean) {
         composer.fieldEnded()
+        undo = null
         view?.reset()
         showAll = false
+        emojiOpen = false
+        emojiSearch = false
         super.onFinishInputView(finishingInput)
     }
 
@@ -202,8 +363,73 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         proxy.selection(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         if (dragCaret >= 0) return  // our own caret moves while dragging on the space bar
-        composer.textChanged()
+        if (glided != null && (newSelStart != newSelEnd || newSelEnd != glideEnd)) glided = null  // the caret moved away
+        undo?.let { u -> if ((newSelStart != u.selStart || newSelEnd != u.selEnd) && !selectionIs(u.selStart, u.selEnd)) undo = null }
+        // A tap inside the Phrase: it stays a Phrase, with the caret there (Composer.caretMoved). Anywhere else it
+        // goes in as Khmer, the caret (or selection) kept where the user put it.
+        if (!caretInPhrase(newSelStart, newSelEnd, candidatesStart, candidatesEnd)) leavePhrase(newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         refresh()
+    }
+
+    /** The editor's selection right now (an update may be a late echo). */
+    private fun selectionIs(start: Int, end: Int): Boolean {
+        val t = currentInputConnection?.getExtractedText(ExtractedTextRequest(), 0) ?: return false
+        return t.startOffset + t.selectionStart == start && t.startOffset + t.selectionEnd == end
+    }
+
+    /**
+     * The caret left the Phrase. With the Phrase's span known, it goes in as its top Suggestion (Composer.leaveKhmer)
+     * and the selection is put back where the user put it, shifted by the length change if it was after the Phrase.
+     * Without a span (some editors drop it), the Composer decides as before: the Latin stays.
+     */
+    private fun leavePhrase(selStart: Int, selEnd: Int, spanStart: Int, spanEnd: Int) {
+        val ic = currentInputConnection
+        if (ic == null || !composer.isComposing || spanStart < 0 || spanEnd - spanStart != composer.typed.length) {
+            composer.textChanged()
+            return
+        }
+        ic.beginBatchEdit()
+        val latin = composer.typed
+        if (composer.textChanged(khmer = true) && !composer.isComposing) {
+            val khmer = composer.lastLeft?.takeIf { it.latin == latin }?.khmer ?: latin
+            val delta = khmer.length - latin.length
+            fun map(p: Int) = when {
+                p >= spanEnd -> p + delta
+                p > spanStart -> spanStart + khmer.length
+                else -> p
+            }
+            val a = map(selStart)
+            val b = map(selEnd)
+            ic.setSelection(a, b)
+            if (khmer != latin) undo = Undo(latin, khmer, spanStart, a, b)
+        }
+        ic.endBatchEdit()
+    }
+
+    /**
+     * The caret sits inside the Phrase's composing span: tell the Composer where. The span must be the whole current
+     * Phrase (a late echo of an earlier key has a shorter or longer one), and a caret off the Phrase's end must be
+     * where the editor has it now, so a stale update can't drop the next key into the middle of the word.
+     */
+    private fun caretInPhrase(selStart: Int, selEnd: Int, spanStart: Int, spanEnd: Int): Boolean {
+        if (!composer.isComposing) return false
+        val inSpan = spanStart >= 0 && selStart == selEnd && selStart in spanStart..spanEnd &&
+            spanEnd - spanStart == composer.typed.length
+        val at = selStart - spanStart
+        val live = inSpan && (at == composer.caret || currentInputConnection?.getExtractedText(ExtractedTextRequest(), 0)
+            ?.let { t -> t.selectionStart == t.selectionEnd && t.startOffset + t.selectionStart == selStart } == true)
+        if (live) return composer.caretMoved(at)
+        return composer.caret < composer.typed.length && editorCaretInPhrase()  // a late echo: still where we left it?
+    }
+
+    /** Mid-Phrase caret: the editor still has the Phrase around its caret, as the Composer left it (a late echo). */
+    private fun editorCaretInPhrase(): Boolean {
+        val ic = currentInputConnection ?: return false
+        val typed = composer.typed
+        val caret = composer.caret
+        if (!ic.getSelectedText(0).isNullOrEmpty()) return false
+        return ic.getTextBeforeCursor(caret, 0)?.toString() == typed.substring(0, caret) &&
+            ic.getTextAfterCursor(typed.length - caret, 0)?.toString() == typed.substring(caret)
     }
 
     // ---- state -> view ----
@@ -212,11 +438,22 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     private fun refresh(afterKey: Boolean = false) {
         val khmer = composer.mode == "ខ"
         val before = if (khmer) null else currentInputConnection?.getTextBeforeCursor(64, 0)?.toString()  // Khmer needs neither
-        words = if (!khmer && wordsAllowed && page == KeyPage.LETTERS) english?.suggest(before, userWords) ?: emptyList() else emptyList()
+        words = glided ?: if (!khmer && wordsAllowed && page == KeyPage.LETTERS) english?.suggest(before, userWords) ?: emptyList() else emptyList()
+        next = if (wordsAllowed && page == KeyPage.LETTERS && words.isEmpty() && !composer.isComposing) {
+            if (khmer) nextWords?.khmer(currentInputConnection?.getTextBeforeCursor(48, 0)?.toString()) ?: emptyList()
+            else english?.next(before) ?: emptyList()
+        } else emptyList()
+        emojiSuggestion = if (composer.isComposing || glided != null) null else emojiData?.let { data ->
+            when {
+                words.isNotEmpty() -> data.forWord(words[0])  // English, typing a word
+                next.isNotEmpty() && khmer -> nextWords?.lastKhmerWord(currentInputConnection?.getTextBeforeCursor(48, 0)?.toString())?.let(data::forWord)
+                else -> null
+            }
+        }
         if (!composer.isComposing) showAll = false
         if (afterKey) shiftChosen = false
         if (shift != Shift.LOCK && !shiftChosen) {
-            shift = if (AutoCap.shouldShift(before, autoCap, khmer)) Shift.ONCE else Shift.OFF
+            shift = if (autoCapOn && page != KeyPage.KHMER && AutoCap.shouldShift(before, autoCap, khmer)) Shift.ONCE else Shift.OFF
         }
         render()
     }
@@ -233,6 +470,23 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
             showAll = showAll,
             returnKind = returnKind,
             returnAction = returnAction,
+            emoji = emojiOpen,
+            emojiSearch = emojiSearch,
+            query = query,
+            results = results,
+            recents = recents,
+            tones = tones,
+            letters = lettersPage(),
+            field = fieldKind,
+            layoutLocked = layoutLocked,
+            glide = composer.mode == "EN" && wordsAllowed && english != null,
+            glided = glided != null,
+            clipboard = clipboardOpen && !composer.isComposing,
+            clips = if (clipboardOpen) clips.list(SystemClock.elapsedRealtime()) else emptyList(),
+            next = next,
+            emojiSuggestion = emojiSuggestion,
+            freshClip = if (clipboardOpen || composer.isComposing) null else clips.fresh(SystemClock.elapsedRealtime()),
+            undo = if (composer.isComposing) null else undo?.latin,
         )
     }
 
@@ -246,15 +500,53 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
 
     // ---- view events ----
 
+    /** Companion app switches, read when the Keyboard opens. */
+    private var autoCapOn = true
+    private var doubleSpaceOn = true
+    /** The last key was space: a second one right after a word types ". " in English mode. */
+    private var lastWasSpace = false
+
+    /** Double-space for a period (English mode): "word" + space + space -> "word. ", then auto-cap as after any period. */
+    private fun doubleSpace(): Boolean {
+        if (!doubleSpaceOn || composer.mode != "EN" || composer.isComposing || !wordsAllowed) return false
+        val ic = currentInputConnection ?: return false
+        val before = ic.getTextBeforeCursor(2, 0)?.toString() ?: return false
+        if (before.length < 2 || before[1] != ' ' || !before[0].isLetterOrDigit()) return false
+        ic.beginBatchEdit()
+        ic.deleteSurroundingText(1, 0)
+        ic.commitText(". ", 1)
+        ic.endBatchEdit()
+        refresh(afterKey = true)
+        return true
+    }
+
     override fun onKey(action: KeyAction) {
+        val wasSpace = lastWasSpace
+        lastWasSpace = action == KeyAction.Space
+        if (emojiSearch) return searchKey(action)
+        val u = undo
+        undo = null
+        if (u != null && action == KeyAction.Backspace && u.selStart == u.selEnd && u.selEnd == u.start + u.khmer.length) {
+            return undoLeave(u)  // right after the Khmer that went in: backspace takes it back, like Gboard's undo
+        }
+        if (action == KeyAction.Space && wasSpace && glided == null && doubleSpace()) {
+            lastWasSpace = false
+            return
+        }
+        if (glided != null) {
+            val word = glided!![0]
+            glided = null
+            if (action == KeyAction.Backspace) return glideDeleted(word)
+        }
+        if (emojiOpen && action == KeyAction.Page) return closeEmoji()
         when (action) {
             is KeyAction.Text -> type(action.text)
             KeyAction.Space -> type(" ")
-            KeyAction.Backspace -> handle(composer.backspace()) { deleteBackward() }
+            KeyAction.Backspace -> handle(composer.backspace()) { if (page == KeyPage.KHMER) deleteCodePoint() else deleteBackward() }
             KeyAction.Return -> handle(composer.returnKey()) { returnKey() }
             KeyAction.Shift -> shiftTapped()
             KeyAction.Page -> {
-                page = if (page == KeyPage.LETTERS) KeyPage.NUMBERS else KeyPage.LETTERS
+                page = if (page == KeyPage.LETTERS || page == KeyPage.KHMER) KeyPage.NUMBERS else lettersPage()
                 refresh()
             }
             KeyAction.Symbols -> {
@@ -262,11 +554,86 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
                 render()
             }
             KeyAction.Mode -> modeTapped()
+            KeyAction.Emoji -> openEmoji()
+            KeyAction.Settings -> openSettings()
         }
+    }
+
+    /** Long press on the comma key: the Keyboard goes away and Typer's settings (the Companion app) open. */
+    private fun openSettings() {
+        requestHideSelf(0)
+        startActivity(Intent(this, com.chhunly.typer.app.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+    }
+
+    // ---- emoji ----
+
+    private fun openEmoji() {
+        if (emojiData == null) return
+        recents = EmojiRecents.decode(emojiPrefs.getString("recents", null))
+        tones = emojiPrefs.getString("tones", null)?.let { s ->
+            s.split('\n').mapNotNull { l -> l.split('\t').takeIf { it.size == 2 }?.let { it[0] to it[1] } }.toMap()
+        } ?: emptyMap()
+        emojiOpen = true
+        clipboardOpen = false
+        render()
+    }
+
+    private fun closeEmoji() {
+        emojiOpen = false
+        emojiSearch = false
+        refresh()
+    }
+
+    /** An emoji from the grid, a tone panel or search: typed like any other key (it ends a Phrase first). */
+    override fun onEmoji(emoji: String) {
+        type(emoji)
+        val data = emojiData ?: return
+        val base = data.base(emoji)
+        if (data.variants.containsKey(base)) tones = if (base == emoji) tones - base else tones + (base to emoji)
+        recents = EmojiRecents.add(recents, emoji)
+        emojiPrefs.edit()
+            .putString("recents", EmojiRecents.encode(recents))
+            .putString("tones", tones.entries.joinToString("\n") { "${it.key}\t${it.value}" })
+            .apply()
+        render()
+    }
+
+    override fun onEmojiSearch(open: Boolean) {
+        emojiSearch = open
+        query = ""
+        results = emptyList()
+        if (open) shift = Shift.OFF
+        render()
+    }
+
+    /** While searching, the letters type the query; return or the emoji key goes back to the emoji page. */
+    private fun searchKey(action: KeyAction) {
+        when (action) {
+            is KeyAction.Text -> query += action.text.lowercase()
+            KeyAction.Space -> if (query.isNotEmpty() && !query.endsWith(" ")) query += " "
+            KeyAction.Backspace -> query = query.dropLast(1)
+            KeyAction.Return, KeyAction.Emoji, KeyAction.Page -> return onEmojiSearch(false)
+            KeyAction.Shift -> return shiftTapped()
+            else -> return
+        }
+        results = emojiData?.search(query) ?: emptyList()
+        render()
     }
 
     /** A DEL key event, not deleteSurroundingText: editors then delete whole emoji and selections themselves. */
     private fun deleteBackward() = sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
+
+    /**
+     * The Khmer layout's backspace: one code point, even inside a stack (គ្រូ -> គ្រ -> គ្), as the keys typed them.
+     * A selection, or an emoji or other surrogate pair before the caret, goes through DEL as usual.
+     */
+    private fun deleteCodePoint() {
+        val ic = currentInputConnection ?: return
+        val before = ic.getTextBeforeCursor(2, 0)
+        val selected = !ic.getSelectedText(0).isNullOrEmpty()
+        if (selected || before.isNullOrEmpty() || Character.isSurrogate(before.last())) return deleteBackward()
+        ic.deleteSurroundingText(1, 0)
+    }
 
     private fun returnKey() {
         val ic = currentInputConnection ?: return
@@ -287,6 +654,20 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         render()
     }
 
+    /**
+     * The bar's layout switch (no Phrase open): កខគ to the Khmer layout, abc back to the Sing layout, remembered
+     * across launches. Inert in password, email and number fields. Shift starts off either way.
+     */
+    private fun layoutTapped() {
+        if (layoutLocked || composer.isComposing) return
+        letters = if (letters == KeyPage.KHMER) KeyPage.LETTERS else KeyPage.KHMER
+        keyboardPrefs.edit().putString("layout", letters.name).apply()
+        page = letters
+        shift = Shift.OFF
+        shiftChosen = true
+        refresh()
+    }
+
     /** Switching mode never turns shift on: the keys stay as they are until the next letter. */
     private fun modeTapped() {
         composer.toggleMode()
@@ -296,16 +677,88 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onStrip(action: StripAction) {
+        val u = undo
+        if (action != StripAction.Clipboard) undo = null
         when (action) {
+            StripAction.Undo -> u?.let { undoLeave(it) }
             is StripAction.Suggestion -> handle(composer.candidateTapped(action.index))
             StripAction.Latin -> handle(composer.rawLatin())
+            StripAction.Layout -> layoutTapped()
+            is StripAction.Next -> nextTapped(action.index)
+            StripAction.Emoji -> emojiSuggestion?.let { emojiSuggested(it) }
+            StripAction.Clipboard -> {
+                clipboardOpen = !clipboardOpen
+                render()
+            }
+            StripAction.Paste -> clips.fresh(SystemClock.elapsedRealtime())?.let {
+                clips.freshUsed()
+                paste(it)
+            }
             StripAction.Expand -> {
                 showAll = !showAll && composer.isComposing
                 render()
             }
             is StripAction.Punctuation -> type(action.text)
-            is StripAction.Word -> englishWordTapped(action.index)
+            is StripAction.Word -> if (glided != null) glideAlternative(action.index) else englishWordTapped(action.index)
         }
+    }
+
+    // ---- glide typing (English mode) ----
+
+    /** After a glide: the glided word and its alternatives, for the bar; null once anything else happens. */
+    private var glided: List<String>? = null
+    /** Where the caret should be while [glided] stands; anywhere else drops it. */
+    private var glideEnd = -1
+
+    /**
+     * A glide over the letters: the best word goes in at once, with a space before it unless the caret already
+     * follows a space or an opening mark, capitalised as shift says; the bar offers the alternatives.
+     */
+    override fun onGlide(xs: FloatArray, ys: FloatArray, keys: Map<Char, Pair<Float, Float>>, keyWidth: Float) {
+        val decoder = english?.glide ?: return
+        val found = decoder.decode(xs, ys, keys, keyWidth)
+        if (found.isEmpty()) return
+        val ic = currentInputConnection ?: return
+        val cased = found.map { w ->
+            when (shift) {
+                Shift.LOCK -> w.uppercase()
+                Shift.ONCE -> w.replaceFirstChar { it.uppercaseChar() }
+                Shift.OFF -> w
+            }
+        }
+        val prev = ic.getTextBeforeCursor(1, 0)?.lastOrNull()
+        val space = if (prev != null && !prev.isWhitespace() && prev !in "([{\"'“‘/@#") " " else ""
+        ic.beginBatchEdit()
+        ic.commitText(space + cased[0], 1)
+        ic.endBatchEdit()
+        glideEnd = proxy.selEnd + space.length + cased[0].length
+        glided = cased
+        if (shift == Shift.ONCE) shift = Shift.OFF
+        shiftChosen = true
+        render()
+        refresh()
+    }
+
+    /** Backspace right after a glide takes the whole word back. */
+    private fun glideDeleted(word: String) {
+        val ic = currentInputConnection ?: return
+        if (ic.getTextBeforeCursor(word.length, 0)?.toString() == word) ic.deleteSurroundingText(word.length, 0)
+        else deleteBackward()
+        refresh(afterKey = true)
+    }
+
+    /** An alternative from the bar replaces the glided word; the glided word itself just keeps it. */
+    private fun glideAlternative(i: Int) {
+        val w = glided ?: return
+        glided = null
+        val ic = currentInputConnection ?: return
+        if (i > 0 && i < w.size && ic.getTextBeforeCursor(w[0].length, 0)?.toString() == w[0]) {
+            ic.beginBatchEdit()
+            ic.deleteSurroundingText(w[0].length, 0)
+            ic.commitText(w[i], 1)
+            ic.endBatchEdit()
+        }
+        refresh(afterKey = true)
     }
 
     /** The word being typed becomes the tapped one, then a space; index 0 keeps it as typed. Never learned. */
@@ -329,17 +782,42 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
     }
 
     /** Long press on the top row: the hint digit, typed like any digit (it commits the Phrase first). */
-    override fun onHint(text: String) = type(text)
+    override fun onHint(text: String) {
+        if (emojiSearch) searchKey(KeyAction.Text(text)) else type(text)
+    }
 
-    /** Hold or slide on the space bar: the caret follows, cluster by cluster. Mid-Phrase, the Phrase stays Latin. */
+    /** Hold or slide on the space bar: the caret follows, cluster by cluster. Mid-Phrase, it moves inside the Phrase. */
+    /**
+     * The Phrase that went in as Khmer is the Latin Phrase again, composing, if the Khmer is still where it went.
+     * Otherwise (the text changed under it) nothing happens.
+     */
+    private fun undoLeave(u: Undo) {
+        val ic = currentInputConnection ?: return
+        val t = ic.getExtractedText(ExtractedTextRequest(), 0)
+        val at = u.start - (t?.startOffset ?: 0)
+        val there = t?.text?.toString()?.let { if (at >= 0 && at + u.khmer.length <= it.length) it.substring(at, at + u.khmer.length) else null }
+        if (there != u.khmer) return refresh()
+        ic.beginBatchEdit()
+        ic.setComposingRegion(u.start, u.start + u.khmer.length)
+        composer.resume(u.latin)
+        ic.endBatchEdit()
+        refresh()
+    }
+
     override fun onDragStart() {
-        composer.fieldEnded()
+        dragOver = 0
+        if (composer.isComposing) return  // onCaret moves the Composer's caret; the Phrase and its Suggestions stay
         dragCaret = proxy.selEnd
         refresh()
     }
 
     override fun onCaret(clusters: Int) {
         val ic = currentInputConnection ?: return
+        if (composer.isComposing) return phraseDrag(clusters)
+        if (undo != null) {
+            undo = null
+            render()
+        }
         if (dragCaret < 0) return
         val before = ic.getTextBeforeCursor(64, 0)?.toString()
         val after = ic.getTextAfterCursor(64, 0)?.toString()
@@ -349,12 +827,53 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         ic.setSelection(dragCaret, dragCaret)
     }
 
+    /**
+     * Space-bar drag mid-Phrase. Inside, the caret moves in the Phrase. At an edge it stops with a bump; pushed on by
+     * [DETENT] more clusters (about a key's width), the Phrase goes in as Khmer and the drag carries on through the text.
+     */
+    private fun phraseDrag(clusters: Int) {
+        val len = composer.typed.length
+        val target = composer.caret + clusters
+        if (target in 0..len) {
+            dragOver = 0
+            if (composer.moveCaret(clusters)) refresh()
+            return
+        }
+        val edge = target.coerceIn(0, len)
+        if (edge != composer.caret) composer.moveCaret(edge - composer.caret)
+        if (dragOver == 0) view?.bump()
+        dragOver += abs(target - edge)
+        if (dragOver >= DETENT) leaveByDrag(left = clusters < 0)
+        refresh()
+    }
+
+    private fun leaveByDrag(left: Boolean) {
+        val ic = currentInputConnection ?: return
+        val start = proxy.composeStart
+        if (start < 0 || proxy.composeEnd - start != composer.typed.length) return  // span unknown: stay at the edge
+        ic.beginBatchEdit()
+        val gone = composer.leaveKhmer()
+        if (gone != null) {
+            val caret = if (left) start else start + gone.khmer.length
+            ic.setSelection(caret, caret)
+            dragCaret = caret
+            if (gone.khmer != gone.latin) undo = Undo(gone.latin, gone.khmer, start, caret, caret)
+        }
+        ic.endBatchEdit()
+        dragOver = 0
+    }
+
     override fun onDragEnd() {
+        dragOver = 0
         dragCaret = -1
         refresh()
     }
 
     companion object {
+        /** Clusters of space-bar travel past a Phrase's edge (10 dp each) before the Phrase goes in as Khmer. */
+        private const val DETENT = 4
+        /** A clip longer than this is kept cut short (a whole document copied stays out of memory). */
+        private const val MAX_CLIP = 5000
         private val PASSWORDS = setOf(
             InputType.TYPE_TEXT_VARIATION_PASSWORD,
             InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD,
@@ -377,7 +896,8 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
                 cls == InputType.TYPE_CLASS_NUMBER || cls == InputType.TYPE_CLASS_PHONE || cls == InputType.TYPE_CLASS_DATETIME -> FieldType.NUMBER
                 cls != InputType.TYPE_CLASS_TEXT -> FieldType.TEXT
                 v == InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS || v == InputType.TYPE_TEXT_VARIATION_WEB_EMAIL_ADDRESS -> FieldType.EMAIL
-                v == InputType.TYPE_TEXT_VARIATION_URI -> FieldType.URL
+                // URL fields have no special rule on Android: Khmer mode and the Khmer layout work there, as in any
+                // text field (#79). FieldType.URL stays in the shared Composer until every platform drops it together.
                 else -> FieldType.TEXT
             }
         }

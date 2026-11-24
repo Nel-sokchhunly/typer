@@ -103,27 +103,34 @@ val LocalKhmer = compositionLocalOf { true }
  * every text style to 1.6x line height.
  */
 @Composable
-fun TyperTheme(khmer: Boolean, content: @Composable () -> Unit) {
+fun TyperTheme(khmer: Boolean, systemFont: Boolean = false, content: @Composable () -> Unit) {
     val colors = if (isSystemInDarkTheme()) DarkScheme else LightScheme
-    val base = Typography().withFont()
+    val family = if (systemFont) FontFamily.Default else KantumruyPro
+    val base = Typography().withFont(family)
     MaterialTheme(colorScheme = colors, typography = if (khmer) base.forKhmer() else base) {
-        CompositionLocalProvider(LocalKhmer provides khmer, LocalContentColor provides colors.onSurface, content = content)
+        CompositionLocalProvider(
+            LocalKhmer provides khmer, LocalContentColor provides colors.onSurface, LocalTyperFont provides family,
+            content = content,
+        )
     }
 }
 
-private fun TextStyle.font() = copy(fontFamily = KantumruyPro)
+/** Kantumruy Pro, or the phone's font when the user chose it ([com.chhunly.typer.ime.FontChoice]). */
+val LocalTyperFont = androidx.compose.runtime.staticCompositionLocalOf<FontFamily> { KantumruyPro }
+
+private fun TextStyle.font(family: FontFamily) = copy(fontFamily = family)
 
 private fun TextStyle.airy(): TextStyle {
     val target = fontSize * 1.6f
     return if (lineHeight.isSpecified && lineHeight > target) this else copy(lineHeight = target)
 }
 
-private fun Typography.withFont() = copy(
-    displayLarge = displayLarge.font(), displayMedium = displayMedium.font(), displaySmall = displaySmall.font(),
-    headlineLarge = headlineLarge.font(), headlineMedium = headlineMedium.font(), headlineSmall = headlineSmall.font(),
-    titleLarge = titleLarge.font(), titleMedium = titleMedium.font(), titleSmall = titleSmall.font(),
-    bodyLarge = bodyLarge.font(), bodyMedium = bodyMedium.font(), bodySmall = bodySmall.font(),
-    labelLarge = labelLarge.font(), labelMedium = labelMedium.font(), labelSmall = labelSmall.font(),
+private fun Typography.withFont(f: FontFamily) = copy(
+    displayLarge = displayLarge.font(f), displayMedium = displayMedium.font(f), displaySmall = displaySmall.font(f),
+    headlineLarge = headlineLarge.font(f), headlineMedium = headlineMedium.font(f), headlineSmall = headlineSmall.font(f),
+    titleLarge = titleLarge.font(f), titleMedium = titleMedium.font(f), titleSmall = titleSmall.font(f),
+    bodyLarge = bodyLarge.font(f), bodyMedium = bodyMedium.font(f), bodySmall = bodySmall.font(f),
+    labelLarge = labelLarge.font(f), labelMedium = labelMedium.font(f), labelSmall = labelSmall.font(f),
 )
 
 private fun Typography.forKhmer() = copy(
@@ -148,7 +155,7 @@ fun Txt(
     color: Color = Color.Unspecified,
     khmerLine: Float = 1.6f,
     tracking: TextUnit = TextUnit.Unspecified,
-    family: FontFamily = KantumruyPro,
+    family: FontFamily = LocalTyperFont.current,
     textAlign: TextAlign? = null,
     maxLines: Int = Int.MAX_VALUE,
 ) {

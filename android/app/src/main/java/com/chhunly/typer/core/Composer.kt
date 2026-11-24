@@ -13,6 +13,9 @@ interface TextProxy {
     /** Replace the marked text (or insert at the caret) with `text`, marked, caret at its end. "" clears it. */
     fun setMarkedText(text: String)
 
+    /** As [setMarkedText], with the caret `caret` characters into `text` (Android: editing inside the Phrase). */
+    fun setMarkedText(text: String, caret: Int) = setMarkedText(text)
+
     /** Keep the marked text as plain text. */
     fun unmarkText()
     fun insertText(text: String)
@@ -83,6 +86,10 @@ class Composer(
         private set
     val isComposing get() = typed.isNotEmpty()
 
+    /** Where in [typed] keys go: its end, unless the caret was moved inside the Phrase (marked text only). */
+    var caret = 0
+        private set
+
     /** "ខ" or "EN"; a secure, email or number field shows EN, and a URL field starts EN. */
     val mode: String get() = if (passthrough) "EN" else "ខ"
 
@@ -120,9 +127,11 @@ class Composer(
         val starting = !isComposing
         val ascii = c.code < 128
         when {
-            ascii && (c.isLetter() || c == '\'') -> typed += c
-            c == ' ' && isComposing -> if (!typed.endsWith(" ")) typed += " "  // space separates words, never commits
-            isComposing && ascii && (c in ASCII_PUNCTUATION || c in '0'..'9') -> typed += c  // stays as typed: "knhom," -> ខ្ញុំ, and "mean 3 nak" -> មាន 3 នាក់
+            ascii && (c.isLetter() || c == '\'') -> insert(c)
+            c == ' ' && isComposing -> {  // space separates words, never commits
+                if (caret > 0 && typed[caret - 1] != ' ' && typed.getOrNull(caret) != ' ') insert(c)
+            }
+            isComposing && ascii && (c in ASCII_PUNCTUATION || c in '0'..'9') -> insert(c)  // stays as typed: "knhom," -> ខ្ញុំ, and "mean 3 nak" -> មាន 3 នាក់
             else -> return otherKey()
         }
         if (starting) anchor = proxy.documentContextBeforeInput
@@ -136,10 +145,35 @@ class Composer(
         return false
     }
 
+    private fun insert(c: Char) {
+        if (!isComposing) caret = 0
+        typed = typed.substring(0, caret) + c + typed.substring(caret)
+        caret++
+    }
+
     fun backspace(): Boolean {
         if (passingThrough() || !isComposing) return false
-        typed = typed.dropLast(1)
+        if (caret == 0) return true  // the caret is at the Phrase's start: nothing of it to delete
+        typed = typed.removeRange(caret - 1, caret)
+        caret--
         update()
+        return true
+    }
+
+    /**
+     * The caret moved to `position` characters into the Phrase (a tap or a space-bar drag inside the marked text).
+     * The Phrase stays, keys and backspace work there. False when the Phrase can't hold a caret (no marked text).
+     */
+    fun caretMoved(position: Int): Boolean {
+        if (!isComposing || !usesMarkedText || passthrough || position !in 0..typed.length) return false
+        caret = position
+        return true
+    }
+
+    /** Space-bar drag mid-Phrase: move the caret `by` characters, kept inside the Phrase. */
+    fun moveCaret(by: Int): Boolean {
+        if (!caretMoved((caret + by).coerceIn(0, typed.length))) return false
+        proxy.setMarkedText(typed, caret)
         return true
     }
 
@@ -182,9 +216,37 @@ class Composer(
      * The selection or text changed (onUpdateSelection), including the echoes of the Composer's own writes.
      * Mid-Phrase, if the caret no longer sits right after the Phrase, keep the Phrase as typed.
      */
-    fun textChanged(): Boolean {
+    fun textChanged(khmer: Boolean = false): Boolean {
         if (!isComposing || stillAfterPhrase()) return false
-        return keepLatin()
+        return if (khmer) leaveKhmer() != null else keepLatin()
+    }
+
+    /** What [leaveKhmer] put in for which Phrase, so the Keyboard can offer to take it back. */
+    data class Left(val latin: String, val khmer: String)
+
+    /**
+     * Android: the caret left the Phrase, so the Phrase goes in as its top Suggestion, as return does (computed now if
+     * it's stale), and nothing is learned. Null when there was no Phrase.
+     */
+    fun leaveKhmer(): Left? {
+        if (passingThrough() || !isComposing) return null
+        val latin = typed
+        val written = commit(0, learn = false) ?: return null
+        return Left(latin, written).also { lastLeft = it }
+    }
+
+    /** The latest [leaveKhmer]. */
+    var lastLeft: Left? = null
+        private set
+
+    /** Take a [leaveKhmer] back: `latin` is the Phrase again, caret at its end, over the editor's composing region. */
+    fun resume(latin: String): Boolean {
+        if (passthrough || isComposing || latin.isEmpty() || !usesMarkedText) return false
+        typed = latin
+        caret = latin.length
+        anchor = null
+        update()
+        return true
     }
 
     /**
@@ -237,17 +299,18 @@ class Composer(
     }
 
     /** A Pick must come from the current Phrase: if its result hasn't landed, compute it now. */
-    private fun commit(index: Int, learn: Boolean = true) {
+    /** Returns what went in, or null if the fallback found the caret moved and kept the Latin. */
+    private fun commit(index: Int, learn: Boolean = true): String? {
         val input = typed
         if (suggestionsFor != input) {
             scheduler.sync { suggestions = engine.suggest(input, 9) }
             suggestionsFor = input
         }
-        if (index !in suggestions.indices) {
-            write(input, final = true)
-            return
-        }
-        if (write(suggestions[index], final = true) && learn) scheduler.async { engine.pick(input, index) }
+        if (index !in suggestions.indices) return if (write(input, final = true)) input else null
+        val chosen = suggestions[index]
+        if (!write(chosen, final = true)) return null
+        if (learn) scheduler.async { engine.pick(input, index) }
+        return chosen
     }
 
     /** Leave the Phrase in the document as it stands (Latin), no learning. */
@@ -264,7 +327,7 @@ class Composer(
      */
     private fun write(text: String, final: Boolean): Boolean {
         if (usesMarkedText) {
-            proxy.setMarkedText(text)
+            if (!final && text == typed && caret < typed.length) proxy.setMarkedText(text, caret) else proxy.setMarkedText(text)
         } else {
             val same = shown.zip(text).takeWhile { it.first == it.second }.size
             val deletes = shown.length - same  // shown is ASCII: one deleteBackward per character
@@ -286,6 +349,7 @@ class Composer(
 
     private fun reset() {
         typed = ""
+        caret = 0
         shown = ""
         anchor = null
         suggestions = emptyList()

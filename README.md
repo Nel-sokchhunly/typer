@@ -243,6 +243,7 @@ an `ubuntu:22.04` container with `build-essential pkg-config libibus-1.0-dev pyt
 ### Data credits
 
 - `data/raw/mobile-keyboard-data.json`: shared open Khmer/English keyboard n-gram data.
+- `data/raw/emoji-test.txt` and `data/raw/cldr-annotations*.xml`: Unicode emoji list and CLDR 46 emoji names (English, Khmer), Unicode License v3.
 - `data/raw/hand-romans.txt`: from [khmer-text-transliteration](https://github.com/Chhunneng/khmer-text-transliteration),
   MIT License, Copyright (c) 2025 Chrea Chanchhunneng.
 

@@ -3,6 +3,8 @@
 out/emoji.json  [{"group": "Smileys & Emotion", "emoji": [{"e": "😀", "v": "1.0", "n": "grinning face",
                  "k": ["face", "grin", ...], "t": ["👋🏻", ... 5 tones light to dark]}, ...]}, ...]
 Groups in Unicode order. "t" only when the emoji has skin tones; "k" only when CLDR has keywords.
+out/emoji-names.tsv  emoji, English name, English keywords, Khmer name, Khmer keywords: every emoji and tone
+                     (the Android keyboard's search, TalkBack and emoji suggestions; keywords " | " separated).
 
 Fully-qualified emoji only, "Component" group skipped. Skin-tone variants are attached to their base
 emoji ("t"), never top-level; mixed-tone sequences (two people, different tones) are dropped.
@@ -21,6 +23,7 @@ HERE = Path(__file__).parent
 SRC = HERE / "raw" / "emoji-test.txt"
 CLDR = [HERE / "raw" / "cldr-annotations-en.xml", HERE / "raw" / "cldr-annotations-derived-en.xml"]
 OUT = HERE / "out" / "emoji.json"
+NAMES = HERE / "out" / "emoji-names.tsv"
 TONES = [0x1F3FB, 0x1F3FC, 0x1F3FD, 0x1F3FE, 0x1F3FF]
 ANNOTATION = re.compile(r'<annotation cp="([^"]+)"( type="tts")?>([^<]*)</annotation>')
 
@@ -104,11 +107,40 @@ def check(groups):
     assert "pizza" in by["🍕"]["n"] or "pizza" in by["🍕"].get("k", []), by["🍕"]
 
 
+def annotations(lang):
+    """CLDR 46 annotations, raw/cldr-annotations{,-derived}-<lang>.xml: emoji (without U+FE0F) -> (name, keywords)."""
+    import xml.etree.ElementTree as ET
+    names, words = {}, {}
+    files = (f"cldr-annotations-{lang}.xml", f"cldr-annotations-derived-{lang}.xml")
+    for a in (a for f in files for a in ET.parse(HERE / "raw" / f).getroot().iter("annotation")):
+        cp = key(a.get("cp"))
+        if a.get("type") == "tts":
+            names[cp] = a.text.strip()
+        else:
+            words[cp] = " | ".join(w.strip() for w in a.text.split("|"))
+    return {cp: (names.get(cp, ""), words.get(cp, "")) for cp in set(names) | set(words)}
+
+
+def name_rows(groups):
+    """English and Khmer names for every emoji and skin tone (TalkBack reads "waving hand: medium skin tone")."""
+    en, km = annotations("en"), annotations("km")
+    rows = []
+    for e in [e for g in groups for i in g["emoji"] for e in [i["e"]] + i.get("t", [])]:
+        (en_name, en_words), (km_name, km_words) = en.get(key(e), ("", "")), km.get(key(e), ("", ""))
+        if en_name or km_name:
+            rows.append("\t".join([e, en_name, en_words, km_name, km_words]))
+    return rows
+
+
 if __name__ == "__main__":
     groups = parse(SRC.read_text(encoding="utf-8"))
     check(groups)
     if "--check" not in sys.argv:
         OUT.parent.mkdir(exist_ok=True)
         OUT.write_text(json.dumps(groups, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    rows = name_rows(groups)
+    assert len(rows) > 3500, f"names for only {len(rows)} emoji"
+    if "--check" not in sys.argv:
+        NAMES.write_text("\n".join(rows) + "\n", encoding="utf-8")
     items = [i for g in groups for i in g["emoji"]]
     print(f"ok: {len(groups)} groups, {len(items)} emoji, {sum('t' in i for i in items)} with tones")

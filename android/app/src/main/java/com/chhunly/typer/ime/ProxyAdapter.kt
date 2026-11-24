@@ -30,6 +30,28 @@ class ProxyAdapter(private val connection: () -> InputConnection?) : TextProxy {
         connection()?.setComposingText(text, 1)
     }
 
+    /**
+     * Composing text with the caret inside it. The Phrase's span starts where it did (only the Phrase changes), so the
+     * caret goes to that start plus `caret`. Without a known span, write first and read the caret back, unbatched:
+     * some editors (Compose) apply a batch only at its end, so a read inside one sees the old text.
+     */
+    override fun setMarkedText(text: String, caret: Int) {
+        val ic = connection() ?: return
+        if (caret >= text.length) return setMarkedText(text)
+        if (composeStart >= 0) {
+            ic.beginBatchEdit()
+            ic.setComposingText(text, 1)
+            ic.setSelection(composeStart + caret, composeStart + caret)
+            ic.endBatchEdit()
+            return
+        }
+        ic.setComposingText(text, 1)
+        ic.getExtractedText(ExtractedTextRequest(), 0)?.let { t ->
+            val at = t.startOffset + t.selectionEnd - (text.length - caret)
+            ic.setSelection(at, at)
+        }
+    }
+
     override fun unmarkText() {
         connection()?.finishComposingText()
     }
