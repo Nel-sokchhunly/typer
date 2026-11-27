@@ -165,8 +165,8 @@ object KeyLayout {
 
     /**
      * The bottom row in Gboard's order and widths (hundredths of a key). With the language key (`mode`: Typer's
-     * Sing/English switch, drawn as Gboard's globe): ?123 150, comma 100 (emoji on its long press, as Gboard does
-     * when the globe is shown), globe 100 (Typer's settings on its long press), space 475, period 100, return 150.
+     * Sing/English switch, a yellow ខ/EN key as on iOS): ?123 150, comma 100 (emoji on its long press, as Gboard does
+     * when the language key is shown), ខ/EN 100 (Typer's settings on its long press), space 475, period 100, return 150.
      * Without it (the Khmer layout, like Gboard's Khmer): ?123, comma (settings on long press), emoji, space, period,
      * return.
      */
@@ -180,7 +180,7 @@ object KeyLayout {
         val slots = buildList {
             add(Slot(KeyAction.Page, 150f, KeyStyle.FUNCTION))
             if (punctuation) add(Slot(KeyAction.Text(comma), 100f, KeyStyle.FUNCTION, long = if (mode) KeyAction.Emoji else KeyAction.Settings))
-            if (mode) add(Slot(KeyAction.Mode, 100f, KeyStyle.LETTER, long = KeyAction.Settings))
+            if (mode) add(Slot(KeyAction.Mode, 100f, KeyStyle.MODE, long = KeyAction.Settings))
             else add(Slot(KeyAction.Emoji, 100f, KeyStyle.FUNCTION))
             add(Slot(KeyAction.Space, 475f, KeyStyle.LETTER))
             if (punctuation) add(Slot(KeyAction.Text("."), 100f, KeyStyle.FUNCTION, if (field == FieldKind.TEXT) PERIOD_MORE else DOMAINS))
