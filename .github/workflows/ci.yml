@@ -186,6 +186,7 @@ jobs:
         run: |
           [ -n "$KEYSTORE_B64" ] || { echo "::error::TYPER_KEYSTORE_B64 secret is missing"; exit 1; }
           export TYPER_KEYSTORE="$RUNNER_TEMP/typer.keystore" TYPER_VERSION="${GITHUB_REF_NAME#v}"
+          export ANDROID_NDK_HOME="$(ls -d "$ANDROID_HOME"/ndk/* | sort -V | tail -1)"  # as build.sh: strip the .so, symbols into the AAB
           echo "$KEYSTORE_B64" | base64 -d > "$TYPER_KEYSTORE"
           cd android
           ./gradlew assembleRelease bundleRelease

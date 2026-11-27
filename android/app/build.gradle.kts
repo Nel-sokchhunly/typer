@@ -19,6 +19,12 @@ val releaseKeystore = System.getenv("TYPER_KEYSTORE")
 android {
     namespace = "com.chhunly.typer"
     compileSdk = 36
+    // The NDK that built the engine (build.sh and the CI runner set it): Gradle needs one to strip the .so and
+    // pull out its symbols. Without it, the full .so ships and Play gets no symbols.
+    System.getenv("ANDROID_NDK_HOME")?.takeIf { File(it, "source.properties").exists() }?.let { dir ->
+        ndkPath = dir
+        ndkVersion = File(dir, "source.properties").readLines().first { it.startsWith("Pkg.Revision") }.substringAfter("=").trim()
+    }
 
     defaultConfig {
         applicationId = "com.bayonlabs.typer"  // Play identity (Bayon Labs); the code stays in com.chhunly.typer (namespace, JNI names)
@@ -42,6 +48,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            ndk { debugSymbolLevel = "SYMBOL_TABLE" }  // the engine's function names in the AAB, for Play's native crash reports
             signingConfig = signingConfigs.findByName("release")
         }
     }
