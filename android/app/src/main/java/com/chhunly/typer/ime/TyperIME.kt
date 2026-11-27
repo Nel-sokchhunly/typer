@@ -123,7 +123,8 @@ class TyperIME : InputMethodService(), KeyboardView.Listener {
         }
         loader.execute {
             val data = try {
-                EmojiData.load(asset("data/emoji.json"), asset("data/emoji-names.tsv"))
+                val paint = android.graphics.Paint()
+                EmojiData.load(asset("data/emoji.json"), asset("data/emoji-names.tsv")).keeping(paint::hasGlyph)
             } catch (e: Exception) {  // missing or broken data: the emoji key does nothing
                 null
             }

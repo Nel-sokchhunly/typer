@@ -56,6 +56,18 @@ class EmojiData(
     private val popular: Map<String, Int> = POPULAR.withIndex().associate { it.value to it.index }
 
     /**
+     * Only the emoji this phone can draw (`drawable`: Paint.hasGlyph), so an older Android's font shows no empty boxes
+     * for newer Unicode emoji. A base keeps its skin tones only if all of them draw; empty groups go.
+     */
+    fun keeping(drawable: (String) -> Boolean): EmojiData {
+        val gs = groups.map { Group(it.name, it.emoji.filter(drawable)) }.filter { it.emoji.isNotEmpty() }
+        val kept = gs.flatMapTo(HashSet()) { it.emoji }
+        val vs = variants.filter { (b, v) -> b in kept && v.all(drawable) }
+        vs.values.forEach { kept += it }
+        return EmojiData(gs, vs, names.filterKeys { it in kept })
+    }
+
+    /**
      * The emoji to suggest for a whole word as it is typed (English or Khmer): one whose name is the word or that has
      * it as a keyword, the most used first; null if none. Words under three letters suggest nothing ("a", "i").
      */
