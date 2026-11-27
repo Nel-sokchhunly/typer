@@ -679,7 +679,7 @@ class KeyboardView(context: Context, private val listener: Listener) : View(cont
             KeyAction.Page -> drawLabel(canvas, pageLabel(), cx, cy, 16f, fg, alpha, bold = true)
             KeyAction.Emoji -> drawIcon(canvas, R.drawable.ic_emoji, cx, cy, fg)
             KeyAction.Symbols -> drawLabel(canvas, if (state.page == KeyPage.NUMBERS) "=\\<" else "?123", cx, cy, 16f, fg, alpha, bold = true)
-            KeyAction.Mode -> drawIcon(canvas, R.drawable.ic_language, cx, cy, fg, 24f, alpha)  // Gboard's globe: Sing <-> English
+            KeyAction.Mode -> drawLabel(canvas, state.mode, cx, cy, 16f, fg, alpha, bold = true)  // ខ/EN on Typer yellow, as on iOS
             KeyAction.Space -> drawLabel(canvas, if (state.mode == "EN" && !state.khmerLayout) "English" else "ខ្មែរ", cx, cy, 14f, theme.onSurfaceVariant)  // the language, as Gboard shows it
             KeyAction.Settings -> Unit  // only a long press, never a key of its own
         }
