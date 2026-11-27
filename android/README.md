@@ -38,10 +38,10 @@ Learning lives in `filesDir/user` (`user.tsv`, `picks.tsv`, `settings.txt`); on 
 
 - **Debug:** every machine signs with the shared `app/debug.keystore` (password `android`, not a secret), so debug
   builds from any dev update each other on a test phone.
-- **Release:** only CI signs, on `v*` tags. One keystore with two keys, kept in the repo secrets
-  `TYPER_KEYSTORE_B64` (the keystore, base64) and `TYPER_KEYSTORE_PASSWORD`:
-  - `app`: Typer's app signing key. It signs the GitHub release APK (`Typer-android-v4.1.0-40100.apk`: version and versionCode), and Play App Signing holds
-    an encrypted copy, so Play and GitHub installs update each other. If it's lost, no GitHub APK can ever update
-    existing installs again: keep two backups in the team vault.
-  - `upload`: signs the AAB (same name, `.aab`) for Play. If it leaks, Google can reset it.
+- **Release:** only CI signs, on `v*` tags, with the keystore in the repo secrets `TYPER_KEYSTORE_B64` (base64) and
+  `TYPER_KEYSTORE_PASSWORD`. Its `app` key is Typer's app signing key and signs both release files: the GitHub APK
+  (`Typer-android-v4.1.0-40100.apk`: version and versionCode) and the AAB for Play. Play App Signing holds a copy
+  (SHA-256 `03:DF:7B:78…23:B9:D7`) and accepts it as the upload key, so Play and GitHub installs update each other.
+  If it's lost, no GitHub APK can ever update existing installs again: the team keeps two backups. The keystore's
+  spare `upload` key is unused; it's there if we ever ask Play for an upload key reset.
 - **Version:** the tag sets it: `v4.0.1` → `versionName` 4.0.1, `versionCode` 40001 (Play needs it to go up).

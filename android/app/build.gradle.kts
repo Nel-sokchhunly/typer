@@ -12,8 +12,8 @@ val repo = rootDir.parentFile
 val typerVersion = System.getenv("TYPER_VERSION") ?: "0.0.1"
 val (major, minor, patch) = (typerVersion.split(".").map { it.takeWhile(Char::isDigit).toIntOrNull() ?: 0 } + listOf(0, 0, 0)).take(3)
 
-// Release signing, on v* tags only: one keystore from the repo secrets with two keys.
-// "app" is Typer's app signing key (it signs the GitHub APK; Play holds a copy). "upload" signs the AAB for Play.
+// Release signing, on v* tags only: the keystore from the repo secrets. Its "app" key is Typer's app signing key:
+// it signs the GitHub APK and the AAB (Play holds a copy and takes it as the upload key too).
 val releaseKeystore = System.getenv("TYPER_KEYSTORE")
 
 android {
@@ -35,7 +35,7 @@ android {
             storeFile = file(releaseKeystore)
             storePassword = System.getenv("TYPER_KEYSTORE_PASSWORD")
             keyPassword = System.getenv("TYPER_KEYSTORE_PASSWORD")
-            keyAlias = findProperty("typerKey")?.toString() ?: "app"  // -PtyperKey=upload for the AAB
+            keyAlias = "app"
         }
     }
 
