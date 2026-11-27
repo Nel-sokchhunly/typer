@@ -16,8 +16,9 @@ set -eu
 cd "$(dirname "$0")/.."
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
 ADB="$SDK/platform-tools/adb"
-PKG=com.chhunly.typer
-IME=$PKG/.ime.TyperIME
+PKG=com.bayonlabs.typer  # the app id; the classes live in com.chhunly.typer
+CLS=com.chhunly.typer
+IME=$PKG/$CLS.ime.TyperIME
 APK=android/app/build/outputs/apk/debug/app-debug.apk
 OUT="build/android/e2e/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$OUT"
@@ -60,7 +61,7 @@ def centre(n):
 if cmd == "bounds":
     want = args[0]
     for key in ("content-desc", "text", "resource-id"):
-        hit = [n for n in nodes if n.get(key) == want and (key != "content-desc" or n.get("package") == "com.chhunly.typer")]
+        hit = [n for n in nodes if n.get(key) == want and (key != "content-desc" or n.get("package") == "com.bayonlabs.typer")]
         if hit:
             print(centre(hit[-1])); sys.exit(0)
     sys.exit(1)
@@ -68,7 +69,7 @@ if cmd == "text":
     hit = [n for n in nodes if n.get("resource-id") == args[0]]
     print(hit[0].get("text") if hit else ""); sys.exit(0 if hit else 1)
 if cmd == "first":  # the strip's first slot: the first node after the Keyboard's own node
-    labels = [n.get("content-desc") for n in nodes if n.get("package") == "com.chhunly.typer" and n.get("content-desc")]
+    labels = [n.get("content-desc") for n in nodes if n.get("package") == "com.bayonlabs.typer" and n.get("content-desc")]
     if "Typer keyboard" in labels:
         i = labels.index("Typer keyboard")
         if i + 1 < len(labels):
@@ -80,7 +81,7 @@ if cmd == "rect":
         print(*re.findall(r"\d+", hit[-1].get("bounds"))); sys.exit(0)
     sys.exit(1)
 if cmd == "prefix":  # centre of the first Keyboard node whose label starts with this
-    hit = [n for n in nodes if n.get("package") == "com.chhunly.typer" and (n.get("content-desc") or "").startswith(args[0])]
+    hit = [n for n in nodes if n.get("package") == "com.bayonlabs.typer" and (n.get("content-desc") or "").startswith(args[0])]
     if hit:
         print(centre(hit[0])); sys.exit(0)
     sys.exit(1)
@@ -90,7 +91,7 @@ if cmd == "desctext":  # text of the field (not a Keyboard key) with this conten
     print(hit[0].get("text") if hit else ""); sys.exit(0 if hit else 1)
 if cmd == "labels":
     for n in nodes:
-        if n.get("package") == "com.chhunly.typer" and n.get("content-desc"):
+        if n.get("package") == "com.bayonlabs.typer" and n.get("content-desc"):
             print(n.get("content-desc"))
 PY
 }
@@ -111,7 +112,7 @@ for d in re.split(r"(?=<\?xml)", raw[raw.find("<?xml"):]):
     except ET.ParseError:
         continue
     for n in root.iter("node"):
-        if n.get("package") == "com.chhunly.typer" and n.get("content-desc") == sys.argv[2]:
+        if n.get("package") == "com.bayonlabs.typer" and n.get("content-desc") == sys.argv[2]:
             x1, y1, x2, y2 = map(int, re.findall(r"\d+", n.get("bounds")))
             print((x1 + x2) // 2, (y1 + y2) // 2); sys.exit(0)
 sys.exit(1)
@@ -153,7 +154,7 @@ field_text() { ui text try; }
 # No force-stop: the Keyboard lives in the same package, and stopping it makes Android fall back to another one.
 open_app() {
     "$ADB" shell ime set "$IME" >/dev/null
-    "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null  # NEW_TASK | CLEAR_TASK: a fresh, empty field
+    "$ADB" shell am start -W -f 0x10008000 -n $PKG/$CLS.app.MainActivity >/dev/null  # NEW_TASK | CLEAR_TASK: a fresh, empty field
     xy=$(wait_for try 30) || { log "  try-it field not found"; return 1; }
     n=0
     until tap $xy && wait_for space 8 >/dev/null; do  # a cold debug start can drop the first tap
@@ -201,7 +202,7 @@ select_keyboard() {
 
 open_fields() { # the debug fields screen; tap the field with this label
     "$ADB" shell ime set "$IME" >/dev/null
-    "$ADB" shell am start -W -f 0x10008000 -n $PKG/.FieldsActivity >/dev/null
+    "$ADB" shell am start -W -f 0x10008000 -n $PKG/$CLS.FieldsActivity >/dev/null
     xy=$(wait_for "$1" 30) || { log "  field $1 not found"; return 1; }
     n=0
     until tap $xy && wait_for space 8 >/dev/null; do
@@ -345,7 +346,7 @@ scenario_learn() { # Pick a non-first Suggestion from the panel; after a Keyboar
 
 scenario_reset() { # learn a Pick, then the Companion app's Reset clears it: files gone, and the very next keystroke ranks as before
     scenario_learn; [ $FAILED = 0 ] || return
-    "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null  # the Keyboard's process keeps running
+    "$ADB" shell am start -W -f 0x10008000 -n $PKG/$CLS.app.MainActivity >/dev/null  # the Keyboard's process keeps running
     wait_for try 30 >/dev/null || { log "FAIL reset: no Companion app"; FAILED=1; return; }
     n=0
     until xy=$(ui bounds "Reset"); do
@@ -471,7 +472,7 @@ scenario_companion() { # the Companion app: setup steps report Done, Open Settin
     for night in no yes; do
         "$ADB" shell cmd uimode night $night >/dev/null
         sleep 1.5
-        "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null
+        "$ADB" shell am start -W -f 0x10008000 -n $PKG/$CLS.app.MainActivity >/dev/null
         wait_for try 30 >/dev/null || { log "FAIL companion: no screen"; FAILED=1; return; }
         tap $(ui bounds "ភាសា ខ្មែរ" 2>/dev/null || ui bounds "ខ្មែរ") 2>/dev/null || true
         sleep 0.5
@@ -486,7 +487,7 @@ scenario_companion() { # the Companion app: setup steps report Done, Open Settin
         shot "companion-english-$night-scrolled"
     done
     "$ADB" shell cmd uimode night no >/dev/null
-    "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null
+    "$ADB" shell am start -W -f 0x10008000 -n $PKG/$CLS.app.MainActivity >/dev/null
     tap $(wait_for "Open Settings" 20)
     sleep 1.5
     check "companion: Open Settings opens the keyboard settings" "com.android.settings" "$("$ADB" shell dumpsys window | grep -m1 mCurrentFocus)"
@@ -642,7 +643,7 @@ scenario_emoji() { # the emoji page: pick, recently used, skin tones (remembered
 
 # set_font <Kantumruy Pro|System>: choose the font on the Companion app's card (scrolling to it)
 set_font() {
-    "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null
+    "$ADB" shell am start -W -f 0x10008000 -n $PKG/$CLS.app.MainActivity >/dev/null
     wait_for try 30 >/dev/null || return 1
     n=0
     until xy=$(ui bounds "Kantumruy Pro"); do
@@ -659,7 +660,7 @@ set_font() {
 # setting <label>: open the Companion app, scroll to the setting with this text and tap it (a switch or an option)
 WAS_KHMER_APP=0
 setting() {
-    "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null
+    "$ADB" shell am start -W -f 0x10008000 -n $PKG/$CLS.app.MainActivity >/dev/null
     wait_for try 30 >/dev/null || return 1
     # the cards are found by their English titles: a Companion app in Khmer is switched to English (and back after)
     if ui labels | grep -qx "ភាសា៖ អង់គ្លេស"; then tap $(ui bounds EN); WAS_KHMER_APP=1; sleep 0.5; fi
@@ -708,7 +709,7 @@ scenario_settings() { # double-space period and auto-cap (English), the auto-cap
     [ "$tall" -gt "$normal" ] && log "PASS settings: Tall makes the keyboard taller ($normal -> $tall px)" || { log "FAIL settings: height $normal -> $tall"; FAILED=1; }
     setting "Normal"
     if [ $WAS_KHMER_APP = 1 ]; then  # the Companion app back in Khmer, as it was
-        "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null
+        "$ADB" shell am start -W -f 0x10008000 -n $PKG/$CLS.app.MainActivity >/dev/null
         tap $(wait_for "ខ្មែរ" 20); WAS_KHMER_APP=0
     fi
 }
@@ -896,7 +897,7 @@ scenario_themes() { # each theme on the keyboard, for the eye (screenshots theme
     done
     setting "${THEME_AFTER:-Typer}"
     if [ $WAS_KHMER_APP = 1 ]; then
-        "$ADB" shell am start -W -f 0x10008000 -n $PKG/.app.MainActivity >/dev/null
+        "$ADB" shell am start -W -f 0x10008000 -n $PKG/$CLS.app.MainActivity >/dev/null
         tap $(wait_for "ខ្មែរ" 20); WAS_KHMER_APP=0
     fi
 }

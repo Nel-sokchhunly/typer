@@ -9,7 +9,7 @@ import com.chhunly.typer.ime.EngineData
 
 /**
  * Debug builds only: loads the engine on the device and asks for one Phrase.
- *   adb shell am instrument -w -e input "knhom tov sala rean" com.chhunly.typer/.EngineCheck
+ *   adb shell am instrument -w -e input "knhom tov sala rean" com.bayonlabs.typer/com.chhunly.typer.EngineCheck
  * prints INSTRUMENTATION_RESULT lines: loaded, first, all, load_ms, suggest_ms.
  * With `-e keys true` it also replays the input one character at a time on the same engine, as typing does (the
  * engine reuses work from the previous keystroke), and reports per_key_ms (each keystroke), mean_ms and max_ms.

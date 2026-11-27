@@ -21,7 +21,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.chhunly.typer"
+        applicationId = "com.bayonlabs.typer"  // Play identity (Bayon Labs); the code stays in com.chhunly.typer (namespace, JNI names)
         minSdk = 24
         targetSdk = 36
         versionCode = major * 10000 + minor * 100 + patch
