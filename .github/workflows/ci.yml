@@ -134,7 +134,7 @@ jobs:
       - run: cd ios && xcodegen generate
       - run: xcodebuild -project ios/Typer.xcodeproj -scheme Typer -destination 'generic/platform=iOS Simulator' ARCHS=arm64 CODE_SIGNING_ALLOWED=NO build
 
-  android-check: # Android Keyboard: engine for 3 ABIs, JVM fixture tests, debug APK (artifact; attached to v* releases)
+  android-check: # Android Keyboard: engine for 3 ABIs, JVM fixture tests, debug APK (artifact); on v* tags the signed APK + AAB for the release
     runs-on: ubuntu-latest # the image ships the Android SDK and NDK
     steps:
       - uses: actions/checkout@v5
@@ -178,6 +178,28 @@ jobs:
         with:
           name: typer-android-debug
           path: build/Typer-android-debug.apk
+      - name: Signed release APK (app key) and AAB (upload key)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          KEYSTORE_B64: ${{ secrets.TYPER_KEYSTORE_B64 }}
+          TYPER_KEYSTORE_PASSWORD: ${{ secrets.TYPER_KEYSTORE_PASSWORD }}
+        run: |
+          [ -n "$KEYSTORE_B64" ] || { echo "::error::TYPER_KEYSTORE_B64 secret is missing"; exit 1; }
+          export TYPER_KEYSTORE="$RUNNER_TEMP/typer.keystore" TYPER_VERSION="${GITHUB_REF_NAME#v}"
+          echo "$KEYSTORE_B64" | base64 -d > "$TYPER_KEYSTORE"
+          cd android
+          ./gradlew assembleRelease
+          ./gradlew bundleRelease -PtyperKey=upload
+          cp app/build/outputs/apk/release/app-release.apk ../build/Typer-android.apk
+          cp app/build/outputs/bundle/release/app-release.aab ../build/Typer-android.aab
+          rm "$TYPER_KEYSTORE"
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v5
+        with:
+          name: typer-android-release
+          path: |
+            build/Typer-android.apk
+            build/Typer-android.aab
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -216,8 +238,8 @@ jobs:
           path: build
       - uses: actions/download-artifact@v5
         with:
-          name: typer-android-debug
+          name: typer-android-release
           path: build
-      - run: gh release create "$GITHUB_REF_NAME" build/Typer.pkg build/Typer-macos.zip build/Typer-windows-setup.exe build/Typer-linux-amd64.deb build/Typer-ios-unsigned.ipa build/Typer-android-debug.apk --generate-notes
+      - run: gh release create "$GITHUB_REF_NAME" build/Typer.pkg build/Typer-macos.zip build/Typer-windows-setup.exe build/Typer-linux-amd64.deb build/Typer-ios-unsigned.ipa build/Typer-android.apk build/Typer-android.aab --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}

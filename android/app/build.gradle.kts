@@ -8,6 +8,14 @@ plugins {
 val rustOut = layout.buildDirectory.dir("rust")
 val repo = rootDir.parentFile
 
+// The version comes from the v* tag (CI sets TYPER_VERSION=4.0.1): versionCode 40001, so Play sees it go up.
+val typerVersion = System.getenv("TYPER_VERSION") ?: "0.0.1"
+val (major, minor, patch) = (typerVersion.split(".").map { it.takeWhile(Char::isDigit).toIntOrNull() ?: 0 } + listOf(0, 0, 0)).take(3)
+
+// Release signing, on v* tags only: one keystore from the repo secrets with two keys.
+// "app" is Typer's app signing key (it signs the GitHub APK; Play holds a copy). "upload" signs the AAB for Play.
+val releaseKeystore = System.getenv("TYPER_KEYSTORE")
+
 android {
     namespace = "com.chhunly.typer"
     compileSdk = 36
@@ -16,13 +24,25 @@ android {
         applicationId = "com.chhunly.typer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = major * 10000 + minor * 100 + patch
+        versionName = typerVersion
+    }
+
+    signingConfigs {
+        // Shared by every dev (a debug key is not a secret), so debug builds from any machine update each other.
+        getByName("debug") { storeFile = file("debug.keystore") }
+        if (releaseKeystore != null) create("release") {
+            storeFile = file(releaseKeystore)
+            storePassword = System.getenv("TYPER_KEYSTORE_PASSWORD")
+            keyPassword = System.getenv("TYPER_KEYSTORE_PASSWORD")
+            keyAlias = findProperty("typerKey")?.toString() ?: "app"  // -PtyperKey=upload for the AAB
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
