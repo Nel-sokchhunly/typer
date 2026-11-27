@@ -1,6 +1,6 @@
 # Typer for Android
 
-The Android Keyboard (an input method) and its Companion app, one APK (`com.chhunly.typer`, minSdk 24).
+The Android Keyboard (an input method) and its Companion app, one APK (app id `com.bayonlabs.typer`, code in `com.chhunly.typer`, minSdk 24).
 Install steps for users are in the main [README](../README.md#android-preview).
 
 ```
@@ -32,7 +32,7 @@ release.
 - `docs/reference.md`: the measurements the Keyboard is built to, and where each came from (ADR 0006).
 
 Learning lives in `filesDir/user` (`user.tsv`, `picks.tsv`, `settings.txt`); on a debug build:
-`adb shell run-as com.chhunly.typer ls files/user`.
+`adb shell run-as com.bayonlabs.typer ls files/user`.
 
 ## Signing
 

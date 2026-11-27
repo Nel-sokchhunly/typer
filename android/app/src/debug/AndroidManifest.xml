@@ -2,11 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Debug builds only: the on-device engine check (android/build.sh check) and the e2e fields screen. -->
     <instrumentation
-        android:name=".EngineCheck"
-        android:targetPackage="com.chhunly.typer" />
+        android:name="com.chhunly.typer.EngineCheck"
+        android:targetPackage="${applicationId}" />
     <application>
         <activity
-            android:name=".FieldsActivity"
+            android:name="com.chhunly.typer.FieldsActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize" />
     </application>

@@ -38,4 +38,4 @@ echo "built: $APK"
 [ "${1:-}" = check ] || exit 0
 ADB="$SDK/platform-tools/adb"
 "$ADB" install -r "$APK" >/dev/null
-"$ADB" shell am instrument -w -e input "'knhom tov sala rean'" com.chhunly.typer/.EngineCheck
+"$ADB" shell am instrument -w -e input "'knhom tov sala rean'" com.bayonlabs.typer/com.chhunly.typer.EngineCheck
